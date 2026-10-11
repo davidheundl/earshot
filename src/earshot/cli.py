@@ -41,12 +41,13 @@ def cmd_fast(a) -> None:
     from earshot.runners.lockstep import run
     from earshot.scenario import Scenario
 
+    events_file = _resolve_events(a.events) if a.events else None
     results = []
     t0 = time.time()
     for k in range(a.runs):
         sc = Scenario.load(a.scenario, seed=a.seed + k)
         if a.events:  # replay a recorded live session on top of the scenario
-            recorded = [json.loads(line) for line in Path(a.events).read_text().splitlines()]
+            recorded = [json.loads(line) for line in events_file.read_text().splitlines()]
             sc.events = sorted(sc.events + recorded, key=lambda e: e["t"])
         log = None
         if a.log:
@@ -59,6 +60,22 @@ def cmd_fast(a) -> None:
     print(f"{a.runs} run(s) in {time.time() - t0:.1f}s")
     if a.out:
         Path(a.out).write_text(json.dumps(results, indent=1))
+
+
+def _resolve_events(arg: str) -> Path:
+    """A recorded session file, or 'latest' for the newest runs/live-*.events.jsonl."""
+    if arg == "latest":
+        found = sorted(Path("runs").glob("live-*.events.jsonl"))
+        if not found:
+            sys.exit("no recorded sessions in runs/ yet: run `earshot live` and press some keys")
+        print(f"replaying {found[-1]}")
+        return found[-1]
+    p = Path(arg)
+    if not p.exists():
+        have = sorted(Path("runs").glob("live-*.events.jsonl"))
+        hint = "\n  ".join(str(h) for h in have[-5:]) or "(none yet)"
+        sys.exit(f"{arg} not found. Recorded sessions:\n  {hint}\nor use --events latest")
+    return p
 
 
 # -- live ---------------------------------------------------------------------------------
@@ -168,7 +185,7 @@ def main(argv=None) -> None:
     f.add_argument("--seed", type=int, default=0)
     f.add_argument("--log", action="store_true", help="write runs/<name>-seed<k>.jsonl")
     f.add_argument("--out", help="write summary JSON here")
-    f.add_argument("--events", help="replay a runs/live-*.events.jsonl on top of the scenario")
+    f.add_argument("--events", help="replay a recorded session: a runs/live-*.events.jsonl file, or 'latest'")
     f.set_defaults(fn=cmd_fast)
 
     lv = sub.add_parser("live", help="multi-process run with radio, agents and dashboard")
