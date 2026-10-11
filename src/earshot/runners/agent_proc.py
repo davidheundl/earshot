@@ -81,8 +81,11 @@ def main(argv=None) -> None:
                     sensed = Sensed(sensed.state, keep + array.readings(), sensed.camera_frame)
                 out = agent.step(sensed.state.t, sensed, inbox)
                 inbox = []
+                telemetry = out.telemetry
+                if array is not None:
+                    telemetry = {**telemetry, "array": array.diagnostics}
                 to_world.send(pack({"id": a.id, "command": command_to_dict(out.command),
-                                    "telemetry": out.telemetry, "events": out.events}))
+                                    "telemetry": telemetry, "events": out.events}))
                 if out.outbox:
                     to_radio.send(pack({"id": a.id, "frames": out.outbox}))
     except KeyboardInterrupt:

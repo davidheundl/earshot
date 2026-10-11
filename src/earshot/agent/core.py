@@ -147,7 +147,8 @@ class Agent:
                 {"id": tr.track_id, "x": round(tr.x, 1), "y": round(tr.y, 1),
                  "a": round(tr.semi_major), "b": round(tr.semi_minor), "ang": round(tr.angle),
                  "cls": tr.cls.name, "conf": round(tr.confidence, 2), "status": tr.status.name,
-                 "origins": tr.origins}
+                 "origins": tr.origins, "strength": round(tr.strength, 1),
+                 "support": [list(e) for e in tr.support]}
                 for tr in self._tracks
             ],
             "heatmap": self._heatmap,

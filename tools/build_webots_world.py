@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import itertools
 
-from earshot.backend.webots import LIVE_SLOTS, TRAIN_WAGONS, live_slot
+from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
@@ -484,10 +484,17 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(LIVE_SLOTS)]
     for sid, cls in slots:
         parts += source_nodes(sid, cls, markers)
+    # the RIG stays at the origin; its child Solids carry the cameras and are moved by the
+    # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
+    views = " ".join(
+        f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
+        f'width {640 if k == 0 else 384} height {360 if k == 0 else 216} fieldOfView 1.15 far 9000 }} ] }}'
+        for k in range(N_VIEWS))
     parts.append(
-        'DEF RIG Robot { translation 0 0 -100 name "supervisor" supervisor TRUE controller "<extern>" '
-        'children [ Pose { rotation 0 1 0 0.25 children [ Camera { name "camera" width 400 height 240 '
-        "fieldOfView 1.0 far 3000 recognition Recognition { maxRange 100 segmentation TRUE } } ] } ] }"
+        'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
+        'children [ DEF CAMV Solid { translation 0 0 -100 name "camv" children [ Camera { name "camera" '
+        "width 400 height 240 fieldOfView 1.0 far 3000 recognition Recognition { maxRange 100 "
+        f"segmentation TRUE }} }} ] }} {views} ] }}"
     )
     out.write_text("\n".join(parts) + "\n")
     stamp.write_text(key)

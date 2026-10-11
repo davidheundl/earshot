@@ -45,6 +45,24 @@ def _yaw(heading_deg: float) -> float:
     return math.radians(90.0 - heading_deg)
 
 
+def look_rotation(heading_deg: float, pitch_down_deg: float) -> list[float]:
+    """Axis-angle that points a camera (looking along its +x) at compass `heading`, tilted
+    down by `pitch`: yaw about z, then pitch about the camera's own y."""
+    yaw, pitch = _yaw(heading_deg), math.radians(pitch_down_deg)
+    w1, z1 = math.cos(yaw / 2), math.sin(yaw / 2)
+    w2, y2 = math.cos(pitch / 2), math.sin(pitch / 2)
+    w, x, y, z = w1 * w2, -z1 * y2, w1 * y2, z1 * w2
+    n = math.sqrt(x * x + y * y + z * z) or 1.0
+    return [x / n, y / n, z / n, 2 * math.acos(max(-1.0, min(1.0, w)))]
+
+
+N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
+VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
+PILOT = {"ahead": 1.8, "up": -0.2, "pitch": 16.0}  # just outside the marker ring
+CHASE = {"back": 14.0, "up": 6.0, "pitch": 22.0}
+CHASE_PERCHED = {"back": 32.0, "up": 20.0, "pitch": 30.0}  # see the roof and what it listens to
+
+
 class WebotsBackend:
     def __init__(self, city: City, scenario: Scenario):
         from controller import Supervisor  # only importable inside the Webots env
@@ -60,14 +78,79 @@ class WebotsBackend:
                 raise RuntimeError(f"world has no DEF DRONE_{d.id}; regenerate it")
             self._drones[d.id] = (node.getField("translation"), node.getField("rotation"))
         self._fields: dict[str, object | None] = {}  # DEF name -> translation field (cached)
-        rig = self.sup.getSelf()
-        self._rig = (rig.getField("translation"), rig.getField("rotation"))
+        # all cameras ride on child Solids of the RIG, which stays at the origin, so a child's
+        # local pose is its world pose (a Supervisor can only read its own robot's devices)
+        self._camv = self._node("CAMV")
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
+        ids = [d.id for d in scenario.drones]
+        self.views: list[list] = [[ids[k % len(ids)], "chase" if k == 0 else "pilot"]
+                                  for k in range(N_VIEWS)]
+        self._view_cams = []
+        for k in range(N_VIEWS):
+            cam = self.sup.getDevice(f"view{k}")
+            node = self._node(f"CAM_{k}")
+            if cam is None or node is None:
+                break  # an older world without view cameras
+            cam.enable(VIEW_PERIOD_MS[k])
+            self._view_cams.append((cam, node))
+        self._view_yaw: dict[int, float] = {}
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
         for cls in ("DRONE", "VEHICLE", "TRAIN", "NOTHING"):
             for k in range(LIVE_SLOTS):
                 self._def_class[f"SRC_{live_slot(cls, k)}"] = cls
+
+    # -- views (the game screen's drone cameras) -------------------------------------------
+
+    def set_views(self, views: list) -> None:
+        """[[drone_id, "pilot" | "chase"], ...] for CAM_0 (main) .. CAM_3."""
+        for k, (did, mode) in enumerate(views[: len(self._view_cams)]):
+            if did in self._drones and mode in ("pilot", "chase"):
+                self.views[k] = [did, mode]
+
+    def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
+        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, jpeg}}."""
+        import io
+
+        from PIL import Image
+
+        out = {}
+        for k in which:
+            if k >= len(self._view_cams):
+                continue
+            cam, _ = self._view_cams[k]
+            raw = cam.getImage()
+            if not raw:
+                continue
+            w, h = cam.getWidth(), cam.getHeight()
+            img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=quality)
+            out[k] = {"drone": self.views[k][0], "mode": self.views[k][1], "w": w, "h": h,
+                      "jpeg": buf.getvalue()}
+        return out
+
+    def _place_views(self, states: dict[int, DroneState]) -> None:
+        for k, (cam, node) in enumerate(self._view_cams):
+            did, mode = self.views[k]
+            s = states.get(did)
+            if s is None:
+                continue
+            # smooth the heading so a chase camera swings instead of snapping
+            prev = self._view_yaw.get(k, s.heading)
+            diff = (s.heading - prev + 180.0) % 360.0 - 180.0
+            yaw = (prev + 0.06 * diff) % 360.0
+            self._view_yaw[k] = yaw
+            fx, fy = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
+            if mode == "pilot":
+                pos = [s.x + PILOT["ahead"] * fx, s.y + PILOT["ahead"] * fy, s.z + PILOT["up"]]
+                rot = look_rotation(yaw, PILOT["pitch"])
+            else:
+                c = CHASE_PERCHED if s.perched_on else CHASE
+                pos = [s.x - c["back"] * fx, s.y - c["back"] * fy, s.z + c["up"]]
+                rot = look_rotation(yaw, c["pitch"])
+            node[0].setSFVec3f(pos)
+            node[1].setSFRotation(rot)
 
     # -- Backend interface ---------------------------------------------------------------
 
@@ -159,10 +242,11 @@ class WebotsBackend:
                     self.camera.recognitionEnable(self.basic_ms)
                     self.camera.enableRecognitionSegmentation()
             self._verifier = verifier
-        rt, rr = self._rig
-        if verifier is None:
-            rt.setSFVec3f(PARKED)
-        else:
-            s = states[verifier]
-            rt.setSFVec3f([s.x, s.y, s.z - 0.3])
-            rr.setSFRotation([0.0, 0.0, 1.0, _yaw(s.heading)])
+        if self._camv is not None:
+            if verifier is None:
+                self._camv[0].setSFVec3f(PARKED)
+            else:
+                s = states[verifier]
+                self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
+                self._camv[1].setSFRotation(look_rotation(s.heading, 14.0))
+        self._place_views(states)

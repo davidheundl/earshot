@@ -101,6 +101,7 @@ class World:
             "drones": [
                 {
                     "id": s.id, "x": s.x, "y": s.y, "z": s.z, "heading": s.heading,
+                    "agl": round(s.z - float(self.city.ground(s.x, s.y)), 1),
                     "mode": s.mode.name, "perched_on": s.perched_on, "battery": s.battery,
                     "camera_on": s.camera_on, "telemetry": telemetry.get(s.id, {}),
                 }
@@ -114,6 +115,11 @@ class World:
                 {"drone": d["drone"], "x": d["x"], "y": d["y"], "bearing": d["bearing"],
                  "sigma": d["sigma"], "age": round(self.t - d["t"], 2)}
                 for d in self._recent
+            ],
+            "readings": [  # what the drones measured this step (no ground truth); RF has no bearing
+                {**{k: d[k] for k in ("t", "drone", "sensor", "sigma", "level", "probs", "mode")},
+                 "bearing": None if d["bearing"] != d["bearing"] else round(d["bearing"], 1)}
+                for d in self.detections
             ],
             "environment": vars(self.scenario.environment),
             "events": self.applied[-5:],

@@ -110,6 +110,7 @@ class TrackEst:
     status: TrackStatus
     origins: int  # how many drones' evidence supports it
     strength: float = 0.0  # threat log-odds at the peak: ranks Suspicions (P saturates)
+    support: tuple = ()  # ((origin, family, log-odds), ...) at the peak, for the class: who built it
 
 
 def cell_id(x: float, y: float, bounds) -> int:
@@ -141,6 +142,7 @@ class Belief:
         self._confirmed: list[tuple[float, float, float]] = []  # (x, y, t)
         self.faulty: set[int] = set()
         self.last_sound: dict[int, Observation] = {}  # origin -> newest sound bearing
+        self._fused: list[tuple[float, int, str]] = []  # (t, origin, family) for the dashboard
         self._recent_sound: dict[int, list[Observation]] = {}  # origin -> bearings in window
         self._fault_streak: dict[int, int] = {}
         self._track_cache: list[TrackEst] = []  # last extracted Tracks, for check_faults
@@ -189,6 +191,8 @@ class Belief:
         self.advance(t_now)
         age = max(0.0, self._t - obs.t)
         self.n_evidence += 1
+        fam = "camera" if obs.sensor == Sensor.CAMERA else "sound" if obs.sensor == Sensor.SOUND else "rf"
+        self._fused.append((obs.t, obs.header.origin, fam))
         if obs.sensor == Sensor.CAMERA:
             w = math.exp(-age / TAU_CAMERA)
             self._camera(obs, w)
@@ -398,12 +402,22 @@ class Belief:
             ci = int(np.argmax(mass))
             cls = THREATS[ci]
             origins = sum(1 for s in support.values() if s[ci][iy, ix] > 1.0)
+            by_sensor = tuple(sorted(
+                ((o, fam, round(float(self._contribution((o, fam), g)[ci][iy, ix]), 2))
+                 for (o, fam), g in self._G.items() if o not in self.faulty),
+                key=lambda e: -abs(e[2])))
+            by_sensor = tuple(e for e in by_sensor if abs(e[2]) >= 0.05)
+            cam = float(self._C[ci][iy, ix])
+            if abs(cam) >= 0.05:
+                by_sensor += ((-1, "camera", round(cam, 2)),)
+            prior = round(float(self.prior[ci][iy, ix]), 2)
             out.append(TrackEst(
                 track_id=cell_id(mx, my, self.city.bounds), x=float(mx), y=float(my),
                 semi_major=a, semi_minor=b, angle=ang, cls=cls,
                 confidence=float(post[ci][iy, ix]),
                 status=self._status(cls, mx, my, t_now), origins=origins,
                 strength=float(zt[iy, ix]),
+                support=by_sensor + ((-2, "prior", prior),),
             ))
             alive = np.where(np.hypot(self.X - px, self.Y - py) <= TRACK_SUPPRESS, 0.0, alive)
         self._track_cache = out
@@ -436,4 +450,10 @@ class Belief:
         }
 
     def summary(self) -> dict:
-        return {"n_evidence": self.n_evidence, "faulty": sorted(self.faulty)}
+        """Small JSON for the dashboard, incl. readings fused per drone in the last 30 s."""
+        self._fused = [f for f in self._fused if self._t - f[0] <= 30.0]
+        fused: dict[int, dict[str, int]] = {}
+        for _, o, fam in self._fused:
+            fused.setdefault(o, {}).setdefault(fam, 0)
+            fused[o][fam] += 1
+        return {"n_evidence": self.n_evidence, "faulty": sorted(self.faulty), "fused": fused}

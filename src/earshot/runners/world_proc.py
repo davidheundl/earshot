@@ -88,6 +88,10 @@ def main(argv=None) -> None:
                     msg = unpack(pull.recv(zmq.NOBLOCK))
                 except zmq.Again:
                     break
+                if msg.get("op") == "view":  # game screen camera assignment, not a scenario Event
+                    if hasattr(backend, "set_views"):
+                        backend.set_views(msg["views"])
+                    continue
                 if "op" in msg:
                     world.control(msg)
                     continue
@@ -114,6 +118,11 @@ def main(argv=None) -> None:
                                      and d.get("task") == "verify")
                               for k in ("dispatch", "confirmed", "dismissed")}
             pub.send_multipart([topic("state"), pack(snap)])
+            if hasattr(backend, "view_frames"):  # main view every tick (10 Hz), tiles every 2nd
+                tick = round(world.t / scenario.dt)
+                frames = backend.view_frames([0] + ([1, 2, 3] if tick % 2 == 0 else []))
+                if frames:
+                    pub.send_multipart([topic("cams"), pack({"t": world.t, "frames": frames})])
             if self_paced:
                 next_t += period
                 time.sleep(max(0.0, next_t - time.monotonic()))

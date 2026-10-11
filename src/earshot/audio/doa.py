@@ -35,16 +35,23 @@ def respeaker_v2_geometry(radius: float = 0.032) -> np.ndarray:
 
 
 def estimate_bearing(block: np.ndarray, fs: int, mic_xy: np.ndarray, rotation_deg: float = 0.0,
-                     band: tuple[float, float] = BAND) -> tuple[float, float]:
+                     band: tuple[float, float] = BAND, scan: list | None = None) -> tuple[float, float]:
     """(compass bearing in degrees, relative peak power) of the loudest source in the block.
 
-    block: (n_mics, n_samples) float. SRP-PHAT over the band, as in the concept."""
+    block: (n_mics, n_samples) float. SRP-PHAT over the band, as in the concept. If `scan` is
+    a list, it receives the SRP power over 72 compass directions (every 5 deg, from north)."""
     stft = np.stack([pra.transform.stft.analysis(ch, NFFT, NFFT // 2).T for ch in block])
     doa = pra.doa.algorithms["SRP"](mic_xy, fs, NFFT, c=SPEED_OF_SOUND, num_src=1)
     doa.locate_sources(stft, freq_range=list(band))
     az = float(np.degrees(doa.azimuth_recon[0]))  # counter-clockwise from the array +x axis
     grid = np.asarray(doa.grid.values)
     power = float(grid.max() / max(grid.mean(), 1e-12))
+    if scan is not None:
+        az_grid = np.degrees(np.asarray(doa.grid.azimuth))
+        compass = (90.0 - az_grid + rotation_deg) % 360.0
+        bins = np.zeros(72)
+        np.maximum.at(bins, (compass // 5).astype(int) % 72, grid / max(grid.max(), 1e-12))
+        scan[:] = [round(float(v), 3) for v in bins]
     # array frame: +y is "forward"; compass: clockwise from north
     return (90.0 - az + rotation_deg) % 360.0, power
 

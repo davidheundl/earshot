@@ -13,6 +13,7 @@ channels 1-4 the raw mics, channel 5 the playback reference.
 
 from __future__ import annotations
 
+import itertools
 import queue
 
 import numpy as np
@@ -43,6 +44,7 @@ class ArraySensor:
         self.calibration_db = calibration_db
         self.mics = respeaker_v2_geometry()
         self._q: queue.Queue = queue.Queue()
+        self.diagnostics: dict = {}  # last block: level, spectrum, SRP scan, bearing (dashboard)
         self._stream = None
         if start:
             self.start()
@@ -74,13 +76,22 @@ class ArraySensor:
     def process_block(self, block: np.ndarray) -> SensorReading | None:
         """(n_mics, n_samples) -> one SensorReading, or None if nothing clear was heard."""
         level = level_db(block, self.calibration_db)
+        spec = np.abs(np.fft.rfft(block.mean(axis=0))) ** 2
+        f = np.fft.rfftfreq(block.shape[1], 1.0 / self.fs)
+        edges = np.geomspace(50, self.fs / 2, 49)  # 48 log-spaced bands for the spectrogram
+        bands = [float(spec[(f >= lo) & (f < hi)].mean()) if np.any((f >= lo) & (f < hi)) else 0.0
+                 for lo, hi in itertools.pairwise(edges)]
+        self.diagnostics = {"level": round(level, 1), "spectrum": [round(10 * np.log10(b + 1e-12), 1) for b in bands]}
         if level < MIN_LEVEL_DB:
             return None
-        bearing, power = estimate_bearing(block, self.fs, self.mics, self.rotation_deg)
+        scan: list = []
+        bearing, power = estimate_bearing(block, self.fs, self.mics, self.rotation_deg, scan=scan)
+        probs = coarse_class_probs(block, self.fs)
+        self.diagnostics.update(scan=scan, bearing=round(bearing, 1), power=round(power, 2),
+                                probs=[round(p, 2) for p in probs], heard=power >= MIN_POWER)
         if power < MIN_POWER:
             return None
-        return SensorReading(Sensor.SOUND, bearing, BEARING_SIGMA,
-                             coarse_class_probs(block, self.fs), level)
+        return SensorReading(Sensor.SOUND, bearing, BEARING_SIGMA, probs, level)
 
 
 def list_arrays(min_channels: int = 4) -> list[tuple[int, str, int]]:

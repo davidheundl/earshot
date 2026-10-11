@@ -73,6 +73,9 @@ def create_app(scenario_path: str) -> FastAPI:
     for k in ("terrain", "terrain_outer"):  # big; the basemap carries them
         city_json.pop(k, None)
     latest: dict = {"state": None, "radio": None, "camera": None}
+    cams: dict = {}  # view camera k -> {drone, mode, w, h, jpeg (base64)}
+    readings: list = []  # (seq, reading): every reading, so no client misses one between frames
+    seq = [0]
 
     async def pump():
         ctx = zmq.asyncio.Context.instance()
@@ -82,10 +85,20 @@ def create_app(scenario_path: str) -> FastAPI:
         sub.connect(config.RADIO_PUB)
         sub.setsockopt(zmq.SUBSCRIBE, topic("state"))
         sub.setsockopt(zmq.SUBSCRIBE, topic("radio"))
+        sub.setsockopt(zmq.SUBSCRIBE, topic("cams"))
         while True:
             t, payload = await sub.recv_multipart()
             msg = unpack(payload)
+            if t == topic("cams"):
+                for k, f in msg["frames"].items():
+                    f["jpeg"] = base64.b64encode(f["jpeg"]).decode()
+                    cams[int(k)] = f
+                continue
             if t == topic("state"):
+                for r in msg.pop("readings", []):
+                    seq[0] += 1
+                    readings.append((seq[0], r))
+                del readings[:-2000]
                 if "camera" in msg:
                     cam = msg.pop("camera")
                     if cam:
@@ -108,7 +121,7 @@ def create_app(scenario_path: str) -> FastAPI:
 
     @app.get("/")
     async def index():
-        return FileResponse(STATIC / "index.html")
+        return FileResponse(STATIC / "hud.html")
 
     to_world = zmq.Context.instance().socket(zmq.PUSH)
     to_world.setsockopt(zmq.LINGER, 0)
@@ -145,13 +158,42 @@ def create_app(scenario_path: str) -> FastAPI:
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
         await sock.accept()
+        sent = seq[0] - 200  # a new screen starts with the recent history
         try:
             while True:
                 if latest["state"] is not None:
-                    await sock.send_text(json.dumps(latest))
+                    new = [r for s, r in readings if s > sent]
+                    sent = seq[0]
+                    await sock.send_text(json.dumps({**latest, "readings": new}))
                 await asyncio.sleep(0.1)
         except WebSocketDisconnect:
             pass
+
+    @app.websocket("/ws/cams")
+    async def ws_cams(sock: WebSocket):
+        """Drone camera frames: only frames newer than the last one this client got."""
+        await sock.accept()
+        last: dict[int, str] = {}
+        try:
+            while True:
+                for k, f in list(cams.items()):
+                    if last.get(k) is not f["jpeg"]:
+                        last[k] = f["jpeg"]
+                        await sock.send_text(json.dumps({"k": k, **f}))
+                await asyncio.sleep(0.05)
+        except WebSocketDisconnect:
+            pass
+
+    @app.post("/view")
+    async def view(request: Request):
+        """{"views": [[drone, "pilot" | "chase"], ...]} for the four view cameras."""
+        body = await request.json()
+        to_world.send(pack({"op": "view", "views": body["views"]}))
+        return {"ok": True}
+
+    @app.get("/classic")
+    async def classic():
+        return FileResponse(STATIC / "index.html")
 
     return app
 
