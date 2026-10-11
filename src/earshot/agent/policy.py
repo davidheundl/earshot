@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from earshot.agent.belief import TrackEst, cell_center
+from earshot.agent.belief import CONFIRM_RADIUS, TrackEst, cell_center
 from earshot.city import City
 from earshot.messages import Claim, Mode, TargetClass, TrackStatus
 from earshot.sensors import acoustics as ac
@@ -43,7 +43,10 @@ RENEW = 4.0
 SETTLE = 3.0  # > typical 3-hop Claim latency, so competing bids arrive before anyone flies
 LOCALISED = 100.0  # m, semi-major axis below which more bearings add little
 VERIFY_MIN_CONFIDENCE = 0.5
-VERIFY_MAX_ELLIPSE = 150.0
+TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
+CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
+VERIFY_MAX_ELLIPSE = 150.0  # semi-major (2 sigma); the strength gate separates truth from ghosts
+VERIFY_MIN_STRENGTH = 6.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
 ROOF_SEARCH_RADIUS = 300.0
 ARRIVE = 30.0
@@ -127,6 +130,13 @@ class Policy:
 
     def _tasks(self, tracks, belief, active, s) -> dict[int, _Task]:
         out: dict[int, _Task] = {}
+        confirmed = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED]
+        tracks = sorted((tr for tr in tracks if tr.status != TrackStatus.CONFIRMED and not any(
+            math.hypot(c.x - tr.x, c.y - tr.y) <= CONFIRMED_SHADOW for c in confirmed)),
+            key=lambda tr: -tr.strength)
+        if self.swarm.policy != "nearest":
+            tracks = [tr for tr in tracks if tr.cls == TargetClass.DRONE
+                      and tr.status == TrackStatus.SUSPECTED][:TOP_SUSPICIONS]
         for tr in tracks:
             if tr.status == TrackStatus.CONFIRMED:
                 continue
@@ -141,7 +151,8 @@ class Policy:
                 for kind in (LISTEN_A, LISTEN_B):
                     tid = task_id(kind, tr.track_id)
                     out[tid] = _Task(tid, kind, tr.x, tr.y, tr, (tr.x, tr.y))
-            if tr.confidence >= VERIFY_MIN_CONFIDENCE and tr.semi_major <= VERIFY_MAX_ELLIPSE:
+            if (tr.confidence >= VERIFY_MIN_CONFIDENCE and tr.semi_major <= VERIFY_MAX_ELLIPSE
+                    and tr.strength >= VERIFY_MIN_STRENGTH):
                 tid = task_id(VERIFY, tr.track_id)
                 out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
         return out
@@ -284,7 +295,7 @@ class Policy:
     def _verify_progress(self, t, s, tracks, current, d: Decision) -> None:
         task = self._task
         confirmed = next((tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
-                          and math.hypot(tr.x - task.x, tr.y - task.y) <= SAME_TASK_RADIUS), None)
+                          and math.hypot(tr.x - task.x, tr.y - task.y) <= CONFIRM_RADIUS), None)
         if confirmed is not None and self._settled:
             self._release(t, d, "confirmed", confirmed)
             return

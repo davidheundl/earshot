@@ -187,7 +187,9 @@ class Agent:
                 continue
             status = TrackStatus.SUSPECTED if tr.status == TrackStatus.VERIFYING else tr.status
             out.append(TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
-                                tr.cls, tr.confidence, status, origins=2))
+                                tr.cls, tr.confidence, status, origins=2,
+                                strength=math.log(max(tr.confidence, 1e-3)
+                                                  / max(1 - tr.confidence, 1e-3))))
         return out
 
     # -- radio ----------------------------------------------------------------------------

@@ -33,6 +33,7 @@ class RunResult:
     events: list  # Agents' decisions (claim, dispatch, confirmed, dismissed, ...) with sim time
     truth: list  # every Source of the run, including ones added by events
     battery: dict  # drone -> battery left
+    busy_max: int = 0  # most drones away from their default post (settled task) at once
 
 
 def build(scenario: Scenario, root: Path = Path(".")):
@@ -59,6 +60,7 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
     log_every = round(1.0 / scenario.dt)  # 1 Hz
     det_log = log.with_name(log.stem + ".detections.jsonl") if log else None
     events: list[dict] = []
+    busy_max = 0
     with (
         open(log, "w") if log else contextlib.nullcontext() as fh,
         open(det_log, "w") if det_log else contextlib.nullcontext() as dh,
@@ -74,6 +76,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
                 telemetry[did] = out.telemetry
                 events.extend(out.events)
             inbox = radio.step(t, world.positions(), outgoing, scenario.jam_zones(t))
+            busy_max = max(busy_max, sum(1 for tm in telemetry.values()
+                                         if tm.get("task") and tm["task"]["settled"]))
             if dh:
                 for d in world.detections:
                     dh.write(json.dumps(d) + "\n")
@@ -85,7 +89,7 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
               "path": [list(p) for p in s.path]} for s in scenario.sources]
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
-                     events, truth, battery)
+                     events, truth, battery, busy_max)
 
 
 def _strip(telemetry: dict) -> dict:

@@ -89,6 +89,29 @@ def stale_webots() -> list[str]:
     return out.split()
 
 
+# -- eval ---------------------------------------------------------------------------------
+
+
+def cmd_eval(a) -> None:
+    from earshot.eval import as_json, evaluate, summarize
+
+    t0 = time.time()
+    table, raw = [], {}
+    for policy in a.policy:
+        rows = evaluate(a.scenario, a.runs, a.seed, policy, a.scheme)
+        raw[policy] = as_json(rows)
+        table.append(summarize(rows))
+    cols = list(table[0])
+    width = {c: max(len(c), *(len(str(row[c])) for row in table)) for c in cols}
+    print("  ".join(c.ljust(width[c]) for c in cols))
+    for row in table:
+        print("  ".join(str(row[c]).ljust(width[c]) for c in cols))
+    print(f"{a.runs} run(s) x {len(a.policy)} policies in {time.time() - t0:.0f}s"
+          "  (median [min-max] over seeds)")
+    if a.out:
+        Path(a.out).write_text(json.dumps({"summary": table, "runs": raw}, indent=1))
+
+
 # -- live ---------------------------------------------------------------------------------
 
 
@@ -220,6 +243,16 @@ def main(argv=None) -> None:
     lv.add_argument("--duration", type=float, help="run this many sim seconds (default: scenario)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
     lv.set_defaults(fn=cmd_live)
+
+    ev = sub.add_parser("eval", help="metrics over seeded runs, policies side by side")
+    ev.add_argument("--scenario", default="scenarios/demo.yaml")
+    ev.add_argument("--runs", type=int, default=10)
+    ev.add_argument("--seed", type=int, default=0)
+    ev.add_argument("--policy", nargs="+", default=["earshot"],
+                    choices=["earshot", "nearest", "no_perch"])
+    ev.add_argument("--scheme", choices=["ours", "flood", "unicast3"])
+    ev.add_argument("--out", help="write all metrics as JSON")
+    ev.set_defaults(fn=cmd_eval)
 
     d = sub.add_parser("doctor", help="pre-flight checks")
     d.set_defaults(fn=cmd_doctor)

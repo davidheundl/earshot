@@ -101,6 +101,7 @@ class TrackEst:
     confidence: float
     status: TrackStatus
     origins: int  # how many drones' evidence supports it
+    strength: float = 0.0  # threat log-odds at the peak: ranks Suspicions (P saturates)
 
 
 def cell_id(x: float, y: float, bounds) -> int:
@@ -323,6 +324,7 @@ class Belief:
                 semi_major=a, semi_minor=b, angle=ang, cls=cls,
                 confidence=float(post[ci][iy, ix]),
                 status=self._status(cls, mx, my, t_now), origins=origins,
+                strength=float(zt[iy, ix]),
             ))
             alive = np.where(np.hypot(self.X - px, self.Y - py) <= TRACK_SUPPRESS, 0.0, alive)
         return out
