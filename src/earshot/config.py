@@ -10,4 +10,5 @@ WORLD_PULL = f"tcp://{HOST}:5551"  # agents -> world: command + telemetry
 RADIO_PULL = f"tcp://{HOST}:5552"  # agents -> radio: frames to transmit
 RADIO_PUB = f"tcp://{HOST}:5553"  # radio -> agents ("rx.<id>"), dashboard ("radio")
 DASHBOARD_PORT = 8000
-WEBOTS_PORT = 1240  # our own Webots instance, so an already-open Webots does not clash
+# our own Webots instance, so an already-open Webots does not clash
+WEBOTS_PORT = int(os.environ.get("EARSHOT_WEBOTS_PORT", "1240"))
