@@ -103,8 +103,14 @@ def _time_to_agree(r: RunResult) -> float | None:
 def evaluate(scenario_path: str, runs: int, seed0: int, policy: str,
              scheme: str | None = None, bw_khz: float | None = None) -> list[RunMetrics]:
     out = []
+    base = Scenario.load("scenarios/demo.yaml") if scenario_path == "random" else None
     for k in range(runs):
-        sc = Scenario.load(scenario_path, seed=seed0 + k)
+        if base is not None:
+            from earshot.scenario_gen import generate
+
+            sc = generate(base, seed0 + k)
+        else:
+            sc = Scenario.load(scenario_path, seed=seed0 + k)
         sc.policy = policy
         if scheme:
             sc.radio = {**sc.radio, "scheme": scheme}

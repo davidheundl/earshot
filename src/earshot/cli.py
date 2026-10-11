@@ -247,7 +247,8 @@ def main(argv=None) -> None:
     lv.set_defaults(fn=cmd_live)
 
     ev = sub.add_parser("eval", help="metrics over seeded runs, policies side by side")
-    ev.add_argument("--scenario", default="scenarios/demo.yaml")
+    ev.add_argument("--scenario", default="scenarios/demo.yaml",
+                    help="a scenario YAML, or 'random' for a generated world per seed")
     ev.add_argument("--runs", type=int, default=10)
     ev.add_argument("--seed", type=int, default=0)
     ev.add_argument("--policy", nargs="+", default=["earshot"],
