@@ -4,12 +4,16 @@
     (backend webots: start via `earshot live --backend webots`, which sets the Webots env)
 
 Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot) to radio + dashboard.
-Pulls commands + telemetry from agents; a drone without a fresh command keeps its last one.
+Pulls commands + telemetry from agents (a drone without a fresh command keeps its last one)
+and operator events from the dashboard ({"op": ...}, see earshot/scenario.py). Every event
+that took effect is appended to runs/live-<time>.events.jsonl, replayable with
+`earshot fast --events <file>`.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -56,6 +60,10 @@ def main(argv=None) -> None:
 
     commands: dict = {}
     telemetry: dict = {}
+    Path("runs").mkdir(exist_ok=True)
+    events_path = Path("runs") / time.strftime("live-%Y%m%d-%H%M%S.events.jsonl")
+    events_file = open(events_path, "a")  # noqa: SIM115 - lives as long as the process
+    logged = 0
     period = scenario.dt / a.speed
     next_t = time.monotonic()
     print(f"[world] {a.backend} running {scenario.name}, dt={scenario.dt}s", flush=True)
@@ -66,9 +74,18 @@ def main(argv=None) -> None:
                     msg = unpack(pull.recv(zmq.NOBLOCK))
                 except zmq.Again:
                     break
+                if "op" in msg:
+                    world.control(msg)
+                    continue
                 commands[msg["id"]] = command_from_dict(msg["command"])
                 telemetry[msg["id"]] = msg["telemetry"]
             sensed = world.step(commands)
+            for ev in world.applied[logged:]:
+                if ev.get("live"):  # scripted YAML events replay from the YAML itself
+                    events_file.write(json.dumps(ev) + "\n")
+                    events_file.flush()
+                print(f"[world] t={ev['t']:.1f} {ev['note']}", flush=True)
+            logged = len(world.applied)
             for did, s in sensed.items():
                 pub.send_multipart([topic("tick", did), pack(sensed_to_dict(s))])
             pub.send_multipart([topic("state"), pack(world.snapshot(telemetry))])
@@ -79,6 +96,9 @@ def main(argv=None) -> None:
         pass
     finally:
         backend.close()
+        events_file.close()
+        if events_path.stat().st_size == 0:
+            events_path.unlink()
         print("[world] stopped", flush=True)
 
 

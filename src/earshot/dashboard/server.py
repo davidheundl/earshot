@@ -1,8 +1,10 @@
-"""Dashboard server: subscribes to world "state." and radio "radio.", fans out over WebSocket.
+"""Dashboard server: operator console for a live run.
 
     python -m earshot.dashboard.server --scenario scenarios/demo.yaml   -> http://127.0.0.1:8000
 
-Read-only observer: it never talks back to agents, so it can crash without hurting a run.
+Subscribes to world "state." and radio "radio." and fans them out over WebSocket. Operator
+hotkeys arrive as POST /control and are forwarded to the world as scenario events; Agents
+never see the dashboard, and a crash here never stops a run.
 The page is a single static file with no external JS (works offline).
 """
 
@@ -17,11 +19,11 @@ from pathlib import Path
 import uvicorn
 import zmq
 import zmq.asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from earshot import config
-from earshot.runners.wire import topic, unpack
+from earshot.runners.wire import pack, topic, unpack
 from earshot.scenario import Scenario
 
 STATIC = Path(__file__).parent / "static"
@@ -55,6 +57,18 @@ def create_app(scenario_path: str) -> FastAPI:
     @app.get("/")
     async def index():
         return FileResponse(STATIC / "index.html")
+
+    to_world = zmq.Context.instance().socket(zmq.PUSH)
+    to_world.setsockopt(zmq.LINGER, 0)
+    to_world.connect(config.WORLD_PULL)
+
+    @app.post("/control")
+    async def control(request: Request):
+        op = await request.json()
+        if not isinstance(op, dict) or "op" not in op:
+            return JSONResponse({"error": "missing op"}, status_code=400)
+        to_world.send(pack(op))
+        return {"queued": op["op"]}
 
     @app.get("/city")
     async def city():

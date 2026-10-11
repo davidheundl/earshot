@@ -29,6 +29,12 @@ Live on the 2D twin (dashboard at http://127.0.0.1:8000):
 uv run earshot live
 ```
 
+In the dashboard, keys act at the mouse position: `d` drone, `v` vehicle, `t` train, `n` fan, `j`/`J` jam / clear, `f`/`F` sensor fault / clear, `b` day/night, `e` ego-noise filter. Each live session is recorded to `runs/live-*.events.jsonl`; replay it in fast mode:
+
+```bash
+uv run earshot fast --events runs/live-YYYYMMDD-HHMMSS.events.jsonl
+```
+
 Live with Webots (opens its own Webots instance on port 1240):
 
 ```bash

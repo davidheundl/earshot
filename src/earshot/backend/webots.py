@@ -21,7 +21,20 @@ from earshot.scenario import Scenario
 from earshot.state import Command, DroneState
 
 PARKED = [0.0, 0.0, -100.0]
-SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 1.5, "TRAIN": 2.0}
+SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 1.5, "TRAIN": 2.0, "NOTHING": 1.0}
+LIVE_SLOTS = 2  # spare SRC nodes per class for sources added by hotkey
+
+
+def live_slot(cls_name: str, k: int) -> str:
+    return f"live_{cls_name.lower()}_slot{k}"
+
+
+def _def_name(src) -> str:
+    """Live sources (id live_<cls>_<n>) borrow spare node slot n % LIVE_SLOTS."""
+    tail = src.id.rsplit("_", 1)[-1]
+    if src.id.startswith("live_") and tail.isdigit():
+        return f"SRC_{live_slot(src.cls.name, int(tail) % LIVE_SLOTS)}"
+    return f"SRC_{src.id}"
 
 
 def _yaw(heading_deg: float) -> float:
@@ -43,11 +56,7 @@ class WebotsBackend:
             if node is None:
                 raise RuntimeError(f"world has no DEF DRONE_{d.id}; regenerate it")
             self._drones[d.id] = (node.getField("translation"), node.getField("rotation"))
-        self._sources = {}
-        for s in scenario.sources:
-            node = self.sup.getFromDef(f"SRC_{s.id}")
-            if node is not None:
-                self._sources[s.id] = node.getField("translation")
+        self._fields: dict[str, object | None] = {}  # DEF name -> translation field (cached)
         rig = self.sup.getSelf()
         self._rig = (rig.getField("translation"), rig.getField("rotation"))
         self.camera = self.sup.getDevice("camera")
@@ -80,6 +89,12 @@ class WebotsBackend:
 
     # -- internals -----------------------------------------------------------------------
 
+    def _field(self, def_name: str):
+        if def_name not in self._fields:
+            node = self.sup.getFromDef(def_name)
+            self._fields[def_name] = node.getField("translation") if node else None
+        return self._fields[def_name]
+
     def _push(self, states: dict[int, DroneState]) -> None:
         for did, s in states.items():
             tf, rf = self._drones[did]
@@ -87,12 +102,18 @@ class WebotsBackend:
             rf.setSFRotation([0.0, 0.0, 1.0, _yaw(s.heading)])
 
         t = self.twin.t
+        placed: dict[str, list[float]] = {}  # one position per node; an active source wins
         for src in self.scenario.sources:
-            field = self._sources.get(src.id)
-            if field is None:
-                continue
             p = src.position(t)
-            field.setSFVec3f(PARKED if p is None else [p[0], p[1], SOURCE_Z[src.cls.name]])
+            name = _def_name(src)
+            if p is not None:
+                placed[name] = [p[0], p[1], SOURCE_Z[src.cls.name]]
+            else:
+                placed.setdefault(name, PARKED)
+        for name, pos in placed.items():
+            field = self._field(name)
+            if field is not None:
+                field.setSFVec3f(pos)
 
         verifier = next((d for d, s in states.items() if s.camera_on), None)
         if verifier != self._verifier:

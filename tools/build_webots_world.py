@@ -17,10 +17,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from shapely import Polygon
 
+from earshot.backend.webots import LIVE_SLOTS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
 DRONE_SCALE = 8
+SOURCE_LOOK = {  # class -> (colour, box size for non-drones)
+    "DRONE": ("1 0.2 0.3", None),
+    "VEHICLE": ("1 0.7 0.2", "10 3 3"),
+    "TRAIN": ("0.7 0.5 0.3", "60 3.5 4"),
+    "NOTHING": ("0.6 0.6 0.6", "2 2 1.5"),  # nuisance: a rooftop fan / AC unit
+}
 
 
 def pbr(rgb, rough=0.9):
@@ -93,12 +100,15 @@ def main(scenario_path: str, out_path: str) -> None:
         parts.append(f"DEF DRONE_{d.id} Pose {{ translation {d.x} {d.y} 40 children [ "
                      f"{drone_shape('0.2 0.5 0.95')} ] }}")
 
-    for s in sc.sources:
-        rgb = {"DRONE": "1 0.2 0.3", "VEHICLE": "1 0.7 0.2", "TRAIN": "0.7 0.5 0.3"}[s.cls.name]
-        geom = (drone_shape(rgb) if s.cls.name == "DRONE" else
-                f"Shape {{ appearance {pbr(rgb)} geometry Box {{ size "
-                f"{'60 3.5 4' if s.cls.name == 'TRAIN' else '10 3 3'} }} }}")
-        parts.append(f'DEF SRC_{s.id} Solid {{ translation 0 0 -100 name "src_{s.id}" '
+    # scripted sources, plus spare slots that live (hotkey) sources are shown in
+    slots = [(s.id, s.cls.name) for s in sc.sources] + [
+        (live_slot(cls, k), cls) for cls in SOURCE_LOOK for k in range(LIVE_SLOTS)
+    ]
+    for sid, cls in slots:
+        rgb, box_size = SOURCE_LOOK[cls]
+        geom = (drone_shape(rgb) if cls == "DRONE" else
+                f"Shape {{ appearance {pbr(rgb)} geometry Box {{ size {box_size} }} }}")
+        parts.append(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" '
                      f"recognitionColors [ {rgb} ] children [ {geom} ] }}")
 
     parts.append(

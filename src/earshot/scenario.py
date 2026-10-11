@@ -2,11 +2,25 @@
 
 A scenario is a YAML file (see scenarios/). Ground truth lives here and nowhere else;
 agents never see it, only the sensor models and the dashboard do.
+
+Events change a scenario while it runs. The same op dicts come from three places: the YAML
+`events:` list (applied at their `t`), live hotkeys on the dashboard (applied at the next
+tick), and a recorded live session (`runs/live-*.events.jsonl`, replayable with
+`earshot fast --events`). `Scenario.apply(op, t)` is the one place they take effect.
+
+    {op: add_source, cls: drone, x: 100, y: 200}          # or path: [[x, y], ...]
+        optional: to: [x, y], duration (120 s), level_db, rf: [2g4], id
+    {op: jam, x: 0, y: 0}                                  optional: r (300 m), duration (30 s)
+    {op: clear_jam}
+    {op: fault, drone: 3, kind: stuck_bearing}             kinds: stuck_bearing | deaf | phantom
+    {op: clear_faults}                                     optional: drone
+    {op: set_env, background_db: 55, ego_filter: false}
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +71,7 @@ class Fault:
     drone: int
     start: float
     kind: str  # "stuck_bearing" | "deaf" | "phantom"
+    end: float = math.inf
 
 
 @dataclass
@@ -88,6 +103,8 @@ class Scenario:
     faults: list[Fault] = field(default_factory=list)
     radio: dict = field(default_factory=dict)
     environment: Environment = field(default_factory=Environment)
+    events: list[dict] = field(default_factory=list)  # pending, sorted by t
+    _live_count: int = 0
 
     @classmethod
     def load(cls, path: str | Path, seed: int | None = None) -> Scenario:
@@ -120,6 +137,7 @@ class Scenario:
             faults=[Fault(int(f["drone"]), float(f["start"]), f["kind"]) for f in d.get("faults", [])],
             radio=d.get("radio", {}),
             environment=Environment(**d.get("environment", {})),
+            events=sorted(d.get("events", []), key=lambda e: e["t"]),
         )
 
     def active_sources(self, t: float) -> list[tuple[Source, tuple[float, float]]]:
@@ -134,4 +152,51 @@ class Scenario:
         return [j for j in self.jamming if j.active(t)]
 
     def faults_for(self, drone: int, t: float) -> list[Fault]:
-        return [f for f in self.faults if f.drone == drone and t >= f.start]
+        return [f for f in self.faults if f.drone == drone and f.start <= t < f.end]
+
+    # -- events ----------------------------------------------------------------------------
+
+    def due_events(self, t: float) -> list[dict]:
+        """Pop scripted events whose time has come."""
+        due = [e for e in self.events if e["t"] <= t]
+        self.events = [e for e in self.events if e["t"] > t]
+        return due
+
+    def apply(self, op: dict, t: float) -> str:
+        """Apply one event at sim time t. Returns a one-line description for logs and UI."""
+        kind = op["op"]
+        if kind == "add_source":
+            cls = TargetClass[_CLASS_ALIASES.get(op["cls"].lower(), op["cls"].upper())]
+            path = [tuple(p) for p in op["path"]] if "path" in op else [(op["x"], op["y"])]
+            if "to" in op:
+                path.append(tuple(op["to"]))
+            sid = op.get("id") or f"live_{cls.name.lower()}_{self._live_count}"
+            self._live_count += 1
+            from earshot.sensors.acoustics import DEFAULT_LEVEL  # avoid import cycle
+
+            src = Source(sid, cls, t, t + float(op.get("duration", 120.0)), path,
+                         float(op.get("level_db", DEFAULT_LEVEL[cls])),
+                         _rf_bands(op.get("rf", cls == TargetClass.DRONE)))
+            self.sources.append(src)
+            return f"{sid}: {cls.name.lower()} at {path[0][0]:.0f}, {path[0][1]:.0f}"
+        if kind == "jam":
+            z = JamZone(t, t + float(op.get("duration", 30.0)), (op["x"], op["y"]),
+                        float(op.get("r", 300.0)))
+            self.jamming.append(z)
+            return f"jam r={z.radius:.0f} m at {z.center[0]:.0f}, {z.center[1]:.0f}"
+        if kind == "clear_jam":
+            self.jamming = [replace(j, end=t) if j.active(t) else j for j in self.jamming]
+            return "jamming cleared"
+        if kind == "fault":
+            self.faults.append(Fault(int(op["drone"]), t, op["kind"]))
+            return f"drone {op['drone']}: {op['kind']}"
+        if kind == "clear_faults":
+            who = op.get("drone")
+            self.faults = [replace(f, end=min(f.end, t)) if who in (None, f.drone) else f
+                           for f in self.faults]
+            return "faults cleared" + ("" if who is None else f" on drone {who}")
+        if kind == "set_env":
+            fields = {k: v for k, v in op.items() if k in Environment.__dataclass_fields__}
+            self.environment = replace(self.environment, **fields)
+            return "environment: " + ", ".join(f"{k}={v}" for k, v in fields.items())
+        raise ValueError(f"unknown op {kind!r}")

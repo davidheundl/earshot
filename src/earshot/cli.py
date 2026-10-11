@@ -1,6 +1,6 @@
 """earshot <command>
 
-    earshot fast   --scenario S [--runs N] [--seed K] [--log]   lockstep, no Webots, no sockets
+    earshot fast   --scenario S [--runs N] [--seed K] [--log] [--events F]   lockstep, no sockets
     earshot live   --scenario S [--backend twin2d|webots] [--no-dashboard] [--no-webots-launch]
     earshot doctor                                                pre-flight checks (run offline)
 """
@@ -45,6 +45,9 @@ def cmd_fast(a) -> None:
     t0 = time.time()
     for k in range(a.runs):
         sc = Scenario.load(a.scenario, seed=a.seed + k)
+        if a.events:  # replay a recorded live session on top of the scenario
+            recorded = [json.loads(line) for line in Path(a.events).read_text().splitlines()]
+            sc.events = sorted(sc.events + recorded, key=lambda e: e["t"])
         log = None
         if a.log:
             log = Path("runs") / f"{sc.name}-seed{sc.seed}.jsonl"
@@ -165,6 +168,7 @@ def main(argv=None) -> None:
     f.add_argument("--seed", type=int, default=0)
     f.add_argument("--log", action="store_true", help="write runs/<name>-seed<k>.jsonl")
     f.add_argument("--out", help="write summary JSON here")
+    f.add_argument("--events", help="replay a runs/live-*.events.jsonl on top of the scenario")
     f.set_defaults(fn=cmd_fast)
 
     lv = sub.add_parser("live", help="multi-process run with radio, agents and dashboard")

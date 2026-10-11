@@ -59,6 +59,10 @@ A Source whose true Target Class is Nothing but which sounds drone-like (a fan, 
 **Scenario**:
 A seeded script of Sources, Jam Zones and Faults for one run.
 
+**Event**:
+A change to a running Scenario at a sim time: scripted in the Scenario or sent by the operator from the dashboard.
+_Avoid_: hotkey (that is only how an operator sends one), action
+
 **Jam Zone**:
 An area where the radio delivers nothing.
 

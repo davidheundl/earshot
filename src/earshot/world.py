@@ -31,10 +31,28 @@ class World:
         self.t = 0.0
         self.states: dict[int, DroneState] = {}
         self.detections: list[dict] = []
+        self.applied: list[dict] = []  # every event that took effect, with its sim time
+        self._pending: list[dict] = []
         self._recent: list[dict] = []  # last few seconds of sound bearings, for the dashboard
         self.sensors = SensorSuite(city, scenario, np.random.default_rng(scenario.seed + 1))
 
+    def control(self, op: dict) -> None:
+        """Queue a live event (dashboard hotkey); it takes effect at the next step."""
+        self._pending.append(op)
+
+    def _apply_events(self) -> None:
+        live = [dict(op, t=self.t, live=True) for op in self._pending]
+        due = self.scenario.due_events(self.t) + live
+        self._pending = []
+        for op in due:
+            try:
+                note = self.scenario.apply(op, self.t)
+            except (KeyError, ValueError, TypeError) as e:
+                note = f"rejected {op.get('op')}: {e}"
+            self.applied.append({**op, "t": round(self.t, 3), "note": note})
+
     def step(self, commands: Mapping[int, Command]) -> dict[int, Sensed]:
+        self._apply_events()
         self.states = self.backend.step(self.scenario.dt, commands)
         self.t = next(iter(self.states.values())).t if self.states else self.t + self.scenario.dt
         self.detections = []
@@ -85,6 +103,7 @@ class World:
                 for d in self._recent
             ],
             "environment": vars(self.scenario.environment),
+            "events": self.applied[-5:],
             "jamming": [
                 {"x": j.center[0], "y": j.center[1], "r": j.radius}
                 for j in self.scenario.jam_zones(self.t)

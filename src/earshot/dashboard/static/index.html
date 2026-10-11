@@ -27,6 +27,10 @@
   td { padding: 2px 0; } td:last-child { text-align: right; }
   .pill { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; color: #0f1115; }
   .legend span { margin-right: 10px; white-space: nowrap; }
+  kbd { font: 11px ui-monospace, monospace; background: var(--line); border-radius: 3px; padding: 0 4px; }
+  #keys td:first-child { width: 46px; } #events td { color: var(--muted); }
+  #toast { position: fixed; left: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line);
+           padding: 6px 10px; border-radius: 6px; opacity: 0; transition: opacity .3s; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
   #status { color: var(--muted); }
   @media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; }
@@ -48,8 +52,21 @@
     <h2>Environment</h2><table id="env"></table>
     <h2>Radio</h2><table id="radio"></table>
     <h2>Ground truth (dashboard only)</h2><table id="truth"></table>
+    <h2>Operator keys (at mouse position)</h2>
+    <table id="keys">
+      <tr><td><kbd>d</kbd></td><td>drone source</td></tr>
+      <tr><td><kbd>v</kbd></td><td>vehicle, drives 400 m east</td></tr>
+      <tr><td><kbd>t</kbd></td><td>train along the rail</td></tr>
+      <tr><td><kbd>n</kbd></td><td>nuisance (fan)</td></tr>
+      <tr><td><kbd>j</kbd> / <kbd>J</kbd></td><td>jam zone 300 m / clear jamming</td></tr>
+      <tr><td><kbd>f</kbd> / <kbd>F</kbd></td><td>stuck bearing on nearest drone / clear faults</td></tr>
+      <tr><td><kbd>b</kbd></td><td>day / night background</td></tr>
+      <tr><td><kbd>e</kbd></td><td>ego-noise filter on / off</td></tr>
+    </table>
+    <h2>Events</h2><table id="events"></table>
   </aside>
 </main>
+<div id="toast"></div>
 <script>
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const MODE = { PATROL: "--patrol", LISTEN: "--listen", VERIFY: "--verify", FILL_GAP: "--fill" };
@@ -66,7 +83,8 @@ function view() {
   const [x0, y0, x1, y1] = city.bounds, r = canvas.getBoundingClientRect();
   const s = Math.min(r.width / (x1 - x0), r.height / (y1 - y0)) * 0.95;
   const ox = (r.width - s * (x1 - x0)) / 2, oy = (r.height - s * (y1 - y0)) / 2;
-  return { s, P: (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s] };
+  return { s, P: (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s],
+           inv: (px, py) => [x0 + (px - ox) / s, y1 - (py - oy) / s] };
 }
 function line(P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
 
@@ -120,6 +138,7 @@ function panels() {
     ["channel load", `${(rd.channel_load * 100).toFixed(1)}%`], ["frames sent", rd.sent],
     ["delivered", rd.delivered], ["collided", rd.collided], ["out of range", rd.out_of_range],
     ["jammed", rd.jammed], ["airtime 40 B", `${(rd.airtime_40B_s * 1000).toFixed(1)} ms`]]);
+  rows(document.getElementById("events"), (st.events || []).slice().reverse().map(e => [`${e.t.toFixed(0)} s`, e.note]));
   rows(document.getElementById("truth"), st.truth.map(t => [t.id, t.cls.toLowerCase(), `${t.x.toFixed(0)}, ${t.y.toFixed(0)}`]));
 }
 
@@ -129,6 +148,43 @@ function connect() {
   ws.onclose = () => { document.getElementById("status").textContent = "reconnecting…"; setTimeout(connect, 1000); };
   ws.onmessage = e => { last = JSON.parse(e.data); panels(); draw(); };
 }
+let mouse = null;
+canvas.addEventListener("mousemove", e => { const r = canvas.getBoundingClientRect();
+  mouse = view().inv(e.clientX - r.left, e.clientY - r.top); });
+canvas.addEventListener("mouseleave", () => mouse = null);
+
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg;
+  t.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 1800); }
+function send(op) {
+  fetch("/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(op) })
+    .then(r => r.json()).then(() => toast(`sent: ${op.op}`)).catch(() => toast("dashboard cannot reach the world"));
+}
+function nearestDrone([x, y]) {
+  if (!last) return null;
+  return last.state.drones.reduce((b, d) => (!b || Math.hypot(d.x - x, d.y - y) < Math.hypot(b.x - x, b.y - y)) ? d : b, null);
+}
+addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || !city) return;
+  const env = last?.state.environment || {}, at = mouse;
+  const needs = "dvnjf".includes(e.key);
+  if (needs && !at) { toast("move the mouse over the map first"); return; }
+  const [x, y] = at || [0, 0];
+  const ops = {
+    d: () => ({ op: "add_source", cls: "drone", x, y }),
+    v: () => ({ op: "add_source", cls: "vehicle", x, y, to: [x + 400, y], duration: 60 }),
+    t: () => city.rails.length && { op: "add_source", cls: "train", path: city.rails[0], duration: 60 },
+    n: () => ({ op: "add_source", cls: "nuisance", x, y, duration: 300 }),
+    j: () => ({ op: "jam", x, y }),
+    J: () => ({ op: "clear_jam" }),
+    f: () => { const d = nearestDrone(at); return d && { op: "fault", drone: d.id, kind: "stuck_bearing" }; },
+    F: () => ({ op: "clear_faults" }),
+    b: () => ({ op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }),
+    e: () => ({ op: "set_env", ego_filter: !env.ego_filter }),
+  };
+  const op = ops[e.key]?.();
+  if (op) { e.preventDefault(); send(op); }
+});
+
 fetch("/city").then(r => r.json()).then(c => { city = c; fit(); connect(); });
 addEventListener("resize", fit);
 </script>

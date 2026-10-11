@@ -43,6 +43,10 @@ ACOUSTICS = {
 SOUND_POWER = {"small_drone": 82.0, "large_drone": 89.0, "heavy_vehicle": 105.0,
                "freight_train": 120.0, "fan": 70.0}
 
+# Default sound power per class when an event does not say (small drone, truck, train, fan).
+DEFAULT_LEVEL = {TargetClass.DRONE: 82.0, TargetClass.VEHICLE: 105.0,
+                 TargetClass.TRAIN: 120.0, TargetClass.NOTHING: 75.0}
+
 SLOPE_DB = 2.0
 MAX_BUILDING_LOSS_DB = 25.0  # barrier attenuation saturates (ISO 9613-2 caps at 20-25 dB)
 EGO_HOVER_DB = 85.0  # at the drone's own microphones, motors at hover speed
