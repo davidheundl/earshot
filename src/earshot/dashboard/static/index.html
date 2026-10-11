@@ -48,6 +48,9 @@
       <span><i class="dot" style="background:var(--verify)"></i>verify</span>
       <span><i class="dot" style="background:var(--fill)"></i>fill gap</span>
     </div>
+    <h2 id="maptitle">Map of drone 0</h2>
+    <table id="tracks"></table>
+    <h2>Decisions</h2><table id="decisions"></table>
     <h2>Drones</h2><table id="drones"></table>
     <h2>Environment</h2><table id="env"></table>
     <h2>Radio</h2><table id="radio"></table>
@@ -62,6 +65,8 @@
       <tr><td><kbd>f</kbd> / <kbd>F</kbd></td><td>stuck bearing on nearest drone / clear faults</td></tr>
       <tr><td><kbd>b</kbd></td><td>day / night background</td></tr>
       <tr><td><kbd>e</kbd></td><td>ego-noise filter on / off</td></tr>
+      <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>show that drone's probability map</td></tr>
+      <tr><td><kbd>h</kbd></td><td>heatmap and sectors on / off</td></tr>
     </table>
     <h2>Events</h2><table id="events"></table>
   </aside>
@@ -72,7 +77,11 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const MODE = { PATROL: "--patrol", LISTEN: "--listen", VERIFY: "--verify", FILL_GAP: "--fill" };
 const CLS = { DRONE: "--drone", VEHICLE: "--vehicle", TRAIN: "--train" };
 const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
-let city = null, last = null;
+let city = null, last = null, scen = null, selected = 0, showMap = true;
+const CLS_RGB = [[255, 77, 109], [255, 184, 77], [181, 139, 76]]; // drone, vehicle, train
+const STATUS = { SUSPECTED: "suspected", EXPLAINED: "explained", VERIFYING: "verifying", CONFIRMED: "confirmed", DISMISSED: "dismissed" };
+const heatCanvas = document.createElement("canvas"), heatCtx = heatCanvas.getContext("2d");
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
 function fit() {
   const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -99,6 +108,9 @@ function draw() {
     ctx.fillStyle = perch.has(b.id) ? css("--roof") : css("--building"); ctx.fill(); });
   if (!last) return;
   const st = last.state;
+  const me = st.drones.find(d => d.id === selected) || st.drones[0];
+  if (showMap && scen) drawSectors(P, s, st);
+  if (showMap && me?.telemetry?.heatmap) drawHeat(P, me.telemetry.heatmap);
   st.jamming.forEach(j => { const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = css("--jam"); ctx.fill(); });
   const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
   ctx.strokeStyle = css("--link"); ctx.lineWidth = 1;
@@ -114,12 +126,55 @@ function draw() {
     const [cx, cy] = tip(0); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy);
     ctx.strokeStyle = `rgba(${css("--bearing")}, ${0.7 * a})`; ctx.lineWidth = 1; ctx.stroke();
   });
+  (me?.telemetry?.tracks || []).forEach(tr => drawTrack(P, s, tr));
+  st.drones.forEach(d => { const task = d.telemetry?.task; if (!task) return;
+    const [a, b] = P(d.x, d.y), [c, e] = P(task.x, task.y);
+    ctx.setLineDash(task.settled ? [] : [3, 3]); ctx.lineWidth = 1.5;
+    ctx.strokeStyle = css(task.kind === "verify" ? "--verify" : "--listen");
+    ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); });
   st.truth.forEach(t => { const [a, b] = P(t.x, t.y); ctx.strokeStyle = css(CLS[t.cls]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a - 6, b - 6); ctx.lineTo(a + 6, b + 6); ctx.moveTo(a + 6, b - 6); ctx.lineTo(a - 6, b + 6); ctx.stroke(); });
   st.drones.forEach(d => { const [a, b] = P(d.x, d.y); ctx.fillStyle = css(MODE[d.mode] || "--muted");
     ctx.beginPath(); ctx.arc(a, b, d.perched_on ? 6 : 5, 0, 7); ctx.fill();
     if (d.perched_on) { ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5; ctx.stroke(); }
     ctx.fillStyle = css("--ink"); ctx.font = "11px ui-sans-serif"; ctx.fillText(d.id, a + 8, b - 6); });
+}
+
+function drawHeat(P, hm) {
+  const p = b64(hm.p), cls = b64(hm.cls);
+  heatCanvas.width = hm.w; heatCanvas.height = hm.h;
+  const img = heatCtx.createImageData(hm.w, hm.h);
+  for (let r = 0; r < hm.h; r++) for (let c = 0; c < hm.w; c++) {
+    const src = r * hm.w + c, dst = ((hm.h - 1 - r) * hm.w + c) * 4; // grid rows run south to north
+    const [R, G, B] = CLS_RGB[cls[src]] || CLS_RGB[0];
+    img.data[dst] = R; img.data[dst + 1] = G; img.data[dst + 2] = B;
+    img.data[dst + 3] = Math.min(255, p[src] * 0.85);
+  }
+  heatCtx.putImageData(img, 0, 0);
+  const [x0, y0, x1, y1] = city.bounds, [ax, ay] = P(x0, y1), [bx, by] = P(x1, y0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(heatCanvas, ax, ay, bx - ax, by - ay);
+}
+function drawSectors(P, s, st) {
+  // Voronoi cells of the homes of drones without a settled task (the ones still covering)
+  const busy = new Set(st.drones.filter(d => d.telemetry?.task?.settled).map(d => d.id));
+  const homes = scen.drones.filter(d => !busy.has(d.id));
+  if (!homes.length) return;
+  const [x0, y0, x1, y1] = city.bounds, step = 50;
+  for (let x = x0; x < x1; x += step) for (let y = y0; y < y1; y += step) {
+    let best = homes[0], bd = Infinity;
+    homes.forEach(h => { const dd = Math.hypot(h.home[0] - x - step / 2, h.home[1] - y - step / 2); if (dd < bd) { bd = dd; best = h; } });
+    const [a, b] = P(x, y + step);
+    ctx.fillStyle = `hsla(${best.id * 60}, 60%, 55%, 0.05)`; ctx.fillRect(a, b, step * s + 0.5, step * s + 0.5);
+  }
+}
+function drawTrack(P, s, tr) {
+  const [a, b] = P(tr.x, tr.y), color = tr.cls === "DRONE" ? css("--drone") : tr.cls === "VEHICLE" ? css("--vehicle") : css("--train");
+  ctx.save(); ctx.translate(a, b); ctx.rotate(-tr.ang * Math.PI / 180);
+  ctx.beginPath(); ctx.ellipse(0, 0, Math.max(tr.a * s, 4), Math.max(tr.b * s, 3), 0, 0, 7);
+  ctx.setLineDash(tr.status === "EXPLAINED" ? [4, 3] : []); ctx.lineWidth = tr.status === "CONFIRMED" ? 3 : 1.5;
+  ctx.strokeStyle = color; ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
+  ctx.fillStyle = color; ctx.font = "11px ui-sans-serif";
+  ctx.fillText(`${tr.cls.toLowerCase()} · ${STATUS[tr.status] || tr.status}`, a + 8, b + 14);
 }
 
 function rows(el, list) { el.innerHTML = list.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join(""); }
@@ -138,6 +193,14 @@ function panels() {
     ["channel load", `${(rd.channel_load * 100).toFixed(1)}%`], ["frames sent", rd.sent],
     ["delivered", rd.delivered], ["collided", rd.collided], ["out of range", rd.out_of_range],
     ["jammed", rd.jammed], ["airtime 40 B", `${(rd.airtime_40B_s * 1000).toFixed(1)} ms`]]);
+  const me = st.drones.find(d => d.id === selected) || st.drones[0];
+  document.getElementById("maptitle").textContent = `Map of drone ${me?.id ?? "-"} (keys 0-5)`;
+  rows(document.getElementById("tracks"), (me?.telemetry?.tracks || []).map(tr => [
+    `<span style="color:${css(CLS[tr.cls] || "--muted")}">${tr.cls.toLowerCase()}</span>`, STATUS[tr.status] || tr.status,
+    `${Math.round(tr.conf * 100)}%`, `±${tr.a} m`]));
+  const c = st.counts || {};
+  rows(document.getElementById("decisions"), [[`verify flights ${c.dispatch ?? 0}`, `confirmed ${c.confirmed ?? 0}`, `dismissed ${c.dismissed ?? 0}`]]
+    .concat((st.decisions || []).slice().reverse().map(e => [`${e.t.toFixed(0)} s`, `drone ${e.drone}`, e.kind, e.task || ""])));
   rows(document.getElementById("events"), (st.events || []).slice().reverse().map(e => [`${e.t.toFixed(0)} s`, e.note]));
   rows(document.getElementById("truth"), st.truth.map(t => [t.id, t.cls.toLowerCase(), `${t.x.toFixed(0)}, ${t.y.toFixed(0)}`]));
 }
@@ -181,10 +244,13 @@ addEventListener("keydown", e => {
     b: () => ({ op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }),
     e: () => ({ op: "set_env", ego_filter: !env.ego_filter }),
   };
+  if (/^[0-9]$/.test(e.key)) { selected = +e.key; draw(); return; }
+  if (e.key === "h") { showMap = !showMap; draw(); return; }
   const op = ops[e.key]?.();
   if (op) { e.preventDefault(); send(op); }
 });
 
+fetch("/scenario").then(r => r.json()).then(s => scen = s).catch(() => {});
 fetch("/city").then(r => r.json()).then(c => { city = c; fit(); connect(); });
 addEventListener("resize", fit);
 </script>

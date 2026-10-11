@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -44,7 +45,14 @@ def create_app(scenario_path: str) -> FastAPI:
         sub.setsockopt(zmq.SUBSCRIBE, topic("radio"))
         while True:
             t, payload = await sub.recv_multipart()
-            latest["state" if t == topic("state") else "radio"] = unpack(payload)
+            msg = unpack(payload)
+            if t == topic("state"):
+                for d in msg["drones"]:
+                    hm = d.get("telemetry", {}).get("heatmap")
+                    if hm:
+                        hm["p"] = base64.b64encode(hm["p"]).decode()
+                        hm["cls"] = base64.b64encode(hm["cls"]).decode()
+            latest["state" if t == topic("state") else "radio"] = msg
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -69,6 +77,16 @@ def create_app(scenario_path: str) -> FastAPI:
             return JSONResponse({"error": "missing op"}, status_code=400)
         to_world.send(pack(op))
         return {"queued": op["op"]}
+
+    scenario_json = {
+        "drones": [{"id": d.id, "home": d.home or (d.x, d.y), "default": d.default.name}
+                   for d in scenario.drones],
+        "bounds": city_json["bounds"],
+    }
+
+    @app.get("/scenario")
+    async def scenario_info():
+        return JSONResponse(scenario_json)
 
     @app.get("/city")
     async def city():

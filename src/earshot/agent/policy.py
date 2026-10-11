@@ -46,7 +46,7 @@ VERIFY_MIN_CONFIDENCE = 0.5
 TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
 CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
 VERIFY_MAX_ELLIPSE = 150.0  # semi-major (2 sigma); the strength gate separates truth from ghosts
-VERIFY_MIN_STRENGTH = 6.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
+VERIFY_MIN_STRENGTH = 8.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
 ROOF_SEARCH_RADIUS = 300.0
 ARRIVE = 30.0
@@ -115,6 +115,8 @@ class Policy:
 
         if self._task is not None:
             self._continue(t, s, tasks, winners, tracks, d)
+        if self._task is not None and self._task.kind != VERIFY:
+            self._maybe_switch_to_verify(t, s, tasks, winners, active, d)
         if self._task is None:
             self._bid_for_best(t, s, tasks, winners, active, d)
 
@@ -198,6 +200,18 @@ class Policy:
         self._claimed_at, self._settled, self._arrived_at = t, False, None
         self._send_claim(t, d, LEASE)
         d.events.append(self._event(t, "claim"))
+
+    def _maybe_switch_to_verify(self, t, s, tasks, winners, active, d: Decision) -> None:
+        """Verification outranks listening: a listener that would win a verify task drops its
+        roof for it (otherwise a swarm that is all listening never verifies)."""
+        for task in tasks.values():
+            if task.kind != VERIFY or self._covered(task, active):
+                continue
+            bid, _, _ = self._bid(task, s, active)
+            w = winners.get(task.tid)
+            if bid > 0 and (w is None or (bid, -self.me) > (w[0], -w[1])):
+                self._release(t, d, "switch")
+                return
 
     def _bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
         if task.kind == VERIFY:

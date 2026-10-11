@@ -69,6 +69,7 @@ def main(argv=None) -> None:
 
     commands: dict = {}
     telemetry: dict = {}
+    decisions: list[dict] = []
     events_path = Path("runs") / time.strftime("live-%Y%m%d-%H%M%S.events.jsonl")
     events_file = None  # created on the first live event, so idle runs leave no file
     logged = 0
@@ -92,6 +93,7 @@ def main(argv=None) -> None:
                     continue
                 commands[msg["id"]] = command_from_dict(msg["command"])
                 telemetry[msg["id"]] = msg["telemetry"]
+                decisions.extend(msg.get("events", []))
             sensed = world.step(commands)
             for ev in world.applied[logged:]:
                 if ev.get("live"):  # scripted and replayed events are not recorded again
@@ -104,7 +106,12 @@ def main(argv=None) -> None:
             logged = len(world.applied)
             for did, s in sensed.items():
                 pub.send_multipart([topic("tick", did), pack(sensed_to_dict(s))])
-            pub.send_multipart([topic("state"), pack(world.snapshot(telemetry))])
+            snap = world.snapshot(telemetry)
+            snap["decisions"] = decisions[-12:]
+            snap["counts"] = {k: sum(1 for d in decisions if d["kind"] == k
+                                     and d.get("task") == "verify")
+                              for k in ("dispatch", "confirmed", "dismissed")}
+            pub.send_multipart([topic("state"), pack(snap)])
             if self_paced:
                 next_t += period
                 time.sleep(max(0.0, next_t - time.monotonic()))

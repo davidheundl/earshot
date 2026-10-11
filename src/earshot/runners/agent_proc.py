@@ -69,7 +69,7 @@ def main(argv=None) -> None:
                 out = agent.step(sensed.state.t, sensed, inbox)
                 inbox = []
                 to_world.send(pack({"id": a.id, "command": command_to_dict(out.command),
-                                    "telemetry": out.telemetry}))
+                                    "telemetry": out.telemetry, "events": out.events}))
                 if out.outbox:
                     to_radio.send(pack({"id": a.id, "frames": out.outbox}))
     except KeyboardInterrupt:
