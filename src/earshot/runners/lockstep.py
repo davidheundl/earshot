@@ -34,6 +34,8 @@ class RunResult:
     truth: list  # every Source of the run, including ones added by events
     battery: dict  # drone -> battery left
     busy_max: int = 0  # most drones away from their default post (settled task) at once
+    spread: list = None  # per second: (t, max distance between drones' top Suspicion | None)
+    jams: list = None  # [(start, end)] of the run's jam zones
 
 
 def build(scenario: Scenario, root: Path = Path(".")):
@@ -61,6 +63,7 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
     det_log = log.with_name(log.stem + ".detections.jsonl") if log else None
     events: list[dict] = []
     busy_max = 0
+    spread: list[tuple[float, float | None]] = []
     with (
         open(log, "w") if log else contextlib.nullcontext() as fh,
         open(det_log, "w") if det_log else contextlib.nullcontext() as dh,
@@ -78,6 +81,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
             inbox = radio.step(t, world.positions(), outgoing, scenario.jam_zones(t))
             busy_max = max(busy_max, sum(1 for tm in telemetry.values()
                                          if tm.get("task") and tm["task"]["settled"]))
+            if i % log_every == 0:
+                spread.append((round(t, 1), _spread(agents)))
             if dh:
                 for d in world.detections:
                     dh.write(json.dumps(d) + "\n")
@@ -88,8 +93,23 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
     truth = [{"id": s.id, "cls": s.cls.name, "start": s.start, "end": s.end,
               "path": [list(p) for p in s.path]} for s in scenario.sources]
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
+    jams = [(j.start, j.end) for j in scenario.jamming]
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
-                     events, truth, battery, busy_max)
+                     events, truth, battery, busy_max, spread, jams)
+
+
+def _spread(agents) -> float | None:
+    """How far apart the drones' strongest drone Suspicions are (inf: some see one, some
+    don't; None: nobody sees one). Agreement = small spread."""
+    tops = []
+    for a in agents.values():
+        drones = [tr for tr in a._tracks if tr.cls.name == "DRONE" and tr.status.name != "EXPLAINED"]
+        tops.append(max(drones, key=lambda tr: tr.strength) if drones else None)
+    if all(t is None for t in tops):
+        return None
+    if any(t is None for t in tops):
+        return float("inf")
+    return max(((p.x - q.x) ** 2 + (p.y - q.y) ** 2) ** 0.5 for p in tops for q in tops)
 
 
 def _strip(telemetry: dict) -> dict:

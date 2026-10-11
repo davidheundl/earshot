@@ -97,10 +97,12 @@ def cmd_eval(a) -> None:
 
     t0 = time.time()
     table, raw = [], {}
-    for policy in a.policy:
-        rows = evaluate(a.scenario, a.runs, a.seed, policy, a.scheme)
-        raw[policy] = as_json(rows)
-        table.append(summarize(rows))
+    combos = [(p, s) for p in a.policy for s in (a.scheme or [None])]
+    for policy, scheme in combos:
+        label = policy + (f"/{scheme}" if scheme else "") + (f"/{a.bw:g}kHz" if a.bw else "")
+        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw)
+        raw[label] = as_json(rows)
+        table.append(summarize(rows, label))
     cols = list(table[0])
     width = {c: max(len(c), *(len(str(row[c])) for row in table)) for c in cols}
     print("  ".join(c.ljust(width[c]) for c in cols))
@@ -250,7 +252,8 @@ def main(argv=None) -> None:
     ev.add_argument("--seed", type=int, default=0)
     ev.add_argument("--policy", nargs="+", default=["earshot"],
                     choices=["earshot", "nearest", "no_perch"])
-    ev.add_argument("--scheme", choices=["ours", "flood", "unicast3"])
+    ev.add_argument("--scheme", nargs="+", choices=["ours", "flood", "unicast3"])
+    ev.add_argument("--bw", type=float, help="LoRa bandwidth in kHz (default: scenario's)")
     ev.add_argument("--out", help="write all metrics as JSON")
     ev.set_defaults(fn=cmd_eval)
 

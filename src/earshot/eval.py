@@ -10,6 +10,9 @@ Per run, from the lockstep RunResult (decision events + ground truth):
     missed         drone Sources never confirmed
     busy_max       most drones away from their default post at once (the Gap)
     load           radio channel load
+    clean_rx       share of receptions not lost to collisions
+    t_agree        s after a jam zone ends until all drones' top Suspicions agree within
+                   AGREE_RADIUS (None if no jam, or never)
     battery_used   mean battery fraction used per drone
 """
 
@@ -25,6 +28,7 @@ from earshot.scenario import Scenario, Source
 
 CONFIRM_MATCH = 100.0
 FALSE_RADIUS = 150.0
+AGREE_RADIUS = 100.0
 
 
 @dataclass
@@ -38,6 +42,8 @@ class RunMetrics:
     missed: int
     busy_max: int
     load: float
+    clean_rx: float
+    t_agree: float | None
     battery_used: float
 
 
@@ -78,23 +84,37 @@ def metrics(r: RunResult, policy: str) -> RunMetrics:
         missed=missed,
         busy_max=r.busy_max,
         load=r.radio["channel_load"],
+        clean_rx=r.radio["delivered"] / max(1, r.radio["delivered"] + r.radio["collided"]),
+        t_agree=_time_to_agree(r),
         battery_used=1.0 - statistics.mean(r.battery.values()),
     )
 
 
+def _time_to_agree(r: RunResult) -> float | None:
+    if not r.jams:
+        return None
+    end = max(e for _, e in r.jams)
+    for t, s in r.spread:
+        if t >= end and s is not None and s <= AGREE_RADIUS:
+            return t - end
+    return None
+
+
 def evaluate(scenario_path: str, runs: int, seed0: int, policy: str,
-             scheme: str | None = None) -> list[RunMetrics]:
+             scheme: str | None = None, bw_khz: float | None = None) -> list[RunMetrics]:
     out = []
     for k in range(runs):
         sc = Scenario.load(scenario_path, seed=seed0 + k)
         sc.policy = policy
         if scheme:
             sc.radio = {**sc.radio, "scheme": scheme}
+        if bw_khz:
+            sc.radio = {**sc.radio, "bw_khz": bw_khz}
         out.append(metrics(run(sc), policy))
     return out
 
 
-def summarize(rows: list[RunMetrics]) -> dict:
+def summarize(rows: list[RunMetrics], label: str | None = None) -> dict:
     def stat(vals):
         vals = [v for v in vals if v is not None]
         if not vals:
@@ -103,7 +123,7 @@ def summarize(rows: list[RunMetrics]) -> dict:
 
     n = len(rows)
     return {
-        "policy": rows[0].policy,
+        "policy": label or rows[0].policy,
         "runs": n,
         "confirmed": f"{sum(r.t_confirm is not None for r in rows)}/{n}",
         "t_confirm_s": stat([r.t_confirm for r in rows]),
@@ -113,6 +133,8 @@ def summarize(rows: list[RunMetrics]) -> dict:
         "missed": stat([r.missed for r in rows]),
         "busy_max": stat([r.busy_max for r in rows]),
         "load_%": stat([100 * r.load for r in rows]),
+        "clean_rx_%": stat([100 * r.clean_rx for r in rows]),
+        "t_agree_s": stat([r.t_agree for r in rows]),
         "battery_%": stat([100 * r.battery_used for r in rows]),
     }
 
