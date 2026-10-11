@@ -1,0 +1,40 @@
+[project]
+name = "earshot"
+version = "0.1.0"
+description = "Listening swarm: perching drones fuse sound and RF into a shared threat map"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy>=1.26",
+    "pyzmq>=26",
+    "msgpack>=1.0",
+    "shapely>=2.0",
+    "pyyaml>=6.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.scripts]
+earshot = "earshot.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+# Live microphone arrays in the room (concept section 10). Nikolas' area.
+audio = ["sounddevice>=0.4", "pyroomacoustics>=0.7"]
+
+[tool.uv]
+default-groups = ["dev", "audio"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/earshot"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

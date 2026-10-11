@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earshot</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --ink: #e6e8ee; --muted: #8a90a0; --line: #2a2f3a;
+    --building: #2b303b; --roof: #3d4f66; --rail: #b58b4c; --road: #555c6a;
+    --patrol: #6aa9ff; --listen: #57d68d; --verify: #ff7a59; --fill: #c792ea;
+    --drone: #ff4d6d; --vehicle: #ffb84d; --train: #b58b4c; --jam: rgba(255, 77, 109, .12);
+    --link: rgba(106, 169, 255, .55);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.4 ui-sans-serif, -apple-system, "SF Pro Text", Helvetica, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+  header .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: calc(100vh - 42px); }
+  #map { width: 100%; height: 100%; display: block; }
+  aside { border-left: 1px solid var(--line); overflow: auto; padding: 12px 14px; background: var(--panel); }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 2px 0; } td:last-child { text-align: right; }
+  .pill { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; color: #0f1115; }
+  .legend span { margin-right: 10px; white-space: nowrap; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  #status { color: var(--muted); }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; }
+    #map { height: 70vh; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header><h1>Earshot</h1><span class="t" id="clock">t = –</span><span id="status">connecting…</span></header>
+<main>
+  <canvas id="map"></canvas>
+  <aside>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--patrol)"></i>patrol</span>
+      <span><i class="dot" style="background:var(--listen)"></i>listen</span>
+      <span><i class="dot" style="background:var(--verify)"></i>verify</span>
+      <span><i class="dot" style="background:var(--fill)"></i>fill gap</span>
+    </div>
+    <h2>Drones</h2><table id="drones"></table>
+    <h2>Radio</h2><table id="radio"></table>
+    <h2>Ground truth (dashboard only)</h2><table id="truth"></table>
+  </aside>
+</main>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const MODE = { PATROL: "--patrol", LISTEN: "--listen", VERIFY: "--verify", FILL_GAP: "--fill" };
+const CLS = { DRONE: "--drone", VEHICLE: "--vehicle", TRAIN: "--train" };
+const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
+let city = null, last = null;
+
+function fit() {
+  const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  canvas.width = r.width * dpr; canvas.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw();
+}
+function view() {
+  const [x0, y0, x1, y1] = city.bounds, r = canvas.getBoundingClientRect();
+  const s = Math.min(r.width / (x1 - x0), r.height / (y1 - y0)) * 0.95;
+  const ox = (r.width - s * (x1 - x0)) / 2, oy = (r.height - s * (y1 - y0)) / 2;
+  return { s, P: (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s] };
+}
+function line(P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
+
+function draw() {
+  if (!city) return;
+  const r = canvas.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
+  const { s, P } = view();
+  ctx.lineWidth = 3; ctx.strokeStyle = css("--road"); city.roads.forEach(rd => { line(P, rd); ctx.stroke(); });
+  ctx.setLineDash([6, 4]); ctx.strokeStyle = css("--rail"); city.rails.forEach(rl => { line(P, rl); ctx.stroke(); }); ctx.setLineDash([]);
+  const perch = new Set(city.perch_sites.map(p => p.building));
+  city.buildings.forEach(b => { line(P, b.footprint); ctx.closePath();
+    ctx.fillStyle = perch.has(b.id) ? css("--roof") : css("--building"); ctx.fill(); });
+  if (!last) return;
+  const st = last.state;
+  st.jamming.forEach(j => { const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = css("--jam"); ctx.fill(); });
+  const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
+  ctx.strokeStyle = css("--link"); ctx.lineWidth = 1;
+  (last.radio?.links || []).forEach(([a, b]) => { if (byId[a] && byId[b]) { line(P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); } });
+  st.truth.forEach(t => { const [a, b] = P(t.x, t.y); ctx.strokeStyle = css(CLS[t.cls]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a - 6, b - 6); ctx.lineTo(a + 6, b + 6); ctx.moveTo(a + 6, b - 6); ctx.lineTo(a - 6, b + 6); ctx.stroke(); });
+  st.drones.forEach(d => { const [a, b] = P(d.x, d.y); ctx.fillStyle = css(MODE[d.mode] || "--muted");
+    ctx.beginPath(); ctx.arc(a, b, d.perched_on ? 6 : 5, 0, 7); ctx.fill();
+    if (d.perched_on) { ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.fillStyle = css("--ink"); ctx.font = "11px ui-sans-serif"; ctx.fillText(d.id, a + 8, b - 6); });
+}
+
+function rows(el, list) { el.innerHTML = list.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join(""); }
+function panels() {
+  const st = last.state, rd = last.radio;
+  document.getElementById("clock").textContent = `t = ${st.t.toFixed(1)} s`;
+  rows(document.getElementById("drones"), st.drones.map(d => [
+    d.id, `<span class="pill" style="background:${css(MODE[d.mode])}">${d.mode.toLowerCase()}</span>`,
+    `${Math.round(d.battery * 100)}%`, `rx ${d.telemetry.accepted ?? 0}`]));
+  if (rd) rows(document.getElementById("radio"), [
+    ["channel load", `${(rd.channel_load * 100).toFixed(1)}%`], ["frames sent", rd.sent],
+    ["delivered", rd.delivered], ["collided", rd.collided], ["out of range", rd.out_of_range],
+    ["jammed", rd.jammed], ["airtime 40 B", `${(rd.airtime_40B_s * 1000).toFixed(1)} ms`]]);
+  rows(document.getElementById("truth"), st.truth.map(t => [t.id, t.cls.toLowerCase(), `${t.x.toFixed(0)}, ${t.y.toFixed(0)}`]));
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => document.getElementById("status").textContent = "live";
+  ws.onclose = () => { document.getElementById("status").textContent = "reconnecting…"; setTimeout(connect, 1000); };
+  ws.onmessage = e => { last = JSON.parse(e.data); panels(); draw(); };
+}
+fetch("/city").then(r => r.json()).then(c => { city = c; fit(); connect(); });
+addEventListener("resize", fit);
+</script>
+</body>
+</html>

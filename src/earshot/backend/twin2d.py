@@ -1,0 +1,114 @@
+"""2D twin: kinematic drones over the City, no rendering. Fast mode and the fallback backend.
+
+The Webots adapter reuses this class for motion (ADR 0002: Webots drones are puppeted),
+so both backends move drones identically.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from earshot.city import City
+from earshot.messages import Mode
+from earshot.state import Command, DroneSpec, DroneState
+
+
+@dataclass(frozen=True)
+class Kinematics:
+    cruise_alt: float = 40.0  # m above ground
+    speed: dict | None = None  # m/s per Mode
+    climb_rate: float = 4.0  # m/s
+    arrive_radius: float = 2.0  # m
+    hover_rpm: float = 6000.0
+    cruise_rpm: float = 7000.0
+    drain_flying: float = 1 / 1500  # battery fraction per s (~25 min flight)
+    drain_perched: float = 1 / 36000  # ~10 h perched (assumption, section 4)
+
+    def v(self, mode: Mode) -> float:
+        default = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}
+        return (self.speed or default)[mode]
+
+
+class _Body:
+    def __init__(self, spec: DroneSpec, alt: float):
+        self.id = spec.id
+        self.x, self.y, self.z = spec.x, spec.y, alt
+        self.heading = 0.0
+        self.battery = 1.0
+        self.perched_on: str | None = None
+        self.rpm = 0.0
+        self.cmd = Command(Mode.PATROL, goal=(spec.x, spec.y))
+
+
+class Twin2D:
+    def __init__(self, city: City, drones: list[DroneSpec], kin: Kinematics | None = None):
+        self.city = city
+        self.kin = kin or Kinematics()
+        self.t = 0.0
+        self._bodies = {d.id: _Body(d, self.kin.cruise_alt) for d in drones}
+        self._sites = {p.id: p for p in city.perch_sites}
+
+    # -- Backend interface ---------------------------------------------------------------
+
+    def step(self, dt: float, commands: Mapping[int, Command]) -> dict[int, DroneState]:
+        self.t += dt
+        for did, cmd in commands.items():
+            if did in self._bodies:
+                self._bodies[did].cmd = cmd
+        for b in self._bodies.values():
+            self._advance(b, dt)
+        return self.states()
+
+    def camera_frame(self, drone_id: int) -> object | None:
+        return None  # the twin renders nothing; sensors.camera uses ground truth instead
+
+    def close(self) -> None:
+        pass
+
+    # -- internals -----------------------------------------------------------------------
+
+    def states(self) -> dict[int, DroneState]:
+        return {
+            b.id: DroneState(
+                id=b.id, t=self.t, x=b.x, y=b.y, z=b.z, heading=b.heading, mode=b.cmd.mode,
+                perched_on=b.perched_on, battery=b.battery, motor_rpm=b.rpm,
+                camera_on=b.cmd.camera_on,
+            )
+            for b in self._bodies.values()
+        }
+
+    def _advance(self, b: _Body, dt: float) -> None:
+        cmd, kin = b.cmd, self.kin
+        site = self._sites.get(cmd.perch_site) if cmd.mode == Mode.LISTEN else None
+
+        if site is not None and b.perched_on == site.id:
+            b.rpm = 0.0
+            b.battery = max(0.0, b.battery - kin.drain_perched * dt)
+            return
+
+        if site is not None:
+            goal, goal_z = (site.x, site.y), site.z
+        else:
+            goal, goal_z = cmd.goal or (b.x, b.y), kin.cruise_alt
+        b.perched_on = None  # any other command means take off
+
+        dx, dy = goal[0] - b.x, goal[1] - b.y
+        dist = math.hypot(dx, dy)
+        step = min(dist, kin.v(cmd.mode) * dt)
+        if dist > 1e-6:
+            b.x += dx / dist * step
+            b.y += dy / dist * step
+            b.heading = math.degrees(math.atan2(dx, dy)) % 360.0
+        # cruise at altitude, descend only once over the roof
+        target_z = goal_z if dist <= kin.arrive_radius else max(goal_z, kin.cruise_alt)
+        dz = target_z - b.z
+        b.z += math.copysign(min(abs(dz), kin.climb_rate * dt), dz)
+
+        b.rpm = kin.cruise_rpm if step > 0.1 * kin.v(cmd.mode) * dt else kin.hover_rpm
+        b.battery = max(0.0, b.battery - kin.drain_flying * dt)
+        if site is not None and dist <= kin.arrive_radius and abs(b.z - site.z) < 0.5:
+            b.perched_on = site.id
+            b.z = site.z
+            b.rpm = 0.0
