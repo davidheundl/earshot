@@ -79,7 +79,10 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const MODE = { PATROL: "--patrol", LISTEN: "--listen", VERIFY: "--verify", FILL_GAP: "--fill" };
 const CLS = { DRONE: "--drone", VEHICLE: "--vehicle", TRAIN: "--train" };
 const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
-let city = null, last = null, scen = null, selected = 0, showMap = true;
+let city = null, last = null, scen = null, selected = 0, showMap = true, base = null;
+const baseImg = new Image();
+baseImg.onload = () => { base = baseImg; draw(); };
+baseImg.src = "/basemap.png";
 const CLS_RGB = [[255, 77, 109], [255, 184, 77], [181, 139, 76]]; // drone, vehicle, train
 const STATUS = { SUSPECTED: "suspected", EXPLAINED: "explained", VERIFYING: "verifying", CONFIRMED: "confirmed", DISMISSED: "dismissed" };
 const heatCanvas = document.createElement("canvas"), heatCtx = heatCanvas.getContext("2d");
@@ -103,7 +106,9 @@ function draw() {
   if (!city) return;
   const r = canvas.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
   const { s, P } = view();
-  ctx.lineWidth = 3; ctx.strokeStyle = css("--road"); city.roads.forEach(rd => { line(P, rd); ctx.stroke(); });
+  if (base) { const [x0, y0, x1, y1] = city.bounds, [ax, ay] = P(x0, y1), [bx, by] = P(x1, y0);
+    ctx.drawImage(base, ax, ay, bx - ax, by - ay); }
+  ctx.lineWidth = base ? 1.5 : 3; ctx.strokeStyle = css("--road"); city.roads.forEach(rd => { line(P, rd); ctx.stroke(); });
   ctx.setLineDash([6, 4]); ctx.strokeStyle = css("--rail"); city.rails.forEach(rl => { line(P, rl); ctx.stroke(); }); ctx.setLineDash([]);
   const perch = new Set(city.perch_sites.map(p => p.building));
   city.buildings.forEach(b => { line(P, b.footprint); ctx.closePath();

@@ -21,7 +21,7 @@ import uvicorn
 import zmq
 import zmq.asyncio
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from earshot import config
 from earshot.runners.wire import pack, topic, unpack
@@ -30,9 +30,48 @@ from earshot.scenario import Scenario
 STATIC = Path(__file__).parent / "static"
 
 
+LANDUSE_RGB = {"meadow": (118, 150, 84), "field": (178, 168, 104), "forest": (52, 84, 52),
+               "urban": (128, 128, 122), "water": (64, 104, 140), "road": (70, 70, 72),
+               "rail": (110, 96, 80), "industrial": (140, 140, 138)}
+
+
+def basemap(city_json: dict, city_dir: Path) -> bytes | None:
+    """Hill-shaded land-use map (PNG, north up) for cities with terrain or land use."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    if "terrain" not in city_json and "landuse" not in city_json:
+        return None
+    n = 1024
+    if "landuse" in city_json:
+        lu = np.array(Image.open(city_dir / city_json["landuse"]["image"]).resize((n, n), Image.NEAREST))
+        names = city_json["landuse"]["classes"]
+        rgb = np.zeros((n, n, 3))
+        for i, name in enumerate(names):
+            rgb[lu == i] = LANDUSE_RGB.get(name, (120, 140, 90))
+    else:
+        rgb = np.full((n, n, 3), 110.0)
+    if "terrain" in city_json:
+        t = city_json["terrain"]
+        H = np.asarray(t["heights"], float).reshape(t["n"], t["n"])[::-1]  # north up
+        gy, gx = np.gradient(H, t["spacing"])
+        shade = np.clip(1.0 + 1.6 * (-gx - gy) / np.sqrt(2), 0.55, 1.35)  # light from north-west
+        shade = np.array(Image.fromarray((shade * 100).astype(np.uint8)).resize((n, n), Image.BILINEAR)) / 100
+        rgb *= shade[..., None]
+    buf = io.BytesIO()
+    Image.fromarray(np.clip(rgb * 0.75, 0, 255).astype(np.uint8)).save(buf, "PNG")  # dimmed
+    return buf.getvalue()
+
+
 def create_app(scenario_path: str) -> FastAPI:
     scenario = Scenario.load(scenario_path)
-    city_json = json.loads(Path(scenario.city).read_text())
+    city_path = Path(scenario.city)
+    city_json = json.loads(city_path.read_text())
+    base_png = basemap(city_json, city_path.parent)
+    for k in ("terrain", "terrain_outer"):  # big; the basemap carries them
+        city_json.pop(k, None)
     latest: dict = {"state": None, "radio": None, "camera": None}
 
     async def pump():
@@ -92,6 +131,12 @@ def create_app(scenario_path: str) -> FastAPI:
     @app.get("/scenario")
     async def scenario_info():
         return JSONResponse(scenario_json)
+
+    @app.get("/basemap.png")
+    async def basemap_png():
+        if base_png is None:
+            return Response(status_code=404)
+        return Response(base_png, media_type="image/png")
 
     @app.get("/city")
     async def city():
