@@ -79,9 +79,12 @@ class WebotsBackend:
             return None
         c = self.camera
         frame = {"w": c.getWidth(), "h": c.getHeight(), "bgra": c.getImage()}
-        if c.hasRecognition() and c.hasRecognitionSegmentation():
-            frame["seg"] = c.getRecognitionSegmentationImage()
+        if c.hasRecognition():
+            # the Webots recogniser is the stand-in detector: it reports each Solid's model,
+            # which the world generator sets to the Source's class
             frame["objects"] = [o.getModel() for o in c.getRecognitionObjects()]
+            if c.hasRecognitionSegmentation():
+                frame["seg"] = c.getRecognitionSegmentationImage()
         return frame
 
     def close(self) -> None:

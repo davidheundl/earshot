@@ -25,6 +25,7 @@ class Kinematics:
     cruise_rpm: float = 5700.0  # forward flight gains translational lift
     drain_flying: float = 1 / 1500  # battery fraction per s (~25 min flight)
     drain_perched: float = 1 / 36000  # ~10 h perched (assumption, section 4)
+    standoff: float = 40.0  # m a Verifier keeps from the point it looks at
 
     def v(self, mode: Mode) -> float:
         default = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}
@@ -96,11 +97,16 @@ class Twin2D:
 
         dx, dy = goal[0] - b.x, goal[1] - b.y
         dist = math.hypot(dx, dy)
+        if cmd.look_at is not None:  # keep a standoff, camera towards the target
+            dist = max(0.0, dist - kin.standoff)
         step = min(dist, kin.v(cmd.mode) * dt)
-        if dist > 1e-6:
-            b.x += dx / dist * step
-            b.y += dy / dist * step
+        norm = math.hypot(dx, dy)
+        if step > 1e-6 and norm > 1e-6:
+            b.x += dx / norm * step
+            b.y += dy / norm * step
             b.heading = math.degrees(math.atan2(dx, dy)) % 360.0
+        if cmd.look_at is not None:
+            b.heading = math.degrees(math.atan2(cmd.look_at[0] - b.x, cmd.look_at[1] - b.y)) % 360.0
         # cruise at altitude, descend only once over the roof
         target_z = goal_z if dist <= kin.arrive_radius else max(goal_z, kin.cruise_alt)
         dz = target_z - b.z

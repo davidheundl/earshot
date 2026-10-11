@@ -15,6 +15,7 @@ class Command:
     goal: tuple[float, float] | None = None  # metres; fly towards this (PATROL / VERIFY / FILL_GAP)
     perch_site: str | None = None  # LISTEN: land on this Perch Site, motors off
     camera_on: bool = False
+    look_at: tuple[float, float] | None = None  # VERIFY: hold a standoff and face this point
 
 
 @dataclass(frozen=True)

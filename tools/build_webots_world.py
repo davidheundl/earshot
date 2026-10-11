@@ -130,14 +130,14 @@ def main(scenario_path: str, out_path: str) -> None:
         rgb, box_size = SOURCE_LOOK[cls]
         geom = (drone_shape(rgb) if cls == "DRONE" else
                 f"Shape {{ appearance {pbr(rgb, glow=True)} geometry Box {{ size {box_size} }} }}")
-        parts.append(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" '
+        parts.append(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" model "{cls}" '
                      f"recognitionColors [ {rgb} ] children [ {geom} ] }}")
 
     parts.append(
         'DEF RIG Robot { translation 0 0 -100 name "supervisor" supervisor TRUE '
-        'controller "<extern>" children [ Pose { rotation 0 1 0 0.6 children [ '
-        'Camera { name "camera" width 400 height 240 far 1000 '
-        "recognition Recognition { maxRange 300 segmentation TRUE } } ] } ] }"
+        'controller "<extern>" children [ Pose { rotation 0 1 0 0.25 children [ '
+        'Camera { name "camera" width 400 height 240 fieldOfView 1.0 far 1000 '
+        "recognition Recognition { maxRange 100 segmentation TRUE } } ] } ] }"
     )
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text("\n".join(parts) + "\n")

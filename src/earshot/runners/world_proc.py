@@ -107,6 +107,8 @@ def main(argv=None) -> None:
             for did, s in sensed.items():
                 pub.send_multipart([topic("tick", did), pack(sensed_to_dict(s))])
             snap = world.snapshot(telemetry)
+            if round(world.t / scenario.dt) % round(1.0 / scenario.dt) == 0:
+                snap["camera"] = world.camera_preview()  # once per second; frames are big
             snap["decisions"] = decisions[-12:]
             snap["counts"] = {k: sum(1 for d in decisions if d["kind"] == k
                                      and d.get("task") == "verify")

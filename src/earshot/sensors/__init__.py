@@ -57,13 +57,15 @@ class SensorSuite:
         self.rng = rng
         self._window: dict[int, int] = {}
 
-    def sense(self, s: DroneState, t: float) -> list[Detection]:
+    def sense(self, s: DroneState, t: float, frame: dict | None = None) -> list[Detection]:
+        """`frame`: the Verifier's camera frame when a renderer exists (Webots); its
+        recognised objects then decide what the camera sees."""
         faults = {f.kind for f in self.scenario.faults_for(s.id, t)}
         out: list[Detection] = []
         if not self._new_window(s.id, t):
             return out
         if s.camera_on and s.mode == Mode.VERIFY:
-            out += self._camera(s, self.scenario.active_sources(t))
+            out += self._camera(s, self.scenario.active_sources(t), frame)
         if "deaf" not in faults:
             sources = self.scenario.active_sources(t)
             out += self._sound(s, t, sources, faults)
@@ -145,11 +147,19 @@ class SensorSuite:
 
     # -- camera (ground-truth stand-in for the Webots detector, with an error rate) ------
 
-    def _camera(self, s: DroneState, sources) -> list[Detection]:
+    def _camera(self, s: DroneState, sources, frame: dict | None = None) -> list[Detection]:
         out = []
+        seen = None
+        if frame is not None and "objects" in frame:
+            seen = {m for m in frame["objects"] if m in TargetClass.__members__}
         for src, (sx, sy) in sources:
             d = math.hypot(sx - s.x, sy - s.y)
-            if d > CAMERA_RANGE or self.rng.random() >= CAMERA_P_DETECT:
+            if d > CAMERA_RANGE:
+                continue
+            if seen is not None:
+                if src.cls.name not in seen:
+                    continue  # rendered and recognised, or not at all
+            elif self.rng.random() >= CAMERA_P_DETECT:
                 continue
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)

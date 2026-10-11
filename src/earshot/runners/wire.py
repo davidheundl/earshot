@@ -54,9 +54,10 @@ def sensed_from_dict(d: dict) -> Sensed:
 
 def command_to_dict(c: Command) -> dict:
     return {"mode": int(c.mode), "goal": c.goal, "perch_site": c.perch_site,
-            "camera_on": c.camera_on}
+            "camera_on": c.camera_on, "look_at": c.look_at}
 
 
 def command_from_dict(d: dict) -> Command:
     return Command(Mode(d["mode"]), tuple(d["goal"]) if d["goal"] else None,
-                   d["perch_site"], d["camera_on"])
+                   d["perch_site"], d["camera_on"],
+                   tuple(d["look_at"]) if d.get("look_at") else None)

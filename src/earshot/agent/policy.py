@@ -49,7 +49,7 @@ VERIFY_MAX_ELLIPSE = 150.0  # semi-major (2 sigma); the strength gate separates 
 VERIFY_MIN_STRENGTH = 8.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
 ROOF_SEARCH_RADIUS = 300.0
-ARRIVE = 30.0
+ARRIVE = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
 DISMISS_AFTER = 8.0  # s at the target with no Suspicion left -> dismissed
 ASSUMED_BACKGROUND_DB = 40.0
 INTRUDER_LW = 89.0  # plan for the larger drone class
@@ -349,7 +349,7 @@ class Policy:
         task = self._task
         if task.kind == VERIFY:
             near = math.hypot(task.target[0] - s.x, task.target[1] - s.y) <= 150.0
-            return Command(Mode.VERIFY, goal=task.target, camera_on=near)
+            return Command(Mode.VERIFY, goal=task.target, camera_on=near, look_at=task.target)
         return Command(Mode.LISTEN, perch_site=task.perch_site)
 
     def _default_command(self, t, s: DroneState, active) -> Command:

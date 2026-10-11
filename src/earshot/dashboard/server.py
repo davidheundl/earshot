@@ -33,7 +33,7 @@ STATIC = Path(__file__).parent / "static"
 def create_app(scenario_path: str) -> FastAPI:
     scenario = Scenario.load(scenario_path)
     city_json = json.loads(Path(scenario.city).read_text())
-    latest: dict = {"state": None, "radio": None}
+    latest: dict = {"state": None, "radio": None, "camera": None}
 
     async def pump():
         ctx = zmq.asyncio.Context.instance()
@@ -47,6 +47,11 @@ def create_app(scenario_path: str) -> FastAPI:
             t, payload = await sub.recv_multipart()
             msg = unpack(payload)
             if t == topic("state"):
+                if "camera" in msg:
+                    cam = msg.pop("camera")
+                    if cam:
+                        cam["rgba"] = base64.b64encode(cam["rgba"]).decode()
+                    latest["camera"] = cam
                 for d in msg["drones"]:
                     hm = d.get("telemetry", {}).get("heatmap")
                     if hm:

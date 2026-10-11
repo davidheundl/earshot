@@ -31,6 +31,7 @@ class World:
         self.t = 0.0
         self.states: dict[int, DroneState] = {}
         self.detections: list[dict] = []
+        self.camera: tuple[int, dict] | None = None  # (drone, frame) of the latest Verifier view
         self.applied: list[dict] = []  # every event that took effect, with its sim time
         self._pending: list[dict] = []
         self._recent: list[dict] = []  # last few seconds of sound bearings, for the dashboard
@@ -58,7 +59,10 @@ class World:
         self.detections = []
         sensed = {}
         for did, s in self.states.items():
-            dets = self.sensors.sense(s, self.t)
+            frame = self.backend.camera_frame(did) if s.camera_on else None
+            if frame is not None:
+                self.camera = (did, frame)
+            dets = self.sensors.sense(s, self.t, frame)
             for det in dets:
                 r = det.reading
                 self.detections.append({
@@ -68,11 +72,7 @@ class World:
                     "level": r.level, "probs": list(r.class_probs),
                     "truth": det.truth, "snr": det.snr_db,
                 })
-            sensed[did] = Sensed(
-                state=s,
-                readings=[d.reading for d in dets],
-                camera_frame=self.backend.camera_frame(did) if s.camera_on else None,
-            )
+            sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame)
         self._recent = [d for d in self._recent if self.t - d["t"] < 3.0] + [
             d for d in self.detections if d["sensor"] == "SOUND"
         ]
@@ -80,6 +80,19 @@ class World:
 
     def positions(self) -> dict[int, tuple[float, float, float]]:
         return {d: (s.x, s.y, s.z) for d, s in self.states.items()}
+
+    def camera_preview(self) -> dict | None:
+        """The latest Verifier frame, halved and as RGBA bytes, for the dashboard."""
+        if self.camera is None:
+            return None
+        did, f = self.camera
+        if not f.get("bgra"):
+            return None
+        img = np.frombuffer(f["bgra"], dtype=np.uint8).reshape(f["h"], f["w"], 4)[::2, ::2]
+        rgba = img[..., [2, 1, 0, 3]].copy()
+        rgba[..., 3] = 255
+        return {"drone": did, "w": rgba.shape[1], "h": rgba.shape[0], "rgba": rgba.tobytes(),
+                "objects": f.get("objects", [])}
 
     def snapshot(self, telemetry: Mapping[int, dict] | None = None) -> dict:
         telemetry = telemetry or {}
