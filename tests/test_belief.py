@@ -112,3 +112,20 @@ def test_arrival_order_does_not_matter():
     a.advance(30.0)
     b.advance(30.0)
     assert np.allclose(a.posterior(), b.posterior(), atol=1e-9)
+
+
+def test_stuck_bearing_is_flagged_as_faulty_sensor():
+    b = Belief(CITY)
+    honest = {0: WEST, 1: SOUTH, 3: (-340.0, -680.0), 4: (-340.0, -380.0), 5: (-220.0, -720.0)}
+    seq = 0
+    for k in range(40):
+        for o, at in honest.items():
+            seq += 1
+            b.add_evidence(obs(o, seq, k, at, TARGET), k)
+        seq += 1
+        stuck = obs(2, seq, k, (-220.0, -560.0), TARGET)  # 120 m east, clear line of sight
+        b.add_evidence(Observation(stuck.header, stuck.t, stuck.x, stuck.y, 2.0, 0.0, 5.0,
+                                   DRONE_P, Sensor.SOUND, Mode.LISTEN, 40.0), k)
+        b.tracks(k)
+        b.check_faults(k)
+    assert b.faulty == {2}

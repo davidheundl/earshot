@@ -67,6 +67,13 @@ TRACK_SUPPRESS = 200.0
 MAX_TRACKS = 6
 EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained
 CONFIRM_RADIUS = 80.0  # a drone Track this close to a camera confirmation is Confirmed
+FAULT_WINDOW = 30.0  # s of an origin's bearings that are checked
+FAULT_MIN_CHECKS = 8  # bearings needed in the window before judging
+FAULT_STRONG = 8.0  # threat log-odds the others reach on their own; ghosts stay at 3-7
+FAULT_LOCALISED = 100.0  # m; only judge against tight Tracks (ghosts are ~140 m wide)
+FAULT_LAG_M = 30.0  # m a moving source is ahead of the fused Track
+FAULT_AGREE_SHARE = 0.1  # share of bearings pointing at a strong Track that counts as hearing it
+FAULT_PERSIST = 5  # consecutive failed seconds before flagging
 
 
 def _hearing_range(cls: TargetClass, lw: float, perched: bool) -> float:
@@ -133,6 +140,9 @@ class Belief:
         self._confirmed: list[tuple[float, float, float]] = []  # (x, y, t)
         self.faulty: set[int] = set()
         self.last_sound: dict[int, Observation] = {}  # origin -> newest sound bearing
+        self._recent_sound: dict[int, list[Observation]] = {}  # origin -> bearings in window
+        self._fault_streak: dict[int, int] = {}
+        self._track_cache: list[TrackEst] = []  # last extracted Tracks, for check_faults
         self._fault_stats: dict[int, list[int]] = {}  # origin -> [checked, unconfirmed]
         self.n_evidence = 0
 
@@ -192,6 +202,7 @@ class Belief:
             last = self.last_sound.get(obs.header.origin)
             if last is None or obs.t >= last.t:
                 self.last_sound[obs.header.origin] = obs
+            self._recent_sound.setdefault(obs.header.origin, []).append(obs)
         elif obs.sensor in RF_SENSORS:
             self._rf(obs, g, wgt, w)
 
@@ -286,6 +297,71 @@ class Belief:
         self._confirmed = [c for c in self._confirmed if t_now - c[2] < hold]
         return any(math.hypot(cx - x, cy - y) <= radius for cx, cy, _ in self._confirmed)
 
+    # -- Faulty Sensor --------------------------------------------------------------------
+
+    def check_faults(self, t_now: float) -> set[int]:
+        """Judge each origin against what the *other* drones strongly agree on.
+
+        For every Track the others support on their own (threat log-odds >= FAULT_STRONG
+        without this origin) and that lies within this origin's hearing range, some of its
+        recent bearings should point at it. If for FAULT_PERSIST consecutive seconds none
+        does, it is a Faulty Sensor and its evidence is excluded until a bearing agrees
+        again. An origin that hears extra things (a fan next to its roof) is fine as long as
+        it also hears what everyone hears. Returns the origins newly flagged."""
+        newly = set()
+        for o, hist in self._recent_sound.items():
+            hist[:] = [h for h in hist if t_now - h.t <= FAULT_WINDOW]
+            if len(hist) < FAULT_MIN_CHECKS:
+                continue
+            last = hist[-1]
+            perched = last.mode == Mode.LISTEN
+            zt = np.log(np.exp(self._logits(exclude=o)).sum(axis=0))
+            verdicts = []
+            for tr in self._track_cache:
+                d = math.hypot(tr.x - last.x, tr.y - last.y)
+                if d < 30.0 or d > HEARING_RANGE[(tr.cls, perched)]:
+                    continue
+                if tr.semi_major > FAULT_LOCALISED:
+                    continue
+                if not self._should_hear(last, tr, d):
+                    continue  # behind buildings or near the edge: silence proves nothing
+                iy, ix = self._cell(tr.x, tr.y)
+                if zt[iy, ix] < FAULT_STRONG:
+                    continue
+                expected = math.degrees(math.atan2(tr.x - last.x, tr.y - last.y)) % 360.0
+                # the Track's own uncertainty plus motion lag, seen from this distance
+                slack = math.degrees(math.atan2(tr.semi_major + FAULT_LAG_M, d))
+                agree = sum(1 for h in hist
+                            if abs((h.bearing - expected + 180) % 360 - 180)
+                            <= 2 * h.bearing_sigma + slack)
+                verdicts.append(agree / len(hist) >= FAULT_AGREE_SHARE)
+            if not verdicts:
+                continue
+            if any(verdicts):
+                self._fault_streak[o] = 0
+                self.faulty.discard(o)
+                continue
+            self._fault_streak[o] = self._fault_streak.get(o, 0) + 1
+            if self._fault_streak[o] >= FAULT_PERSIST and o not in self.faulty:
+                self.faulty.add(o)
+                newly.add(o)
+        return newly
+
+    def _should_hear(self, at: Observation, tr: TrackEst, d: float) -> bool:
+        """A source of the Track's class (planning level) would be heard more often than not."""
+        if at.mode != Mode.LISTEN:
+            return False  # flying drones are nearly deaf; never judge them on silence
+        nb = self.city.buildings_between((at.x, at.y), (tr.x, tr.y))
+        lw = _LOUDEST[tr.cls]
+        lp = ac.received_level(lw, tr.cls, d, nb)
+        return ac.detection_probability(lp - ASSUMED_BACKGROUND_DB, tr.cls) >= 0.5
+
+    def _cell(self, x: float, y: float) -> tuple[int, int]:
+        x0, y0 = self.X[0, 0], self.Y[0, 0]
+        ix = int(np.clip(round((x - x0) / self.cell), 0, self.shape[1] - 1))
+        iy = int(np.clip(round((y - y0) / self.cell), 0, self.shape[0] - 1))
+        return iy, ix
+
     def tracks(self, t_now: float) -> list[TrackEst]:
         self.advance(t_now)
         post = self.posterior()
@@ -327,6 +403,7 @@ class Belief:
                 strength=float(zt[iy, ix]),
             ))
             alive = np.where(np.hypot(self.X - px, self.Y - py) <= TRACK_SUPPRESS, 0.0, alive)
+        self._track_cache = out
         return out
 
     def _status(self, cls: TargetClass, x: float, y: float, t_now: float) -> TrackStatus:

@@ -104,8 +104,12 @@ class Agent:
             self._emit(obs, outbox)
 
         # 3. fuse: Tracks once per second, broadcast what changed
+        fault_events = []
         if t - self._last_tracks >= TRACK_INTERVAL:
             self._last_tracks = t
+            for o in sorted(self.belief.check_faults(t)):
+                fault_events.append({"t": round(t, 2), "kind": "fault_flagged", "drone": self.me,
+                                     "suspect": o})
             self._tracks = self.belief.tracks(t)
             self._heatmap = self.belief.heatmap()
             self._broadcast_tracks(t, outbox)
@@ -144,7 +148,7 @@ class Agent:
             ],
             "heatmap": self._heatmap,
         }
-        return StepOut(decision.command, outbox, telemetry, decision.events)
+        return StepOut(decision.command, outbox, telemetry, decision.events + fault_events)
 
     # -- tracks ---------------------------------------------------------------------------
 

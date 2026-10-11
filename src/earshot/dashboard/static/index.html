@@ -134,7 +134,9 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); });
   st.truth.forEach(t => { const [a, b] = P(t.x, t.y); ctx.strokeStyle = css(CLS[t.cls]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a - 6, b - 6); ctx.lineTo(a + 6, b + 6); ctx.moveTo(a + 6, b - 6); ctx.lineTo(a - 6, b + 6); ctx.stroke(); });
+  const faultyIds = new Set(st.drones.flatMap(d => d.telemetry?.belief?.faulty || []));
   st.drones.forEach(d => { const [a, b] = P(d.x, d.y); ctx.fillStyle = css(MODE[d.mode] || "--muted");
+    if (faultyIds.has(d.id)) { ctx.strokeStyle = css("--drone"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 11, 0, 7); ctx.stroke(); }
     ctx.beginPath(); ctx.arc(a, b, d.perched_on ? 6 : 5, 0, 7); ctx.fill();
     if (d.perched_on) { ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5; ctx.stroke(); }
     ctx.fillStyle = css("--ink"); ctx.font = "11px ui-sans-serif"; ctx.fillText(d.id, a + 8, b - 6); });
@@ -181,8 +183,10 @@ function rows(el, list) { el.innerHTML = list.map(r => `<tr>${r.map(c => `<td>${
 function panels() {
   const st = last.state, rd = last.radio;
   document.getElementById("clock").textContent = `t = ${st.t.toFixed(1)} s`;
+  const faulty = new Set(st.drones.flatMap(d => d.telemetry?.belief?.faulty || []));
   rows(document.getElementById("drones"), st.drones.map(d => [
     d.id, `<span class="pill" style="background:${css(MODE[d.mode])}">${d.mode.toLowerCase()}</span>`,
+    faulty.has(d.id) ? `<span class="pill" style="background:${css("--drone")}">sensor fault</span>` : "",
     `${Math.round(d.battery * 100)}%`, `rx ${d.telemetry.accepted ?? 0}`]));
   const env = st.environment || {};
   rows(document.getElementById("env"), [
