@@ -37,20 +37,26 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 | `city` | `City.load(json)`, `buildings_between`, `distance_to_rail/road`, `grid` | Static prior. Schema in the module docstring. |
 | `scenario` | `Scenario.load(yaml, seed)`, `active_sources(t)`, `jam_zones(t)`, `faults_for`, `apply(op, t)` | The only place ground truth lives. Every Event (YAML, hotkey, replay) goes through `apply`; op list in the module docstring. |
 | `backend` | `step(dt, commands) -> states`, `camera_frame(id)`, `close()` | Adapters: `twin2d.Twin2D`, `webots.WebotsBackend` (ADR 0002). |
-| `sensors` | `SensorSuite.sense(state, t) -> [Detection]` | Physics in `acoustics.py` / `rf.py` (pure), calibrated to concept 5.1/5.2 by `tests/test_sensors.py`. A Detection = reading + truth; truth never reaches Agents. |
+| `sensors` | `SensorSuite.sense(state, t, frame) -> [Detection]` | Physics in `acoustics.py` / `rf.py` (pure), calibrated to concept 5.1/5.2 by `tests/test_sensors.py`. A Detection = reading + truth; truth never reaches Agents. With a rendered frame (Webots), the recogniser decides what the camera sees. |
 | `world` | `World.step(commands) -> {id: Sensed}`, `detections`, `snapshot()` | Backend + truth + sensors. Runners own the clock. `detections` feeds logs and metrics. |
-| `radio.medium` | `RadioMedium.step(t, positions, outgoing, jam) -> delivered`, `stats()` | LoRa airtime, shadowing, half duplex, capture, duty cycle. |
+| `radio.medium` | `RadioMedium.step(t, positions, outgoing, jam) -> {rx: [(frame, margin_db)]}`, `stats()` | LoRa airtime, shadowing, half duplex, capture, duty cycle, per-sender priority queue (Claim > Request > Track > Observation > Digest). |
 | `agent` | `Agent.step(t, sensed, inbox) -> StepOut` | Pure. Composes `MessageStore`, `Belief`, `Policy`. |
+| `agent.belief` | `add_evidence`, `tracks(t)`, `check_faults(t)`, `posterior()` | Probability Map: bounded log-likelihood per (origin, sensor family), at most N_EFF readings' worth each (ADR 0006); rail/road priors explain trains and trucks; camera confirms or dismisses; Faulty Sensor check. |
+| `agent.policy` | `decide(t, state, tracks, belief, claims) -> Decision` | Listen and verify tasks from the strongest Suspicions; Claim auction with bid, lease, settle; roof choice by crossing angle and hearing; Voronoi Sectors and Fill Gap; baselines `nearest`, `no_perch`; fixed (array) drones never fly. |
+| `agent.store` | `receive(frame, margin, t)`, `due(t)`, `on_digest`, `on_request` | Duplicate filter; contention-based relaying (far receivers first, cancel on overhearing, skip when heard strongly); Digest/Request healing of Tracks and Claims; schemes `ours` / `flood` / `unicast3`. |
+| `eval` | `evaluate(scenario, runs, seed, policy, scheme, bw)`, `summarize` | Section 17 metrics from decision events + ground truth; `scenario_gen` makes a random world per seed. |
+| `audio` | `ArraySensor(device, rotation).readings()`, `doa.estimate_bearing` | Real microphone arrays as a perched drone's sound sensor (SRP-PHAT, 500-4000 Hz). |
 | `runners.*` | processes and lockstep | Thin shells. `wire.py` holds the msgpack shapes. |
 | `dashboard` | `GET /`, `GET /city`, `WS /ws`, `POST /control` | Operator console: hotkeys send Events to the world. Agents never see it; a crash never stops a run. |
 
 ## Pre-built vs. on the day
 
-Rule (concept section 14): infrastructure is built beforehand and declared ([DECLARATION.md](../DECLARATION.md)); the judged intelligence is built on Oct 24. In code, stubs to be filled on the day are marked `ON THE DAY` or `STUB`:
+Rule (concept section 14): infrastructure is built beforehand and declared ([DECLARATION.md](../DECLARATION.md)); the judged intelligence is built on Oct 24. Branch `main` holds the infrastructure with the judged logic as stubs. Branch `prototype` holds a working version of the judged logic, built before the event to rehearse and measure: using it on the day means declaring it (DECLARATION.md lists it), or rebuilding it on the day from `main`.
 
-- `agent/belief.py`: measurement models, fusion, explaining away, Faulty Sensor, Track extraction.
-- `agent/policy.py`: Perch Site choice by crossing angle, verification value vs. Gap cost, Claim auction with leases, Sector re-partitioning.
-- `agent/store.py`: relevance radius, contention-based forwarding, Digest/Request healing.
+Open items worth doing on the day (prototype):
+- Bearings that point at an already confirmed drone should explain away the ghost crossings they create (the source of most remaining false verify flights).
+- One aggregated Observation per drone per second, so the swarm also runs on a 125 kHz LoRa channel (it needs 500 kHz now).
+- EfficientAT instead of the coarse class stand-in for the arrays; a trained detector instead of the Webots recogniser.
 
 ## Where Nikolas plugs in
 
@@ -58,8 +64,8 @@ Rule (concept section 14): infrastructure is built beforehand and declared ([DEC
 |---|---|
 | City from LoD2 + OSM | Write a City JSON (schema in `earshot/city.py`) into `data/cities/<name>.json`; point a scenario's `city:` at it. Local metric frame, metres, x = east, y = north. |
 | Webots world | Either extend `tools/build_webots_world.py` or hand-build a world; it must keep `DEF DRONE_<id>` (Pose), `DEF SRC_<source id>` (Solid with `recognitionColors`) and `DEF RIG` (Robot, `supervisor TRUE`, `controller "<extern>"`, Camera named `camera` with a Recognition node). Base nodes only, or pre-cache PROTOs (ADR 0005). |
-| Camera detector | Consumes `Sensed.camera_frame` = `{"w","h","bgra","seg","objects"}` on the Verifier and produces a `SensorReading(Sensor.CAMERA, ...)`. Hook point: `World.step`, where `camera_frame` is attached. |
-| Live arrays | Planned: two Drones in the scenario marked as permanently perched at the Perch Sites the room maps to (1 m room = 100 m city). Their agent processes take readings from a microphone-array sensor instead of `SensorSuite`, so the arrays enter the swarm as ordinary Observations over the simulated radio. |
+| Camera detector | `Sensed.camera_frame` = `{"w","h","bgra","seg","objects"}` on the Verifier. Now: Webots' recogniser reports each Source Solid's `model` (its class) and `SensorSuite._camera` turns that into a reading. Replace with a trained detector at the same spot. |
+| Live arrays | `scenarios/room.yaml`: drones 0 and 1 are `fixed` (never leave their roof). `earshot arrays` lists devices; `earshot live --scenario scenarios/room.yaml --array 0=<dev>@<rot> --array 1=<dev>@<rot>` replaces their simulated sound with real bearings. `rot` = the compass bearing the array's forward points to in the miniature city (1 m room = 100 m city). On arrival: check the mic-channel order (`audio/doa.py`) and calibrate `calibration_db`. |
 | Dashboard | `src/earshot/dashboard/static/index.html`, one file, no build step, no CDN. Data: the `state` and `radio` dicts on `/ws`. |
 
 ## Events and replay

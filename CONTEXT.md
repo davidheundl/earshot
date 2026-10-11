@@ -39,6 +39,13 @@ The area a Drone is responsible for while patrolling; re-partitioned when a neig
 **Gap**:
 A Sector left uncovered because its Drone went to Verify.
 
+**Listener**:
+A Drone in Listen whose bearings help localise a particular Suspicion.
+
+**Array Drone**:
+A Drone permanently perched on one Perch Site whose sound comes from a real microphone array in the room.
+_Avoid_: fixed node, static sensor
+
 **Perch Site**:
 A known flat roof from the 3D city model where a Drone may land to Listen.
 _Avoid_: landing spot, roof (alone)
@@ -87,6 +94,10 @@ A region of the Probability Map worth acting on; broadcast as a Track.
 
 **Track**:
 A fused Suspicion with location, uncertainty ellipse, class and status. State, not Evidence: a newer Track replaces the older one.
+
+**Ghost**:
+A Suspicion where unrelated evidence happens to cross (overlapping RF rings, bearing lines from different Sources), with no Source behind it.
+_Avoid_: false positive (that is the outcome of verifying a Ghost)
 
 **Explained**:
 A Suspicion best accounted for by City knowledge (rumble on the rail line is a train); nobody verifies it.

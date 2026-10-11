@@ -19,6 +19,18 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Scenario events (add source, jam, fault, day/night, ego filter): scripted in YAML or sent live from dashboard hotkeys; live sessions recorded and replayable in fast mode.
 - Stub belief and duty-cycle policy.
 
+## Prototype of the judged logic (branch `prototype`, built before the event)
+
+Built to rehearse and measure. If any of it is used on the day, it goes on the declaration slide as pre-built; otherwise it is rebuilt on the day from `main`.
+
+- Probability Map: bounded log-likelihood evidence per drone and sensor, effective-sample cap, rail/road priors (explaining away), camera confirmation and dismissal, track extraction with uncertainty ellipses.
+- Faulty Sensor detection against what the other drones agree on.
+- Decisions: listen tasks with roof choice by crossing angle, verify tasks with value vs. gap cost, Claim auction with bids, leases and settle window, Voronoi sectors with gap filling, verification preempting listening.
+- Radio protocol: priority queue, contention-based relaying, Digest/Request healing, track suppression.
+- Evaluation: section 17 metrics, random scenarios, baselines "nearest drone always flies" and "no perching".
+- Dashboard: probability-map heatmap, Suspicions, tasks, sectors, decision log, camera panel.
+- Live arrays: SRP-PHAT bearing, array sensor, fixed drones.
+
 ## Third-party
 
 - Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`.

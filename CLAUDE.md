@@ -11,7 +11,8 @@ Read before changing code:
 
 - `earshot/agent/` stays pure: time arrives as the `t` argument, frames as `inbox`, randomness through injected seeded generators. `tests/test_lockstep.py` checks same seed → same run.
 - Radio frames stay ≤ 40 B; `earshot/messages.py` is their single source of truth.
-- Mark judged-on-the-day stubs `ON THE DAY`; anything new built before Oct 24 gets a line in DECLARATION.md.
+- `main` keeps the judged logic as `ON THE DAY` stubs; `prototype` holds a working version built before the event. Anything new built before Oct 24 gets a line in DECLARATION.md.
+- Judge behaviour changes with `uv run earshot eval` over seeds, one change at a time; a single run is noise.
 - Generated Webots worlds use base nodes only (ADR 0005); keep DEF names `DRONE_<id>`, `SRC_<id>`, `RIG`.
 
 ## Verify
