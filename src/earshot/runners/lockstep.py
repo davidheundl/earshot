@@ -46,7 +46,7 @@ def build(scenario: Scenario, root: Path = Path(".")):
         RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)
     )
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"))
+                                   scenario.radio.get("scheme", "ours"), scenario.map_cell)
     agents = {d.id: Agent(d.id, city, config.KEY, swarm) for d in scenario.drones}
     return city, world, radio, agents
 

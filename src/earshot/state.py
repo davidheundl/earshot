@@ -72,14 +72,16 @@ class SwarmConfig:
     policy: str = "earshot"  # "earshot" | "nearest" (nearest drone always flies) | "no_perch"
     radio_scheme: str = "ours"  # "ours" | "flood" | "unicast3" (agent/store.py)
     fixed: frozenset = frozenset()  # drones that never leave their home roof
+    map_cell: float = 20.0  # m, Probability Map cell
 
     @classmethod
     def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
-                   radio_scheme: str = "ours") -> SwarmConfig:
+                   radio_scheme: str = "ours", map_cell: float = 20.0) -> SwarmConfig:
         return cls(
             homes={d.id: d.home or (d.x, d.y) for d in specs},
             defaults={d.id: d.default for d in specs},
             policy=policy,
             radio_scheme=radio_scheme,
             fixed=frozenset(d.id for d in specs if d.fixed),
+            map_cell=map_cell,
         )

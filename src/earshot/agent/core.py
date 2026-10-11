@@ -60,7 +60,7 @@ class Agent:
         self.city = city
         self.scheme = swarm.radio_scheme
         self.store = MessageStore(me, key, swarm.radio_scheme)
-        self.belief = Belief(city)
+        self.belief = Belief(city, cell=swarm.map_cell)
         self.policy = Policy(me, city, swarm)
         self._seq = 0
         self._last_obs: dict[int, float] = {}

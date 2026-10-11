@@ -250,7 +250,8 @@ class Policy:
                 continue
             if any(math.hypot(site.x - x, site.y - y) < 20 for x, y in taken + listeners):
                 continue
-            nb = self.city.buildings_between((site.x, site.y), (task.x, task.y))
+            nb = self.city.obstacles_between((site.x, site.y), (task.x, task.y), site.z + 0.5,
+                                             float(self.city.ground(task.x, task.y)) + 30.0)
             lp = ac.received_level(INTRUDER_LW, TargetClass.DRONE, d, nb)
             p_hear = ac.detection_probability(lp - ASSUMED_BACKGROUND_DB, TargetClass.DRONE)
             ang = math.atan2(task.x - site.x, task.y - site.y)

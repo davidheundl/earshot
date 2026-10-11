@@ -21,7 +21,10 @@ from earshot.scenario import Scenario
 from earshot.state import Command, DroneState
 
 PARKED = [0.0, 0.0, -100.0]
-SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 1.5, "TRAIN": 2.0, "NOTHING": 1.0}
+# visual model origin above ground: Mavic at flight height, truck wheel axis, wagon on the rails
+SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 0.5, "TRAIN": 0.45, "NOTHING": 0.7}
+TRAIN_WAGONS = 9  # locomotive + 8 container wagons, nodes SRC_<id>_w<k>
+WAGON_PITCH = 21.0  # m between wagon centres
 LIVE_SLOTS = 2  # spare SRC nodes per class for sources added by hotkey
 
 
@@ -61,6 +64,10 @@ class WebotsBackend:
         self._rig = (rig.getField("translation"), rig.getField("rotation"))
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
+        self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
+        for cls in ("DRONE", "VEHICLE", "TRAIN", "NOTHING"):
+            for k in range(LIVE_SLOTS):
+                self._def_class[f"SRC_{live_slot(cls, k)}"] = cls
 
     # -- Backend interface ---------------------------------------------------------------
 
@@ -82,7 +89,7 @@ class WebotsBackend:
         if c.hasRecognition():
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
-            frame["objects"] = [o.getModel() for o in c.getRecognitionObjects()]
+            frame["objects"] = self._recognised()
             if c.hasRecognitionSegmentation():
                 frame["seg"] = c.getRecognitionSegmentationImage()
         return frame
@@ -92,11 +99,27 @@ class WebotsBackend:
 
     # -- internals -----------------------------------------------------------------------
 
-    def _field(self, def_name: str):
+    def _node(self, def_name: str):
+        """(translation, rotation) fields of a DEF node, cached; None if the world lacks it."""
         if def_name not in self._fields:
             node = self.sup.getFromDef(def_name)
-            self._fields[def_name] = node.getField("translation") if node else None
+            self._fields[def_name] = (node.getField("translation"), node.getField("rotation")) \
+                if node else None
         return self._fields[def_name]
+
+    def _recognised(self) -> list[str]:
+        """Class names of the Sources in view: object -> its node -> nearest SRC_ ancestor."""
+        out = []
+        for o in self.camera.getRecognitionObjects():
+            node = self.sup.getFromId(o.getId())
+            while node is not None and not (node.getDef() or "").startswith("SRC_"):
+                node = node.getParentNode()
+            if node is None:
+                continue
+            cls = self._def_class.get(node.getDef().split("_w")[0])
+            if cls:
+                out.append(cls)
+        return out
 
     def _push(self, states: dict[int, DroneState]) -> None:
         for did, s in states.items():
@@ -105,18 +128,24 @@ class WebotsBackend:
             rf.setSFRotation([0.0, 0.0, 1.0, _yaw(s.heading)])
 
         t = self.twin.t
-        placed: dict[str, list[float]] = {}  # one position per node; an active source wins
+        placed: dict[str, tuple] = {}  # one pose per node; an active source wins
+        ground = self.twin.city.ground
         for src in self.scenario.sources:
-            p = src.position(t)
-            name = _def_name(src)
-            if p is not None:
-                placed[name] = [p[0], p[1], SOURCE_Z[src.cls.name]]
-            else:
-                placed.setdefault(name, PARKED)
-        for name, pos in placed.items():
-            field = self._field(name)
-            if field is not None:
-                field.setSFVec3f(pos)
+            base = _def_name(src)
+            cls = src.cls.name
+            names = [f"{base}_w{k}" for k in range(TRAIN_WAGONS)] if cls == "TRAIN" else [base]
+            for k, name in enumerate(names):
+                pose = src.pose(t, back=k * WAGON_PITCH)
+                if pose is None:
+                    placed.setdefault(name, (PARKED, 0.0))
+                    continue
+                x, y, heading = pose
+                placed[name] = ([x, y, float(ground(x, y)) + SOURCE_Z[cls]], heading)
+        for name, (pos, heading) in placed.items():
+            node = self._node(name)
+            if node is not None:
+                node[0].setSFVec3f(pos)
+                node[1].setSFRotation([0.0, 0.0, 1.0, _yaw(heading)])
 
         verifier = next((d for d, s in states.items() if s.camera_on), None)
         if verifier != self._verifier:

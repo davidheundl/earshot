@@ -1,0 +1,42 @@
+# Valley: 4 x 4 km procedural landscape (tools/make_valley.py), 10 drones.
+# The intruder (a larger drone) comes in over the south-east forest and loiters over the
+# industrial park; a freight train runs the valley, trucks use the main road, a fan sits next
+# to a roof in the old town, and a jam zone covers the industrial park for 40 s.
+name: valley
+seed: 42
+city: data/cities/valley.json
+duration: 480
+dt: 0.1
+map_cell: 25        # m; probability-map cell (4 km / 25 m = 160 x 160)
+
+drones:
+  - {id: 0, x: -950,  y: -230,  home: [-950, -230],  default: listen}   # Altstadt
+  - {id: 1, x: 420,   y: -470,  home: [420, -470],   default: listen}   # Gewerbepark
+  - {id: 2, x: 1050,  y: 880,   home: [1050, 880],   default: listen}   # Hochfeld
+  - {id: 3, x: -1350, y: -1350, home: [-1350, -1350], default: listen}  # Unterau
+  - {id: 4, x: -560,  y: 1180,  home: [-560, 1180],  default: listen}   # Nordberg
+  - {id: 5, x: 0,     y: 350,   home: [0, 350],      default: patrol}
+  - {id: 6, x: -1550, y: 450,   home: [-1550, 450],  default: patrol}
+  - {id: 7, x: 1500,  y: -100,  home: [1500, -100],  default: patrol}
+  - {id: 8, x: 250,   y: -1450, home: [250, -1450],  default: patrol}
+  - {id: 9, x: 1450,  y: 1550,  home: [1450, 1550],  default: patrol}
+
+environment:
+  background_db: 40
+  ego_filter: true
+  ego_filter_db: 8
+
+sources:           # path: list of points, or {road: i} / {rail: i} from the city (reverse: true)
+  - {id: drone1, cls: drone,    start: 60,  end: 450, level_db: 89, rf: [2g4], path: [[950, -1000], [700, -750], [480, -520], [380, -430], [460, -400], [420, -520], [330, -480]]}
+  - {id: train1, cls: train,    start: 30,  end: 210, level_db: 120, path: {rail: 0}}
+  - {id: truck1, cls: vehicle,  start: 20,  end: 220, level_db: 105, path: {road: 0}}
+  - {id: truck2, cls: vehicle,  start: 240, end: 440, level_db: 105, path: {road: 0, reverse: true}}
+  - {id: fan1,   cls: nuisance, start: 0,   end: 480, level_db: 75,  path: [[-930, -215]]}
+
+jamming:
+  - {start: 260, end: 300, center: [420, -470], radius: 450}
+
+radio:
+  sf: 7
+  bw_khz: 500
+  nominal_range_m: 1200   # drones at 40 m over open country

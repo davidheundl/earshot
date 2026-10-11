@@ -37,7 +37,7 @@ def main(argv=None) -> None:
         print(f"[agent {a.id}] sound from array {dev!r}, rotation {rot or 0} deg", flush=True)
     scenario = Scenario.load(a.scenario)
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"))
+                                   scenario.radio.get("scheme", "ours"), scenario.map_cell)
     agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()

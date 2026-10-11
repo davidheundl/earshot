@@ -40,6 +40,26 @@ class Source:
     level_db: float  # sound power level, dB(A); see sensors.acoustics.SOUND_POWER
     rf_bands: tuple[str, ...] = ()  # emitting links, keys of sensors.rf.BANDS
 
+    def pose(self, t: float, back: float = 0.0) -> tuple[float, float, float] | None:
+        """(x, y, heading_deg) at time t, `back` metres behind the head along the path
+        (train wagons). None when inactive."""
+        if not (self.start <= t <= self.end):
+            return None
+        pts = np.asarray(self.path, dtype=float)
+        if len(pts) == 1:
+            return float(pts[0, 0]), float(pts[0, 1]), 0.0
+        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        total = seg.sum()
+        s = (t - self.start) / max(self.end - self.start, 1e-9) * total - back
+        s = min(max(s, 0.0), total)
+        cum = np.cumsum(seg)
+        i = min(int(np.searchsorted(cum, s, side="right")), len(seg) - 1)
+        s0 = cum[i] - seg[i]
+        f = 0.0 if seg[i] == 0 else (s - s0) / seg[i]
+        d = pts[i + 1] - pts[i]
+        p = pts[i] + f * d
+        return float(p[0]), float(p[1]), math.degrees(math.atan2(d[0], d[1])) % 360.0
+
     def position(self, t: float) -> tuple[float, float] | None:
         if not (self.start <= t <= self.end):
             return None
@@ -103,6 +123,7 @@ class Scenario:
     faults: list[Fault] = field(default_factory=list)
     radio: dict = field(default_factory=dict)
     policy: str = "earshot"  # see state.SwarmConfig
+    map_cell: float = 20.0  # m, Probability Map cell
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     _live_count: int = 0
@@ -110,6 +131,21 @@ class Scenario:
     @classmethod
     def load(cls, path: str | Path, seed: int | None = None) -> Scenario:
         d = yaml.safe_load(Path(path).read_text())
+        root = Path(path).resolve().parent.parent  # scenarios/ sits in the repo root
+        city_raw = None
+
+        def resolve(p):  # {road: i} / {rail: i}: follow the city's polyline
+            nonlocal city_raw
+            if not isinstance(p, dict):
+                return [tuple(q) for q in p]
+            if city_raw is None:
+                import json
+
+                city_raw = json.loads((root / d["city"]).read_text())
+            kind = "roads" if "road" in p else "rails"
+            pts = [tuple(q) for q in city_raw[kind][int(p.get("road", p.get("rail", 0)))]]
+            return pts[::-1] if p.get("reverse") else pts
+
         return cls(
             name=d["name"],
             seed=d.get("seed", 0) if seed is None else seed,
@@ -124,12 +160,13 @@ class Scenario:
                 for x in d["drones"]
             ],
             policy=d.get("policy", "earshot"),
+            map_cell=float(d.get("map_cell", 20.0)),
             sources=[
                 Source(
                     id=s["id"],
                     cls=TargetClass[_CLASS_ALIASES.get(s["cls"].lower(), s["cls"].upper())],
                     start=float(s["start"]), end=float(s["end"]),
-                    path=[tuple(p) for p in s["path"]],
+                    path=resolve(s["path"]),
                     level_db=float(s["level_db"]), rf_bands=_rf_bands(s.get("rf")),
                 )
                 for s in d.get("sources", [])

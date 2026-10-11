@@ -27,6 +27,9 @@ from earshot.sensors import rf
 from earshot.state import DroneState, SensorReading
 
 WINDOW_S = 1.0
+# emitter height above ground (m): what the sound and RF line-of-sight tests start from
+SOURCE_AGL = {TargetClass.DRONE: 30.0, TargetClass.VEHICLE: 2.0, TargetClass.TRAIN: 3.0,
+              TargetClass.NOTHING: 2.0}
 MASKING_OFFSET_DB = 6.0  # other sources raise the floor, partly separable in frequency
 LEVEL_NOISE_DB = 2.0
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
@@ -76,6 +79,9 @@ class SensorSuite:
                 out.append(Detection(r, None, 5.0))
         return out
 
+    def _z(self, cls: TargetClass, x: float, y: float) -> float:
+        return float(self.city.ground(x, y)) + SOURCE_AGL[cls]
+
     # -- windows -------------------------------------------------------------------------
 
     def _new_window(self, drone: int, t: float) -> bool:
@@ -93,7 +99,7 @@ class SensorSuite:
         levels = []
         for src, (sx, sy) in sources:
             d = math.hypot(sx - s.x, sy - s.y)
-            nb = self.city.buildings_between((s.x, s.y), (sx, sy))
+            nb = self.city.obstacles_between((s.x, s.y), (sx, sy), s.z, self._z(src.cls, sx, sy))
             levels.append((src, sx, sy, ac.received_level(src.level_db, src.cls, d, nb)))
         ego = ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db)
 
@@ -134,7 +140,8 @@ class SensorSuite:
             if not src.rf_bands:
                 continue
             d = math.hypot(sx - s.x, sy - s.y)
-            los = self.city.buildings_between((s.x, s.y), (sx, sy)) == 0
+            los = self.city.obstacles_between((s.x, s.y), (sx, sy), s.z,
+                                              self._z(src.cls, sx, sy)) == 0
             for key in src.rf_bands:
                 band = rf.BANDS[key]
                 p = rf.mean_rx_power(band, d, los) + self.rng.normal(0, rf.shadowing_sigma(los))

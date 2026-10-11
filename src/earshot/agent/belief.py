@@ -351,7 +351,9 @@ class Belief:
         """A source of the Track's class (planning level) would be heard more often than not."""
         if at.mode != Mode.LISTEN:
             return False  # flying drones are nearly deaf; never judge them on silence
-        nb = self.city.buildings_between((at.x, at.y), (tr.x, tr.y))
+        nb = self.city.obstacles_between((at.x, at.y), (tr.x, tr.y),
+                                         float(self.city.ground(at.x, at.y)) + 12.0,
+                                         float(self.city.ground(tr.x, tr.y)) + 20.0)
         lw = _LOUDEST[tr.cls]
         lp = ac.received_level(lw, tr.cls, d, nb)
         return ac.detection_probability(lp - ASSUMED_BACKGROUND_DB, tr.cls) >= 0.5

@@ -33,9 +33,9 @@ class Kinematics:
 
 
 class _Body:
-    def __init__(self, spec: DroneSpec, alt: float):
+    def __init__(self, spec: DroneSpec, z: float):
         self.id = spec.id
-        self.x, self.y, self.z = spec.x, spec.y, alt
+        self.x, self.y, self.z = spec.x, spec.y, z
         self.heading = 0.0
         self.battery = 1.0
         self.perched_on: str | None = None
@@ -48,7 +48,8 @@ class Twin2D:
         self.city = city
         self.kin = kin or Kinematics()
         self.t = 0.0
-        self._bodies = {d.id: _Body(d, self.kin.cruise_alt) for d in drones}
+        self._bodies = {d.id: _Body(d, float(city.ground(d.x, d.y)) + self.kin.cruise_alt)
+                        for d in drones}
         self._sites = {p.id: p for p in city.perch_sites}
 
     # -- Backend interface ---------------------------------------------------------------
@@ -89,10 +90,11 @@ class Twin2D:
             b.battery = max(0.0, b.battery - kin.drain_perched * dt)
             return
 
+        cruise_z = float(self.city.ground(b.x, b.y)) + kin.cruise_alt  # follow the terrain
         if site is not None:
             goal, goal_z = (site.x, site.y), site.z
         else:
-            goal, goal_z = cmd.goal or (b.x, b.y), kin.cruise_alt
+            goal, goal_z = cmd.goal or (b.x, b.y), cruise_z
         b.perched_on = None  # any other command means take off
 
         dx, dy = goal[0] - b.x, goal[1] - b.y
@@ -108,7 +110,7 @@ class Twin2D:
         if cmd.look_at is not None:
             b.heading = math.degrees(math.atan2(cmd.look_at[0] - b.x, cmd.look_at[1] - b.y)) % 360.0
         # cruise at altitude, descend only once over the roof
-        target_z = goal_z if dist <= kin.arrive_radius else max(goal_z, kin.cruise_alt)
+        target_z = goal_z if dist <= kin.arrive_radius else max(goal_z, cruise_z)
         dz = target_z - b.z
         b.z += math.copysign(min(abs(dz), kin.climb_rate * dt), dz)
 
