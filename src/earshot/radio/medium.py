@@ -2,11 +2,14 @@
 
 Interface:
     medium = RadioMedium(RadioConfig(...), rng)
-    delivered = medium.step(t, positions, outgoing, jam_zones) -> {receiver_id: [frame, ...]}
+    delivered = medium.step(t, positions, outgoing, jam_zones)
+        -> {receiver_id: [(frame, margin_db), ...]}
     medium.stats() -> dict
 
 `outgoing` are frames each drone handed to its radio since the last step; they queue per
-sender (half duplex, one frame on air at a time, airtime budget). A frame is delivered at the
+sender by priority (Claim, Request, Track, Observation, Digest; FIFO within one), half duplex,
+one frame on air at a time, airtime budget. `margin_db` is the received power above
+sensitivity, what a real radio reports as RSSI/SNR; forwarders use it to decide who relays. A frame is delivered at the
 end of its airtime to every receiver that (a) is in range after shadowing, (b) was not itself
 transmitting during the overlap, (c) is not inside an active jam zone, and (d) has no
 overlapping frame within the capture margin. Same seed + same inputs = same deliveries.
@@ -51,6 +54,19 @@ def lora_airtime(payload_bytes: int, sf: int, bw_khz: float, cr: int = 1, preamb
     num = 8 * payload_bytes - 4 * sf + 28 + 16 * int(crc) - 20 * ih
     n_payload = 8 + max(math.ceil(num / (4 * (sf - 2 * de))) * (cr + 4), 0)
     return (preamble + 4.25) * t_sym + n_payload * t_sym
+
+
+# send order per sender, by message type byte (messages.MsgType): Claim, Request, Track,
+# Observation, Digest
+_PRIORITY = {3: 0, 5: 1, 2: 2, 1: 3, 4: 4}
+
+
+def _enqueue(q: deque, frame: bytes) -> None:
+    prio = _PRIORITY.get(frame[0], 9)
+    i = len(q)
+    while i > 0 and _PRIORITY.get(q[i - 1][0], 9) > prio:
+        i -= 1
+    q.insert(i, frame)
 
 
 @dataclass
@@ -99,13 +115,13 @@ class RadioMedium:
         positions: Mapping[int, tuple[float, float, float]],
         outgoing: Mapping[int, Sequence[bytes]],
         jam_zones: Sequence = (),
-    ) -> dict[int, list[bytes]]:
+    ) -> dict[int, list[tuple[bytes, float]]]:
         for sender, frames in outgoing.items():
             q = self._queues.setdefault(sender, deque())
             for f in frames:
-                q.append(f)
+                _enqueue(q, f)
                 if len(q) > self.cfg.queue_len:
-                    q.popleft()
+                    q.pop()  # drop the least important, newest frame
                     self._s.dropped_queue += 1
         self._start_transmissions(t, positions)
         delivered = self._finish_transmissions(t, positions, jam_zones)
@@ -166,7 +182,7 @@ class RadioMedium:
         loss = self.REF_LOSS_DB + 10 * self.cfg.path_loss_exp * math.log10(d)
         return self._margin_db - loss + float(self.rng.normal(0, self.cfg.shadowing_db))
 
-    def _finish_transmissions(self, t, positions, jam_zones) -> dict[int, list[bytes]]:
+    def _finish_transmissions(self, t, positions, jam_zones) -> dict[int, list[tuple]]:
         done = [x for x in self._in_flight if x.end <= t]
         if not done:
             return {}
@@ -195,7 +211,7 @@ class RadioMedium:
                 if any(p - i < self.cfg.capture_db for i in interferers if i >= 0):
                     self._s.collided += 1
                     continue
-                out.setdefault(r, []).append(tx.frame)
+                out.setdefault(r, []).append((tx.frame, round(p, 1)))
                 self.links[(tx.sender, r)] = t
                 self._s.delivered += 1
         self._in_flight = [x for x in self._in_flight if x.end > t]

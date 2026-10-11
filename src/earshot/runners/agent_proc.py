@@ -17,6 +17,7 @@ from earshot.agent import Agent
 from earshot.city import City
 from earshot.runners.wire import command_to_dict, pack, sensed_from_dict, topic, unpack
 from earshot.scenario import Scenario
+from earshot.state import SwarmConfig
 
 
 def main(argv=None) -> None:
@@ -25,8 +26,9 @@ def main(argv=None) -> None:
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
     a = ap.parse_args(argv)
     scenario = Scenario.load(a.scenario)
-    spec = next(d for d in scenario.drones if d.id == a.id)
-    agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, spec.home or (spec.x, spec.y))
+    swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
+                                   scenario.radio.get("scheme", "ours"))
+    agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()
     ctx.setsockopt(zmq.LINGER, 0)  # never block exit on unsent messages
@@ -44,7 +46,7 @@ def main(argv=None) -> None:
     poller = zmq.Poller()
     poller.register(world_sub, zmq.POLLIN)
     poller.register(radio_sub, zmq.POLLIN)
-    inbox: list[bytes] = []
+    inbox: list = []  # [frame, margin_db] pairs
     try:
         while True:
             ev = dict(poller.poll(1000))

@@ -121,16 +121,18 @@ class Track:
 
 @dataclass(frozen=True)
 class Claim:
-    """'I take task X with bid S until lease expires.'"""
+    """'I take task X with bid S until lease expires, going to (x, y).' lease 0 = release."""
 
     header: Header
     t: float
     task_id: int
     bid: float  # 0..655.35
     lease: float  # seconds
+    x: float = 0.0  # target point: the Perch Site or the Suspicion to verify
+    y: float = 0.0
 
     TYPE = MsgType.CLAIM
-    _S = struct.Struct("<IHHH")
+    _S = struct.Struct("<IHHHhh")
 
 
 @dataclass(frozen=True)
@@ -221,6 +223,8 @@ def _payload(msg: Message) -> bytes:
             msg.task_id & 0xFFFF,
             _clamp(msg.bid * 100.0, 0, 65535),
             _clamp(msg.lease * 1000.0 / 10.0, 0, 65535),  # 10 ms units, max ~655 s
+            _clamp(msg.x, -32768, 32767),
+            _clamp(msg.y, -32768, 32767),
         )
     if isinstance(msg, Digest):
         if len(msg.entries) > Digest.MAX_ENTRIES:
@@ -281,8 +285,9 @@ def _unpack(mtype: MsgType, header: Header, p: bytes) -> Message:
             ang / 255.0 * 180.0, TargetClass(cls), conf / 255.0, TrackStatus(status),
         )
     if mtype is MsgType.CLAIM:
-        t, task, bid, lease = Claim._S.unpack(p)
-        return Claim(header, t / 1000.0, task, bid / 100.0, lease * 10.0 / 1000.0)
+        t, task, bid, lease, x, y = Claim._S.unpack(p)
+        return Claim(header, t / 1000.0, task, bid / 100.0, lease * 10.0 / 1000.0, float(x),
+                     float(y))
     if mtype is MsgType.DIGEST:
         t, n = struct.unpack_from("<IB", p)
         entries = tuple(struct.unpack_from("<BH", p, 5 + 3 * i) for i in range(n))

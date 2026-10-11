@@ -29,7 +29,8 @@ def test_in_range_delivered_out_of_range_not():
     m = _medium(nominal_range_m=500)
     pos = {0: (0, 0, 40), 1: (300, 0, 40), 2: (900, 0, 40)}
     got = _run(m, pos, {0: [b"x" * 30]})
-    assert got.get(1) == [b"x" * 30]
+    assert [f for f, _ in got.get(1, [])] == [b"x" * 30]
+    assert got[1][0][1] > 0  # margin above sensitivity
     assert 2 not in got
 
 
@@ -38,6 +39,16 @@ def test_jammed_receiver_hears_nothing():
     pos = {0: (0, 0, 40), 1: (300, 0, 40)}
     jam = [JamZone(0, 100, (300, 0), 50)]
     assert 1 not in _run(m, pos, {0: [b"x" * 30]}, jam)
+
+
+def test_claims_jump_the_queue():
+    from collections import deque
+
+    from earshot.radio.medium import _enqueue
+    q = deque()
+    for f in [bytes([1]) + b"obs", bytes([2]) + b"trk", bytes([3]) + b"clm", bytes([1]) + b"ob2"]:
+        _enqueue(q, f)
+    assert [f[0] for f in q] == [3, 2, 1, 1]
 
 
 def test_simultaneous_equal_power_collide():

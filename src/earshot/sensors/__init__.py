@@ -6,8 +6,9 @@ Interface:
 A Detection pairs the SensorReading the drone gets with the truth behind it (source id, SNR).
 World hands only the readings to Agents and keeps the truth for logs and metrics.
 
-Sound and RF are produced once per 1 s integration window per drone (staggered across drones);
-the camera, only on the Verifier, every tick. Physics lives in `acoustics` and `rf`;
+Sound, RF and the camera (only on the Verifier) report once per 1 s window per drone,
+staggered across drones. A camera that sees nothing reports that too: "looked, no threat
+within range" is what lets a Suspicion be dismissed. Physics lives in `acoustics` and `rf`;
 this module only samples from it with the injected rng.
 """
 
@@ -28,7 +29,7 @@ from earshot.state import DroneState, SensorReading
 WINDOW_S = 1.0
 MASKING_OFFSET_DB = 6.0  # other sources raise the floor, partly separable in frequency
 LEVEL_NOISE_DB = 2.0
-CAMERA_RANGE = 60.0
+CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
 CAMERA_P_DETECT = 0.9
 
 # Placeholder for the EfficientAT head: true class -> predicted class weights. The fan
@@ -59,7 +60,11 @@ class SensorSuite:
     def sense(self, s: DroneState, t: float) -> list[Detection]:
         faults = {f.kind for f in self.scenario.faults_for(s.id, t)}
         out: list[Detection] = []
-        if self._new_window(s.id, t) and "deaf" not in faults:
+        if not self._new_window(s.id, t):
+            return out
+        if s.camera_on and s.mode == Mode.VERIFY:
+            out += self._camera(s, self.scenario.active_sources(t))
+        if "deaf" not in faults:
             sources = self.scenario.active_sources(t)
             out += self._sound(s, t, sources, faults)
             out += self._rf(s, sources)
@@ -67,8 +72,6 @@ class SensorSuite:
                 r = SensorReading(Sensor.SOUND, self.rng.uniform(0, 360), 5.0,
                                   self._class_probs(_C.DRONE, 5.0), level=45.0)
                 out.append(Detection(r, None, 5.0))
-        if s.camera_on and s.mode == Mode.VERIFY:
-            out += self._camera(s, self.scenario.active_sources(t))
         return out
 
     # -- windows -------------------------------------------------------------------------
@@ -151,4 +154,8 @@ class SensorSuite:
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
             out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, 0.0), src.id, 99.0))
+        if not out:
+            nothing = (0.0, 0.0, 0.0, 1.0)
+            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing, 0.0),
+                                 None, 0.0))
         return out

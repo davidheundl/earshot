@@ -57,4 +57,25 @@ class DroneSpec:
     id: int
     x: float
     y: float
-    home: tuple[float, float] | None = None  # centre of its initial patrol sector
+    home: tuple[float, float] | None = None  # centre of its initial Sector
+    default: Mode = Mode.LISTEN  # LISTEN: perch in its Sector; PATROL: fly its Sector
+
+
+@dataclass(frozen=True)
+class SwarmConfig:
+    """What every Agent knows before take-off: the swarm's homes and default Modes."""
+
+    homes: dict[int, tuple[float, float]]
+    defaults: dict[int, Mode]
+    policy: str = "earshot"  # "earshot" | "nearest" (nearest drone always flies) | "no_perch"
+    radio_scheme: str = "ours"  # "ours" | "flood" | "unicast3" (agent/store.py)
+
+    @classmethod
+    def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
+                   radio_scheme: str = "ours") -> SwarmConfig:
+        return cls(
+            homes={d.id: d.home or (d.x, d.y) for d in specs},
+            defaults={d.id: d.default for d in specs},
+            policy=policy,
+            radio_scheme=radio_scheme,
+        )

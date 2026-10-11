@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from earshot.messages import TargetClass
+from earshot.messages import Mode, TargetClass
 from earshot.state import DroneSpec
 
 
@@ -102,6 +102,7 @@ class Scenario:
     jamming: list[JamZone] = field(default_factory=list)
     faults: list[Fault] = field(default_factory=list)
     radio: dict = field(default_factory=dict)
+    policy: str = "earshot"  # see state.SwarmConfig
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     _live_count: int = 0
@@ -117,9 +118,11 @@ class Scenario:
             dt=float(d.get("dt", 0.1)),
             drones=[
                 DroneSpec(id=int(x["id"]), x=float(x["x"]), y=float(x["y"]),
-                          home=tuple(x["home"]) if "home" in x else None)
+                          home=tuple(x["home"]) if "home" in x else None,
+                          default=Mode[x.get("default", "listen").upper()])
                 for x in d["drones"]
             ],
+            policy=d.get("policy", "earshot"),
             sources=[
                 Source(
                     id=s["id"],

@@ -28,7 +28,7 @@ SAMPLES = [
                 Sensor.SOUND, Mode.LISTEN, 61.5),
     Track(H, 99.5, 7, 150.0, -300.0, 100.0, 40.0, 30.0, TargetClass.DRONE, 0.8,
           TrackStatus.SUSPECTED),
-    Claim(H, 5.0, 42, 3.21, 12.0),
+    Claim(H, 5.0, 42, 3.21, 12.0, -340.0, -560.0),
     Digest(H, 1.0, tuple((o, 1000 + o) for o in range(6))),
     Request(H, 2, 10, 20),
 ]
