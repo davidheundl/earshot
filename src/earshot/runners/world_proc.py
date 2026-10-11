@@ -45,9 +45,12 @@ def main(argv=None) -> None:
     ap.add_argument("--backend", default="twin2d", choices=["twin2d", "webots"])
     ap.add_argument("--speed", type=float, default=1.0, help="real-time factor (twin2d only)")
     ap.add_argument("--events", help="recorded session to replay (runs/live-*.events.jsonl)")
+    ap.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")
     a = ap.parse_args(argv)
 
     scenario = Scenario.load(a.scenario)
+    if a.duration:
+        scenario.duration = a.duration
     if a.events:  # replayed as scripted events, so they are not recorded again
         recorded = [json.loads(line) for line in Path(a.events).read_text().splitlines()]
         replay = [{k: v for k, v in e.items() if k not in ("live", "note")} for e in recorded]
@@ -105,6 +108,8 @@ def main(argv=None) -> None:
             if self_paced:
                 next_t += period
                 time.sleep(max(0.0, next_t - time.monotonic()))
+        print(f"[world] scenario finished after {scenario.duration:.0f} s "
+              "(use --duration to run longer)", flush=True)
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:

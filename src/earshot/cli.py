@@ -46,6 +46,8 @@ def cmd_fast(a) -> None:
     t0 = time.time()
     for k in range(a.runs):
         sc = Scenario.load(a.scenario, seed=a.seed + k)
+        if a.duration:
+            sc.duration = a.duration
         if a.events:  # replay a recorded live session on top of the scenario
             recorded = [json.loads(line) for line in events_file.read_text().splitlines()]
             sc.events = sorted(sc.events + recorded, key=lambda e: e["t"])
@@ -113,6 +115,8 @@ def cmd_live(a) -> None:
                   "--speed", str(a.speed)]
     if a.events:
         world_args += ["--events", str(_resolve_events(a.events))]
+    if a.duration:
+        world_args += ["--duration", str(a.duration)]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
     def _stop(*_):
@@ -187,6 +191,7 @@ def main(argv=None) -> None:
     f.add_argument("--seed", type=int, default=0)
     f.add_argument("--log", action="store_true", help="write runs/<name>-seed<k>.jsonl")
     f.add_argument("--out", help="write summary JSON here")
+    f.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")
     f.add_argument("--events", help="replay a recorded session: a runs/live-*.events.jsonl file, or 'latest'")
     f.set_defaults(fn=cmd_fast)
 
@@ -196,6 +201,7 @@ def main(argv=None) -> None:
     lv.add_argument("--speed", type=float, default=1.0)
     lv.add_argument("--no-dashboard", action="store_true")
     lv.add_argument("--events", help="replay a recorded session: a file, or 'latest'")
+    lv.add_argument("--duration", type=float, help="run this many sim seconds (default: scenario)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
     lv.set_defaults(fn=cmd_live)
 

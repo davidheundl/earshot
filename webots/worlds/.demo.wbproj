@@ -7,4 +7,4 @@ centralWidgetVisible: 1
 orthographicViewHeight: 1
 textFiles: -1
 consoles: Console:All:All
-renderingDevicePerspectives: supervisor:camera;1;0.6275;0;0
+renderingDevicePerspectives: supervisor:camera;0;0.6275;0;0
