@@ -80,6 +80,15 @@ def _resolve_events(arg: str) -> Path:
     return p
 
 
+def stale_webots() -> list[str]:
+    """Webots instances an earlier Earshot run left on our port (never the user's own Webots,
+    which has no --port flag). While one lives, a new instance silently moves to the next
+    port and our controller would connect to the stale one."""
+    out = subprocess.run(["pgrep", "-f", f"webots --port={config.WEBOTS_PORT}"],
+                         capture_output=True, text=True, check=False).stdout
+    return out.split()
+
+
 # -- live ---------------------------------------------------------------------------------
 
 
@@ -97,6 +106,10 @@ def cmd_live(a) -> None:
         world_file = Path(f"webots/worlds/{sc.name}.wbt")
         subprocess.run([py, "tools/build_webots_world.py", a.scenario, str(world_file)], check=True)
         if not a.no_webots_launch:
+            stale = stale_webots()
+            if stale:
+                sys.exit(f"An earlier Earshot Webots is still open on port {config.WEBOTS_PORT} "
+                         f"(pid {', '.join(stale)}). Close its window, or run: kill {' '.join(stale)}")
             procs.append(subprocess.Popen(
                 [f"{WEBOTS_HOME}/Contents/MacOS/webots", "--mode=realtime", "--batch",
                  f"--port={config.WEBOTS_PORT}",
@@ -167,6 +180,9 @@ def cmd_doctor(a) -> None:
     with socket.socket() as s:
         check(f"port {config.DASHBOARD_PORT} free (dashboard)",
               s.connect_ex((config.HOST, config.DASHBOARD_PORT)) != 0, "pkill -f earshot")
+    stale = stale_webots()
+    check(f"no leftover Earshot Webots on port {config.WEBOTS_PORT}", not stale,
+          f"close its window or: kill {' '.join(stale)}")
     check("city data present", Path("data/cities/synthetic.json").exists(),
           "uv run python tools/make_synthetic_city.py")
     check("default HMAC key replaced", "EARSHOT_KEY" in os.environ,
