@@ -35,6 +35,12 @@ In the dashboard, keys act at the mouse position: `d` drone, `v` vehicle, `t` tr
 uv run earshot fast --events latest
 ```
 
+To watch a recorded session instead, replay it live (add `--backend webots` to see it in Webots):
+
+```bash
+uv run earshot live --backend webots --events latest
+```
+
 Live with Webots (opens its own Webots instance on port 1240):
 
 ```bash

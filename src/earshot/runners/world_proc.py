@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import time
 from pathlib import Path
 
@@ -43,9 +44,14 @@ def main(argv=None) -> None:
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
     ap.add_argument("--backend", default="twin2d", choices=["twin2d", "webots"])
     ap.add_argument("--speed", type=float, default=1.0, help="real-time factor (twin2d only)")
+    ap.add_argument("--events", help="recorded session to replay (runs/live-*.events.jsonl)")
     a = ap.parse_args(argv)
 
     scenario = Scenario.load(a.scenario)
+    if a.events:  # replayed as scripted events, so they are not recorded again
+        recorded = [json.loads(line) for line in Path(a.events).read_text().splitlines()]
+        replay = [{k: v for k, v in e.items() if k not in ("live", "note")} for e in recorded]
+        scenario.events = sorted(scenario.events + replay, key=lambda e: e["t"])
     city = City.load(Path(scenario.city))
     backend, self_paced = make_backend(a.backend, city, scenario)
     world = World(scenario, city, backend)
@@ -60,10 +66,14 @@ def main(argv=None) -> None:
 
     commands: dict = {}
     telemetry: dict = {}
-    Path("runs").mkdir(exist_ok=True)
     events_path = Path("runs") / time.strftime("live-%Y%m%d-%H%M%S.events.jsonl")
-    events_file = open(events_path, "a")  # noqa: SIM115 - lives as long as the process
+    events_file = None  # created on the first live event, so idle runs leave no file
     logged = 0
+
+    def _stop(*_):
+        raise SystemExit
+
+    signal.signal(signal.SIGTERM, _stop)  # the launcher stops us with SIGTERM
     period = scenario.dt / a.speed
     next_t = time.monotonic()
     print(f"[world] {a.backend} running {scenario.name}, dt={scenario.dt}s", flush=True)
@@ -81,7 +91,10 @@ def main(argv=None) -> None:
                 telemetry[msg["id"]] = msg["telemetry"]
             sensed = world.step(commands)
             for ev in world.applied[logged:]:
-                if ev.get("live"):  # scripted YAML events replay from the YAML itself
+                if ev.get("live"):  # scripted and replayed events are not recorded again
+                    if events_file is None:
+                        events_path.parent.mkdir(exist_ok=True)
+                        events_file = open(events_path, "a")  # noqa: SIM115 - process lifetime
                     events_file.write(json.dumps(ev) + "\n")
                     events_file.flush()
                 print(f"[world] t={ev['t']:.1f} {ev['note']}", flush=True)
@@ -96,9 +109,9 @@ def main(argv=None) -> None:
         pass
     finally:
         backend.close()
-        events_file.close()
-        if events_path.stat().st_size == 0:
-            events_path.unlink()
+        if events_file is not None:
+            events_file.close()
+            print(f"[world] recorded live events to {events_path}", flush=True)
         print("[world] stopped", flush=True)
 
 

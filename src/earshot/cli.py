@@ -1,7 +1,7 @@
 """earshot <command>
 
     earshot fast   --scenario S [--runs N] [--seed K] [--log] [--events F]   lockstep, no sockets
-    earshot live   --scenario S [--backend twin2d|webots] [--no-dashboard] [--no-webots-launch]
+    earshot live   --scenario S [--backend twin2d|webots] [--events F|latest] [--no-dashboard]
     earshot doctor                                                pre-flight checks (run offline)
 """
 
@@ -65,7 +65,7 @@ def cmd_fast(a) -> None:
 def _resolve_events(arg: str) -> Path:
     """A recorded session file, or 'latest' for the newest runs/live-*.events.jsonl."""
     if arg == "latest":
-        found = sorted(Path("runs").glob("live-*.events.jsonl"))
+        found = sorted(p for p in Path("runs").glob("live-*.events.jsonl") if p.stat().st_size)
         if not found:
             sys.exit("no recorded sessions in runs/ yet: run `earshot live` and press some keys")
         print(f"replaying {found[-1]}")
@@ -111,6 +111,8 @@ def cmd_live(a) -> None:
     time.sleep(1.0)
     world_args = ["earshot.runners.world_proc", "--scenario", a.scenario, "--backend", a.backend,
                   "--speed", str(a.speed)]
+    if a.events:
+        world_args += ["--events", str(_resolve_events(a.events))]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
     def _stop(*_):
@@ -193,6 +195,7 @@ def main(argv=None) -> None:
     lv.add_argument("--backend", default="twin2d", choices=["twin2d", "webots"])
     lv.add_argument("--speed", type=float, default=1.0)
     lv.add_argument("--no-dashboard", action="store_true")
+    lv.add_argument("--events", help="replay a recorded session: a file, or 'latest'")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
     lv.set_defaults(fn=cmd_live)
 
