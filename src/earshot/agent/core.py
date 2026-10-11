@@ -65,6 +65,7 @@ class Agent:
         self._seq = 0
         self._last_obs: dict[int, float] = {}
         self._last_digest = -DIGEST_INTERVAL + 1.7 * me  # stagger across drones
+        self._digests = 0
         self._claims: dict[tuple[int, int], Claim] = {}
         self._tracks: list[TrackEst] = []
         self._last_tracks = -1e9
@@ -126,7 +127,10 @@ class Agent:
         outbox.extend(self.store.due(t))
         if t - self._last_digest >= DIGEST_INTERVAL:
             self._last_digest = t
-            entries = tuple(self.store.digest()[: Digest.MAX_ENTRIES])
+            held = self.store.digest()
+            start = (self._digests * Digest.MAX_ENTRIES) % max(1, len(held))
+            self._digests += 1  # rotate: with more than 6 origins, successive Digests cover all
+            entries = tuple((held[start:] + held[:start])[: Digest.MAX_ENTRIES])
             outbox.append(encode(Digest(Header(self.me, 0, 1), t, entries), self.key))
 
         telemetry = {

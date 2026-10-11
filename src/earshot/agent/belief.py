@@ -67,6 +67,7 @@ TRACK_SUPPRESS = 200.0
 MAX_TRACKS = 6
 EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained
 CONFIRM_RADIUS = 80.0  # a drone Track this close to a camera confirmation is Confirmed
+CONFIRM_FOLLOW = 150.0  # m a confirmed drone may move between Track updates and stay Confirmed
 FAULT_WINDOW = 30.0  # s of an origin's bearings that are checked
 FAULT_MIN_CHECKS = 8  # bearings needed in the window before judging
 FAULT_STRONG = 8.0  # threat log-odds the others reach on their own; ghosts stay at 3-7
@@ -263,7 +264,7 @@ class Belief:
         """Remember a camera-confirmed drone. A report near a known one moves it along (the
         drone flies on); it never seeds a second point, so 'confirmed' cannot spread."""
         for i, (cx, cy, ct) in enumerate(self._confirmed):
-            if math.hypot(cx - x, cy - y) <= CONFIRM_RADIUS:
+            if math.hypot(cx - x, cy - y) <= CONFIRM_FOLLOW:
                 if t >= ct:
                     self._confirmed[i] = (x, y, t)
                 return
@@ -413,7 +414,8 @@ class Belief:
             return TrackStatus.EXPLAINED
         if cls == TargetClass.VEHICLE and self.city.distance_to_road(x, y) <= EXPLAIN_DISTANCE:
             return TrackStatus.EXPLAINED
-        if cls == TargetClass.DRONE and self.confirmed_near(x, y, t_now):
+        if cls == TargetClass.DRONE and self.confirmed_near(x, y, t_now, radius=CONFIRM_FOLLOW):
+            self._confirm(x, y, t_now)  # a confirmed drone stays confirmed as it flies on
             return TrackStatus.CONFIRMED
         return TrackStatus.SUSPECTED
 
