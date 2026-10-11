@@ -1,35 +1,52 @@
-"""Sensor models: ground truth (Scenario) + drone state -> SensorReadings.
+"""Sensor models: ground truth (Scenario) + drone state -> Detections.
 
 Interface:
-    SensorSuite(city, scenario, rng).sense(state, t) -> list[SensorReading]
+    SensorSuite(city, scenario, rng).sense(state, t) -> list[Detection]
 
-PLACEHOLDER (pre-Oct 16): fixed hearing ranges per class and mode with Gaussian bearing noise.
-To be replaced by the propagation model of concept section 9 (ISO 9613 spreading, air
-absorption, -15 dB per building, ego-noise by motor_rpm, RF log-distance rings). Keep the
-interface; only the internals change.
+A Detection pairs the SensorReading the drone gets with the truth behind it (source id, SNR).
+World hands only the readings to Agents and keeps the truth for logs and metrics.
+
+Sound and RF are produced once per 1 s integration window per drone (staggered across drones);
+the camera, only on the Verifier, every tick. Physics lives in `acoustics` and `rf`;
+this module only samples from it with the injected rng.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
 from earshot.city import City
 from earshot.messages import Mode, Sensor, TargetClass
 from earshot.scenario import Scenario
+from earshot.sensors import acoustics as ac
+from earshot.sensors import rf
 from earshot.state import DroneState, SensorReading
 
-# metres; (perched, flying). Concept section 5.1, night column, rounded.
-_HEARING_RANGE = {
-    TargetClass.DRONE: (150.0, 5.0),
-    TargetClass.VEHICLE: (1300.0, 60.0),
-    TargetClass.TRAIN: (3000.0, 300.0),
+WINDOW_S = 1.0
+MASKING_OFFSET_DB = 6.0  # other sources raise the floor, partly separable in frequency
+LEVEL_NOISE_DB = 2.0
+CAMERA_RANGE = 60.0
+CAMERA_P_DETECT = 0.9
+
+# Placeholder for the EfficientAT head: true class -> predicted class weights. The fan
+# (NOTHING) is mistaken for a drone unless trained as a negative (section 5.1).
+_C = TargetClass
+CONFUSION = {
+    _C.DRONE: {_C.DRONE: 0.85, _C.VEHICLE: 0.03, _C.TRAIN: 0.02, _C.NOTHING: 0.10},
+    _C.VEHICLE: {_C.DRONE: 0.03, _C.VEHICLE: 0.80, _C.TRAIN: 0.15, _C.NOTHING: 0.02},
+    _C.TRAIN: {_C.DRONE: 0.01, _C.VEHICLE: 0.14, _C.TRAIN: 0.83, _C.NOTHING: 0.02},
+    _C.NOTHING: {_C.DRONE: 0.35, _C.VEHICLE: 0.05, _C.TRAIN: 0.00, _C.NOTHING: 0.60},
 }
-_BEARING_SIGMA = {True: 5.0, False: 25.0}  # perched / flying, degrees
-_OUTLIER = {True: 0.05, False: 0.25}
-_RF_RANGE = 400.0  # 2.4 GHz video link in a city
-_CAMERA_RANGE = 60.0
+
+
+@dataclass(frozen=True)
+class Detection:
+    reading: SensorReading
+    truth: str | None  # source id, None for phantom (Fault) readings
+    snr_db: float
 
 
 class SensorSuite:
@@ -37,49 +54,101 @@ class SensorSuite:
         self.city = city
         self.scenario = scenario
         self.rng = rng
+        self._window: dict[int, int] = {}
 
-    def sense(self, s: DroneState, t: float) -> list[SensorReading]:
+    def sense(self, s: DroneState, t: float) -> list[Detection]:
         faults = {f.kind for f in self.scenario.faults_for(s.id, t)}
-        if "deaf" in faults:
-            return []
-        perched = s.perched_on is not None
-        out: list[SensorReading] = []
-        for src, (sx, sy) in self.scenario.active_sources(t):
-            d = math.hypot(sx - s.x, sy - s.y)
-            true_bearing = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
-
-            # sound
-            rng_hear = _HEARING_RANGE[src.cls][0 if perched else 1]
-            if self.city.buildings_between((s.x, s.y), (sx, sy)):
-                rng_hear *= 0.3
-            if d <= rng_hear:
-                sigma = _BEARING_SIGMA[perched]
-                if self.rng.random() < _OUTLIER[perched]:
-                    b = self.rng.uniform(0, 360)
-                elif "stuck_bearing" in faults:
-                    b = 0.0
-                else:
-                    b = (true_bearing + self.rng.normal(0, sigma)) % 360.0
-                out.append(SensorReading(Sensor.SOUND, b, sigma, _probs(src.cls, 0.7),
-                                         level=src.level_db - 20 * math.log10(max(d, 1)) - 11))
-
-            # RF energy (drones with a link only); no bearing, level gives a rough ring
-            if src.rf and d <= _RF_RANGE:
-                p = -40 - 27 * math.log10(max(d, 1)) + self.rng.normal(0, 6)
-                out.append(SensorReading(Sensor.RF, float("nan"), 0.0,
-                                         _probs(TargetClass.DRONE, 0.6), level=p))
-
-            # camera (ground truth stand-in for the Webots detector)
-            if s.camera_on and s.mode == Mode.VERIFY and d <= _CAMERA_RANGE:
-                out.append(SensorReading(Sensor.CAMERA, true_bearing, 2.0,
-                                         _probs(src.cls, 0.95), level=0.0))
-
-        if "phantom" in faults and self.rng.random() < 0.2:
-            out.append(SensorReading(Sensor.SOUND, self.rng.uniform(0, 360), 5.0,
-                                     _probs(TargetClass.DRONE, 0.7), level=50.0))
+        out: list[Detection] = []
+        if self._new_window(s.id, t) and "deaf" not in faults:
+            sources = self.scenario.active_sources(t)
+            out += self._sound(s, t, sources, faults)
+            out += self._rf(s, sources)
+            if "phantom" in faults and self.rng.random() < 0.3:
+                r = SensorReading(Sensor.SOUND, self.rng.uniform(0, 360), 5.0,
+                                  self._class_probs(_C.DRONE, 5.0), level=45.0)
+                out.append(Detection(r, None, 5.0))
+        if s.camera_on and s.mode == Mode.VERIFY:
+            out += self._camera(s, self.scenario.active_sources(t))
         return out
 
+    # -- windows -------------------------------------------------------------------------
 
-def _probs(cls: TargetClass, p: float) -> tuple[float, float, float, float]:
-    rest = (1.0 - p) / 3.0
-    return tuple(p if c == cls else rest for c in TargetClass)  # type: ignore[return-value]
+    def _new_window(self, drone: int, t: float) -> bool:
+        w = math.floor((t + 0.137 * drone) / WINDOW_S)
+        if self._window.get(drone) == w:
+            return False
+        self._window[drone] = w
+        return True
+
+    # -- sound ---------------------------------------------------------------------------
+
+    def _sound(self, s: DroneState, t: float, sources, faults) -> list[Detection]:
+        env = self.scenario.environment
+        perched = s.perched_on is not None
+        levels = []
+        for src, (sx, sy) in sources:
+            d = math.hypot(sx - s.x, sy - s.y)
+            nb = self.city.buildings_between((s.x, s.y), (sx, sy))
+            levels.append((src, sx, sy, ac.received_level(src.level_db, src.cls, d, nb)))
+        ego = ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db)
+
+        out = []
+        for i, (src, sx, sy, lp) in enumerate(levels):
+            others = [lv - MASKING_OFFSET_DB for j, (*_, lv) in enumerate(levels) if j != i]
+            noise = ac.db_sum(env.background_db, ego, *others)
+            snr = lp - noise
+            if self.rng.random() >= ac.detection_probability(snr, src.cls):
+                continue
+            sigma = ac.bearing_sigma(src.cls, perched, snr)
+            true_b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
+            if "stuck_bearing" in faults:
+                b = 0.0
+            elif self.rng.random() < ac.outlier_rate(perched):
+                b = self.rng.uniform(0, 360)
+            else:
+                b = (true_b + self.rng.normal(0, sigma)) % 360.0
+            level = ac.db_sum(lp, noise) + self.rng.normal(0, LEVEL_NOISE_DB)
+            r = SensorReading(Sensor.SOUND, b, sigma, self._class_probs(src.cls, snr), level)
+            out.append(Detection(r, src.id, snr))
+        return out
+
+    def _class_probs(self, true_cls: TargetClass, snr: float) -> tuple[float, float, float, float]:
+        q = 1.0 / (1.0 + math.exp(-(snr - ac.ACOUSTICS[true_cls].snr50_db) / 3.0))
+        row = np.array([CONFUSION[true_cls][c] for c in TargetClass])
+        w = q * row + (1 - q) * np.full(len(row), 1 / len(row))
+        pred = int(self.rng.choice(len(row), p=w / w.sum()))
+        conf = 0.4 + 0.5 * q
+        rest = (1 - conf) / (len(row) - 1)
+        return tuple(conf if c == pred else rest for c in range(len(row)))  # type: ignore[return-value]
+
+    # -- RF ------------------------------------------------------------------------------
+
+    def _rf(self, s: DroneState, sources) -> list[Detection]:
+        out = []
+        for src, (sx, sy) in sources:
+            if not src.rf_bands:
+                continue
+            d = math.hypot(sx - s.x, sy - s.y)
+            los = self.city.buildings_between((s.x, s.y), (sx, sy)) == 0
+            for key in src.rf_bands:
+                band = rf.BANDS[key]
+                p = rf.mean_rx_power(band, d, los) + self.rng.normal(0, rf.shadowing_sigma(los))
+                if self.rng.random() >= rf.detection_probability(band, p):
+                    continue
+                r = SensorReading(band.sensor, float("nan"), 0.0,
+                                  (0.9, 0.0333, 0.0333, 0.0334), level=p)
+                out.append(Detection(r, src.id, p - band.noise_floor_dbm))
+        return out
+
+    # -- camera (ground-truth stand-in for the Webots detector, with an error rate) ------
+
+    def _camera(self, s: DroneState, sources) -> list[Detection]:
+        out = []
+        for src, (sx, sy) in sources:
+            d = math.hypot(sx - s.x, sy - s.y)
+            if d > CAMERA_RANGE or self.rng.random() >= CAMERA_P_DETECT:
+                continue
+            b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
+            probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, 0.0), src.id, 99.0))
+        return out

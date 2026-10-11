@@ -52,7 +52,7 @@ def test_observation_quantisation():
 
 def test_rf_observation_has_no_bearing():
     obs = Observation(H, 1.0, 0, 0, 2.0, float("nan"), 0.0, (0.6, 0.1, 0.1, 0.2),
-                      Sensor.RF, Mode.PATROL, -80.0)
+                      Sensor.RF_2G4, Mode.PATROL, -80.0)
     assert math.isnan(decode(encode(obs, KEY), KEY).bearing)
 
 

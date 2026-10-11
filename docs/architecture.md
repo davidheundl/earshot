@@ -37,8 +37,8 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 | `city` | `City.load(json)`, `buildings_between`, `distance_to_rail/road`, `grid` | Static prior. Schema in the module docstring. |
 | `scenario` | `Scenario.load(yaml, seed)`, `active_sources(t)`, `jam_zones(t)`, `faults_for` | The only place ground truth lives. |
 | `backend` | `step(dt, commands) -> states`, `camera_frame(id)`, `close()` | Adapters: `twin2d.Twin2D`, `webots.WebotsBackend` (ADR 0002). |
-| `sensors` | `SensorSuite.sense(state, t) -> [SensorReading]` | **Placeholder** ranges; replace internals with the section 9 physics. |
-| `world` | `World.step(commands) -> {id: Sensed}`, `snapshot()` | Backend + truth + sensors. Runners own the clock. |
+| `sensors` | `SensorSuite.sense(state, t) -> [Detection]` | Physics in `acoustics.py` / `rf.py` (pure), calibrated to concept 5.1/5.2 by `tests/test_sensors.py`. A Detection = reading + truth; truth never reaches Agents. |
+| `world` | `World.step(commands) -> {id: Sensed}`, `detections`, `snapshot()` | Backend + truth + sensors. Runners own the clock. `detections` feeds logs and metrics. |
 | `radio.medium` | `RadioMedium.step(t, positions, outgoing, jam) -> delivered`, `stats()` | LoRa airtime, shadowing, half duplex, capture, duty cycle. |
 | `agent` | `Agent.step(t, sensed, inbox) -> StepOut` | Pure. Composes `MessageStore`, `Belief`, `Policy`. |
 | `runners.*` | processes and lockstep | Thin shells. `wire.py` holds the msgpack shapes. |

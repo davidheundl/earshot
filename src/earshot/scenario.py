@@ -23,8 +23,8 @@ class Source:
     start: float
     end: float
     path: list[tuple[float, float]]  # visited at constant speed between start and end
-    level_db: float  # sound power level, dB(A)
-    rf: bool = False  # emits a control/video link (drones only)
+    level_db: float  # sound power level, dB(A); see sensors.acoustics.SOUND_POWER
+    rf_bands: tuple[str, ...] = ()  # emitting links, keys of sensors.rf.BANDS
 
     def position(self, t: float) -> tuple[float, float] | None:
         if not (self.start <= t <= self.end):
@@ -60,6 +60,22 @@ class Fault:
 
 
 @dataclass
+class Environment:
+    background_db: float = 40.0  # dB(A); night 40, day 50-60
+    ego_filter: bool = True  # subtract predicted motor noise in flight
+    ego_filter_db: float = 8.0  # realistic gain 5-10 dB (section 4)
+
+
+_CLASS_ALIASES = {"nuisance": "NOTHING", "fan": "NOTHING", "truck": "VEHICLE"}
+
+
+def _rf_bands(v) -> tuple[str, ...]:
+    if v is True:
+        return ("2g4",)
+    return tuple(str(b) for b in v) if v else ()
+
+
+@dataclass
 class Scenario:
     name: str
     seed: int
@@ -71,6 +87,7 @@ class Scenario:
     jamming: list[JamZone] = field(default_factory=list)
     faults: list[Fault] = field(default_factory=list)
     radio: dict = field(default_factory=dict)
+    environment: Environment = field(default_factory=Environment)
 
     @classmethod
     def load(cls, path: str | Path, seed: int | None = None) -> Scenario:
@@ -88,10 +105,11 @@ class Scenario:
             ],
             sources=[
                 Source(
-                    id=s["id"], cls=TargetClass[s["cls"].upper()],
+                    id=s["id"],
+                    cls=TargetClass[_CLASS_ALIASES.get(s["cls"].lower(), s["cls"].upper())],
                     start=float(s["start"]), end=float(s["end"]),
                     path=[tuple(p) for p in s["path"]],
-                    level_db=float(s["level_db"]), rf=bool(s.get("rf", False)),
+                    level_db=float(s["level_db"]), rf_bands=_rf_bands(s.get("rf")),
                 )
                 for s in d.get("sources", [])
             ],
@@ -101,6 +119,7 @@ class Scenario:
             ],
             faults=[Fault(int(f["drone"]), float(f["start"]), f["kind"]) for f in d.get("faults", [])],
             radio=d.get("radio", {}),
+            environment=Environment(**d.get("environment", {})),
         )
 
     def active_sources(self, t: float) -> list[tuple[Source, tuple[float, float]]]:

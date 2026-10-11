@@ -33,9 +33,16 @@ class MsgType(IntEnum):
 
 
 class Sensor(IntEnum):
+    """Which sensor made an Observation. RF carries its band: the ring radius depends on it."""
+
     SOUND = 0
-    RF = 1
+    RF_2G4 = 1
     CAMERA = 2
+    RF_5G8 = 3
+    RF_915 = 4
+
+
+RF_SENSORS = frozenset({Sensor.RF_2G4, Sensor.RF_5G8, Sensor.RF_915})
 
 
 class Mode(IntEnum):
@@ -86,7 +93,7 @@ class Observation:
     class_probs: tuple[float, float, float, float]  # indexed by TargetClass
     sensor: Sensor
     mode: Mode
-    level: float = 0.0  # dB: sound level (SOUND) or received power offset (RF ring radius)
+    level: float = 0.0  # sound: received dB(A); RF: received power dBm (-> ring radius)
 
     TYPE = MsgType.OBSERVATION
     _S = struct.Struct("<Ihhb HB 4B BBh")

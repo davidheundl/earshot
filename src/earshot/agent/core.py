@@ -77,8 +77,9 @@ class Agent:
 
         # 2. own sensors -> Observations (Evidence)
         for r in sensed.readings:
-            if t - self._last_obs.get(r.sensor, -1e9) < OBS_MIN_INTERVAL:
-                continue
+            last = self._last_obs.get(r.sensor, -1e9)
+            if last != t and t - last < OBS_MIN_INTERVAL:
+                continue  # same-tick readings are different sources; across ticks: <= 1 Hz
             self._last_obs[r.sensor] = t
             obs = Observation(
                 self._next_header(OBS_HOPS), t, s.x, s.y, 2.0, r.bearing, r.bearing_sigma,

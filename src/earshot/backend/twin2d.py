@@ -21,8 +21,8 @@ class Kinematics:
     speed: dict | None = None  # m/s per Mode
     climb_rate: float = 4.0  # m/s
     arrive_radius: float = 2.0  # m
-    hover_rpm: float = 6000.0
-    cruise_rpm: float = 7000.0
+    hover_rpm: float = 6000.0  # hovering is near the most power-hungry state (section 4)
+    cruise_rpm: float = 5700.0  # forward flight gains translational lift
     drain_flying: float = 1 / 1500  # battery fraction per s (~25 min flight)
     drain_perched: float = 1 / 36000  # ~10 h perched (assumption, section 4)
 

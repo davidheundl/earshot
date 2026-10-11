@@ -53,6 +53,9 @@ _Avoid_: map (ambiguous with Probability Map)
 Something that emits sound and possibly RF: a drone, heavy vehicle or train. Ground truth; Agents never see it.
 _Avoid_: target, emitter, threat (a Source is only a threat if it is a drone)
 
+**Nuisance**:
+A Source whose true Target Class is Nothing but which sounds drone-like (a fan, an AC unit).
+
 **Scenario**:
 A seeded script of Sources, Jam Zones and Faults for one run.
 

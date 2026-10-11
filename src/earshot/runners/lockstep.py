@@ -45,13 +45,19 @@ def build(scenario: Scenario, root: Path = Path(".")):
 
 
 def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> RunResult:
+    """Run one scenario. With `log`, writes 1 Hz snapshots to `log` and every sensor
+    detection with its true source to `<log stem>.detections.jsonl`."""
     _, world, radio, agents = build(scenario, root)
     commands: dict = {}
     inbox: dict[int, list[bytes]] = {}
     telemetry: dict[int, dict] = {}
     steps = round(scenario.duration / scenario.dt)
     log_every = round(1.0 / scenario.dt)  # 1 Hz
-    with open(log, "w") if log else contextlib.nullcontext() as fh:
+    det_log = log.with_name(log.stem + ".detections.jsonl") if log else None
+    with (
+        open(log, "w") if log else contextlib.nullcontext() as fh,
+        open(det_log, "w") if det_log else contextlib.nullcontext() as dh,
+    ):
         for i in range(steps):
             sensed = world.step(commands)
             t = world.t
@@ -62,6 +68,9 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
                 outgoing[did] = out.outbox
                 telemetry[did] = out.telemetry
             inbox = radio.step(t, world.positions(), outgoing, scenario.jam_zones(t))
+            if dh:
+                for d in world.detections:
+                    dh.write(json.dumps(d) + "\n")
             if fh and i % log_every == 0:
                 snap = world.snapshot(telemetry)
                 snap["radio"] = radio.stats()

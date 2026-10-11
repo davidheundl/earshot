@@ -10,7 +10,7 @@
     --building: #2b303b; --roof: #3d4f66; --rail: #b58b4c; --road: #555c6a;
     --patrol: #6aa9ff; --listen: #57d68d; --verify: #ff7a59; --fill: #c792ea;
     --drone: #ff4d6d; --vehicle: #ffb84d; --train: #b58b4c; --jam: rgba(255, 77, 109, .12);
-    --link: rgba(106, 169, 255, .55);
+    --link: rgba(106, 169, 255, .55); --bearing: 255, 214, 102;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -45,6 +45,7 @@
       <span><i class="dot" style="background:var(--fill)"></i>fill gap</span>
     </div>
     <h2>Drones</h2><table id="drones"></table>
+    <h2>Environment</h2><table id="env"></table>
     <h2>Radio</h2><table id="radio"></table>
     <h2>Ground truth (dashboard only)</h2><table id="truth"></table>
   </aside>
@@ -84,6 +85,17 @@ function draw() {
   const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
   ctx.strokeStyle = css("--link"); ctx.lineWidth = 1;
   (last.radio?.links || []).forEach(([a, b]) => { if (byId[a] && byId[b]) { line(P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); } });
+  const L = 900; // metres drawn along each sound bearing
+  (st.bearings || []).forEach(b => {
+    const a = 1 - b.age / 3, th = b.bearing * Math.PI / 180, w = Math.min(b.sigma, 30) * Math.PI / 180;
+    const [px, py] = P(b.x, b.y);
+    const tip = d => P(b.x + L * Math.sin(th + d), b.y + L * Math.cos(th + d));
+    const [l1, l2] = tip(-w), [r1, r2] = tip(w);
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(l1, l2); ctx.lineTo(r1, r2); ctx.closePath();
+    ctx.fillStyle = `rgba(${css("--bearing")}, ${0.10 * a})`; ctx.fill();
+    const [cx, cy] = tip(0); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy);
+    ctx.strokeStyle = `rgba(${css("--bearing")}, ${0.7 * a})`; ctx.lineWidth = 1; ctx.stroke();
+  });
   st.truth.forEach(t => { const [a, b] = P(t.x, t.y); ctx.strokeStyle = css(CLS[t.cls]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a - 6, b - 6); ctx.lineTo(a + 6, b + 6); ctx.moveTo(a + 6, b - 6); ctx.lineTo(a - 6, b + 6); ctx.stroke(); });
   st.drones.forEach(d => { const [a, b] = P(d.x, d.y); ctx.fillStyle = css(MODE[d.mode] || "--muted");
@@ -99,6 +111,11 @@ function panels() {
   rows(document.getElementById("drones"), st.drones.map(d => [
     d.id, `<span class="pill" style="background:${css(MODE[d.mode])}">${d.mode.toLowerCase()}</span>`,
     `${Math.round(d.battery * 100)}%`, `rx ${d.telemetry.accepted ?? 0}`]));
+  const env = st.environment || {};
+  rows(document.getElementById("env"), [
+    ["background", `${env.background_db} dB(A) (${env.background_db <= 45 ? "night" : "day"})`],
+    ["ego-noise filter", env.ego_filter ? `on (−${env.ego_filter_db} dB)` : "off"],
+    ["sound bearings (3 s)", (st.bearings || []).length]]);
   if (rd) rows(document.getElementById("radio"), [
     ["channel load", `${(rd.channel_load * 100).toFixed(1)}%`], ["frames sent", rd.sent],
     ["delivered", rd.delivered], ["collided", rd.collided], ["out of range", rd.out_of_range],
