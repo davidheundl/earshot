@@ -1,0 +1,44 @@
+# Room scenario: drones 0 and 1 are the two microphone arrays on the table, fixed on two roofs
+# (1 m in the room = 100 m in the city). Start with
+#   uv run earshot live --scenario scenarios/room.yaml --array 0=<device>@<rot> --array 1=...
+# Without arrays it runs like the demo with two permanently perched drones.
+#
+# Based on the demo: train on the rail (should be explained away), a drone among the blocks,
+# a fan that sounds like a drone, a jam zone over two drones, and one drone with a stuck
+# bearing sensor. Sound power levels: earshot/sensors/acoustics.py SOUND_POWER.
+name: room
+seed: 42
+city: data/cities/synthetic.json
+duration: 360
+dt: 0.1
+
+drones:            # home = centre of its Sector; default: listen (perch there) | patrol
+  - {id: 0, x: -560, y: -560, home: [-560, -560], default: listen, fixed: true}  # array A
+  - {id: 1, x: -220, y: -390, home: [-220, -390], default: listen, fixed: true}  # array B
+  - {id: 2, x:  600, y: -600, home: [600, -600],  default: listen}
+  - {id: 3, x: -600, y:  200, home: [-600, 200],  default: patrol}
+  - {id: 4, x:    0, y:  200, home: [0, 200],     default: listen}
+  - {id: 5, x:  600, y:  200, home: [600, 200],   default: patrol}
+
+environment:
+  background_db: 40     # night; day is 50-60
+  ego_filter: true
+  ego_filter_db: 8
+
+sources:           # rf: list of bands from earshot/sensors/rf.py BANDS (2g4, 5g8, 915)
+  - {id: train1, cls: train,    start: 20,  end: 80,  level_db: 120, path: [[-1000, 820], [0, 760], [1000, 840]]}
+  - {id: truck1, cls: vehicle,  start: 40,  end: 160, level_db: 105, path: [[-1000, -40], [1000, -40]]}
+  # larger drone (1-2 kg, 89 dB(A)) loitering among four flat roofs
+  - {id: drone1, cls: drone,    start: 60,  end: 330, level_db: 89,  rf: [2g4], path: [[-300, -500], [-360, -580], [-400, -540], [-340, -520], [-300, -560]]}
+  - {id: fan1,   cls: nuisance, start: 0,   end: 360, level_db: 75,  path: [[-20, 150]]}  # next to drone 4's roof
+
+jamming:
+  - {start: 150, end: 190, center: [-600, -600], radius: 350}
+
+faults:
+  - {drone: 3, start: 200, kind: stuck_bearing}
+
+radio:             # see earshot/radio/medium.py RadioConfig
+  sf: 7
+  bw_khz: 500
+  nominal_range_m: 700

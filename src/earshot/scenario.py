@@ -119,7 +119,8 @@ class Scenario:
             drones=[
                 DroneSpec(id=int(x["id"]), x=float(x["x"]), y=float(x["y"]),
                           home=tuple(x["home"]) if "home" in x else None,
-                          default=Mode[x.get("default", "listen").upper()])
+                          default=Mode[x.get("default", "listen").upper()],
+                          fixed=bool(x.get("fixed", False)))
                 for x in d["drones"]
             ],
             policy=d.get("policy", "earshot"),

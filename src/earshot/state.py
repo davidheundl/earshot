@@ -60,6 +60,7 @@ class DroneSpec:
     y: float
     home: tuple[float, float] | None = None  # centre of its initial Sector
     default: Mode = Mode.LISTEN  # LISTEN: perch in its Sector; PATROL: fly its Sector
+    fixed: bool = False  # permanently perched at home, takes no tasks (a microphone array)
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class SwarmConfig:
     defaults: dict[int, Mode]
     policy: str = "earshot"  # "earshot" | "nearest" (nearest drone always flies) | "no_perch"
     radio_scheme: str = "ours"  # "ours" | "flood" | "unicast3" (agent/store.py)
+    fixed: frozenset = frozenset()  # drones that never leave their home roof
 
     @classmethod
     def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
@@ -79,4 +81,5 @@ class SwarmConfig:
             defaults={d.id: d.default for d in specs},
             policy=policy,
             radio_scheme=radio_scheme,
+            fixed=frozenset(d.id for d in specs if d.fixed),
         )

@@ -90,7 +90,11 @@ class Policy:
         self.city = city
         self.swarm = swarm
         self.home = swarm.homes[me]
-        self.default = Mode.PATROL if swarm.policy == "no_perch" else swarm.defaults[me]
+        self.fixed = me in swarm.fixed
+        self.default = Mode.PATROL if swarm.policy == "no_perch" and not self.fixed \
+            else swarm.defaults[me]
+        if self.fixed:
+            self.default = Mode.LISTEN
         self._sites = {p.id: p for p in city.perch_sites}
         self._home_site = self._best_roof_near(self.home)
         self._task: _Task | None = None
@@ -112,6 +116,8 @@ class Policy:
         winners = self._winners(active)
         tasks = self._tasks(tracks, belief, active, s)
         d = Decision(command=self._default_command(t, s, active))
+        if self.fixed:
+            return d  # a microphone array on a roof: it listens, it never flies
 
         if self._task is not None:
             self._continue(t, s, tasks, winners, tracks, d)

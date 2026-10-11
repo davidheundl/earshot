@@ -89,6 +89,16 @@ def stale_webots() -> list[str]:
     return out.split()
 
 
+def cmd_arrays(_a) -> None:
+    from earshot.audio.array import list_arrays
+
+    found = list_arrays()
+    for i, name, ch in found:
+        print(f"{i}: {name} ({ch} channels)")
+    if not found:
+        print("no input with 4+ channels: plug in the ReSpeaker, use the 6-channel firmware")
+
+
 # -- eval ---------------------------------------------------------------------------------
 
 
@@ -143,8 +153,10 @@ def cmd_live(a) -> None:
             time.sleep(3)
 
     spawn(["earshot.runners.radio_proc", "--scenario", a.scenario])
+    arrays = dict(x.split("=", 1) for x in (a.array or []))
     for d in sc.drones:
-        spawn(["earshot.runners.agent_proc", "--id", str(d.id), "--scenario", a.scenario])
+        extra = ["--array", arrays[str(d.id)]] if str(d.id) in arrays else []
+        spawn(["earshot.runners.agent_proc", "--id", str(d.id), "--scenario", a.scenario, *extra])
     if not a.no_dashboard:
         spawn(["earshot.dashboard.server", "--scenario", a.scenario])
         print(f"dashboard: http://{config.HOST}:{config.DASHBOARD_PORT}")
@@ -243,6 +255,8 @@ def main(argv=None) -> None:
     lv.add_argument("--no-dashboard", action="store_true")
     lv.add_argument("--events", help="replay a recorded session: a file, or 'latest'")
     lv.add_argument("--duration", type=float, help="run this many sim seconds (default: scenario)")
+    lv.add_argument("--array", action="append", metavar="ID=DEVICE[@ROT]",
+                    help="drone ID hears through a real microphone array (see `earshot arrays`)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
     lv.set_defaults(fn=cmd_live)
 
@@ -257,6 +271,9 @@ def main(argv=None) -> None:
     ev.add_argument("--bw", type=float, help="LoRa bandwidth in kHz (default: scenario's)")
     ev.add_argument("--out", help="write all metrics as JSON")
     ev.set_defaults(fn=cmd_eval)
+
+    ar = sub.add_parser("arrays", help="list microphone arrays (inputs with 4+ channels)")
+    ar.set_defaults(fn=cmd_arrays)
 
     d = sub.add_parser("doctor", help="pre-flight checks")
     d.set_defaults(fn=cmd_doctor)

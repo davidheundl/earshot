@@ -15,16 +15,26 @@ import zmq
 from earshot import config
 from earshot.agent import Agent
 from earshot.city import City
+from earshot.messages import Sensor
 from earshot.runners.wire import command_to_dict, pack, sensed_from_dict, topic, unpack
 from earshot.scenario import Scenario
-from earshot.state import SwarmConfig
+from earshot.state import Sensed, SwarmConfig
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--id", type=int, required=True)
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
+    ap.add_argument("--array", help="sound from this microphone array (device name or index), "
+                    "optionally @rotation_deg, instead of the simulated sound sensor")
     a = ap.parse_args(argv)
+    array = None
+    if a.array:
+        from earshot.audio.array import ArraySensor
+
+        dev, _, rot = a.array.partition("@")
+        array = ArraySensor(int(dev) if dev.isdigit() else dev, float(rot or 0.0))
+        print(f"[agent {a.id}] sound from array {dev!r}, rotation {rot or 0} deg", flush=True)
     scenario = Scenario.load(a.scenario)
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
                                    scenario.radio.get("scheme", "ours"))
@@ -66,6 +76,9 @@ def main(argv=None) -> None:
                     except zmq.Again:
                         break
                 sensed = sensed_from_dict(unpack(payload))
+                if array is not None:  # real sound replaces the simulated sound readings
+                    keep = [r for r in sensed.readings if r.sensor != Sensor.SOUND]
+                    sensed = Sensed(sensed.state, keep + array.readings(), sensed.camera_frame)
                 out = agent.step(sensed.state.t, sensed, inbox)
                 inbox = []
                 to_world.send(pack({"id": a.id, "command": command_to_dict(out.command),
