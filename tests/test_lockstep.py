@@ -40,3 +40,9 @@ def test_demo_intruder_is_confirmed_and_the_train_is_left_alone():
     near_rail = [e for e in r.events if e.get("task") == "verify" and e["kind"] == "dispatch"
                  and e["y"] > 700]
     assert near_rail == [], "verified something on the rail: the train should be Explained"
+
+
+def test_array_drones_never_leave_their_roof():
+    r = run(Scenario.load(ROOT / "scenarios/room.yaml", seed=100), root=ROOT)
+    assert r.battery[0] > 0.97 and r.battery[1] > 0.97  # perched all run: hardly any drain
+    assert not [e for e in r.events if e.get("drone") in (0, 1) and e["kind"] == "claim"]
