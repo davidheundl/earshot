@@ -67,12 +67,15 @@ class SensorSuite:
         out: list[Detection] = []
         if not self._new_window(s.id, t):
             return out
+        sources = self.scenario.active_sources(t)
         if s.camera_on and s.mode == Mode.VERIFY:
-            out += self._camera(s, self.scenario.active_sources(t), frame)
+            out += self._camera(s, sources, frame)
         if "deaf" not in faults:
-            sources = self.scenario.active_sources(t)
-            out += self._sound(s, t, sources, faults)
-            out += self._rf(s, sources)
+            # buildings in the way, per source: sound and RF share the line of sight
+            nbs = [self.city.obstacles_between((s.x, s.y), (sx, sy), s.z, self._z(src.cls, sx, sy))
+                   for src, (sx, sy) in sources]
+            out += self._sound(s, t, sources, nbs, faults)
+            out += self._rf(s, sources, nbs)
             if "phantom" in faults and self.rng.random() < 0.3:
                 r = SensorReading(Sensor.SOUND, self.rng.uniform(0, 360), 5.0,
                                   self._class_probs(_C.DRONE, 5.0), level=45.0)
@@ -93,13 +96,12 @@ class SensorSuite:
 
     # -- sound ---------------------------------------------------------------------------
 
-    def _sound(self, s: DroneState, t: float, sources, faults) -> list[Detection]:
+    def _sound(self, s: DroneState, t: float, sources, nbs, faults) -> list[Detection]:
         env = self.scenario.environment
         perched = s.perched_on is not None
         levels = []
-        for src, (sx, sy) in sources:
+        for (src, (sx, sy)), nb in zip(sources, nbs, strict=True):
             d = math.hypot(sx - s.x, sy - s.y)
-            nb = self.city.obstacles_between((s.x, s.y), (sx, sy), s.z, self._z(src.cls, sx, sy))
             levels.append((src, sx, sy, ac.received_level(src.level_db, src.cls, d, nb)))
         ego = ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db)
 
@@ -134,14 +136,13 @@ class SensorSuite:
 
     # -- RF ------------------------------------------------------------------------------
 
-    def _rf(self, s: DroneState, sources) -> list[Detection]:
+    def _rf(self, s: DroneState, sources, nbs) -> list[Detection]:
         out = []
-        for src, (sx, sy) in sources:
+        for (src, (sx, sy)), nb in zip(sources, nbs, strict=True):
             if not src.rf_bands:
                 continue
             d = math.hypot(sx - s.x, sy - s.y)
-            los = self.city.obstacles_between((s.x, s.y), (sx, sy), s.z,
-                                              self._z(src.cls, sx, sy)) == 0
+            los = nb == 0
             for key in src.rf_bands:
                 band = rf.BANDS[key]
                 p = rf.mean_rx_power(band, d, los) + self.rng.normal(0, rf.shadowing_sigma(los))
