@@ -29,6 +29,7 @@ from earshot.runners.wire import pack, topic, unpack
 from earshot.scenario import Scenario
 
 STATIC = Path(__file__).parent / "static"
+NO_CACHE = {"Cache-Control": "no-cache"}  # pages change between runs; always revalidate
 log = logging.getLogger(__name__)
 
 
@@ -240,7 +241,7 @@ def create_app(scenario_path: str) -> FastAPI:
 
     @app.get("/")
     async def index():
-        return FileResponse(STATIC / "hud.html")
+        return FileResponse(STATIC / "hud.html", headers=NO_CACHE)
 
     to_world = zmq.Context.instance().socket(zmq.PUSH)
     to_world.setsockopt(zmq.LINGER, 0)
@@ -313,7 +314,7 @@ def create_app(scenario_path: str) -> FastAPI:
 
     @app.get("/classic")
     async def classic():
-        return FileResponse(STATIC / "index.html")
+        return FileResponse(STATIC / "index.html", headers=NO_CACHE)
 
     return app
 
