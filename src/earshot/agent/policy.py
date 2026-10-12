@@ -129,8 +129,9 @@ class Policy:
 
         if self._task is not None:
             self._continue(t, s, tasks, winners, tracks, d)
-        if self._task is not None and self._task.kind != VERIFY:
-            self._maybe_switch_to_verify(t, s, tasks, winners, active, d)
+        if self._task is not None and self._task.kind != VERIFY \
+                and self._maybe_switch_to_verify(t, s, tasks, winners, active, d):
+            tasks = {tid: x for tid, x in tasks.items() if x.kind == VERIFY}  # what it left for
         if self._task is None:
             self._bid_for_best(t, s, tasks, winners, active, d)
 
@@ -215,9 +216,10 @@ class Policy:
         self._send_claim(t, d, LEASE)
         d.events.append(self._event(t, "claim"))
 
-    def _maybe_switch_to_verify(self, t, s, tasks, winners, active, d: Decision) -> None:
+    def _maybe_switch_to_verify(self, t, s, tasks, winners, active, d: Decision) -> bool:
         """Verification outranks listening: a listener that would win a verify task drops its
-        roof for it (otherwise a swarm that is all listening never verifies)."""
+        roof for it (otherwise a swarm that is all listening never verifies). True if it did;
+        the caller then bids on verify tasks only, or it would take its roof straight back."""
         for task in tasks.values():
             if task.kind != VERIFY or self._covered(task, active):
                 continue
@@ -225,7 +227,8 @@ class Policy:
             w = winners.get(task.tid)
             if bid > 0 and (w is None or (bid, -self.me) > (w[0], -w[1])):
                 self._release(t, d, "switch")
-                return
+                return True
+        return False
 
     def _bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
         if task.kind == VERIFY:
