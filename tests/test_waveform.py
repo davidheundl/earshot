@@ -89,6 +89,19 @@ def test_a_plugged_in_classifier_decides_the_class(tmp_path, monkeypatch):
     assert any(lab["beams"] for lab in labels)
 
 
+def test_a_classifier_class_is_instantiated(monkeypatch):
+    mod = types.ModuleType("fake_clf_cls")
+
+    class Clf:
+        def classify(self, audio, sr):
+            return (0.0, 0.0, 1.0, 0.0)
+
+    mod.Clf = Clf
+    monkeypatch.setitem(sys.modules, "fake_clf_cls", mod)
+    clf = wf.load_classifier("fake_clf_cls:Clf")
+    assert clf.classify(np.zeros(wf.SR), wf.SR) == (0.0, 0.0, 1.0, 0.0)
+
+
 def test_audio_is_deterministic(tmp_path):
     def once(d):
         sc = Scenario.load("scenarios/demo.yaml", seed=3)

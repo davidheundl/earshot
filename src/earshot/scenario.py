@@ -107,6 +107,8 @@ _CLASS_ALIASES = {"nuisance": "NOTHING", "fan": "NOTHING", "truck": "VEHICLE"}
 def _rf_bands(v) -> tuple[str, ...]:
     if v is True:
         return ("2g4",)
+    if isinstance(v, str):  # rf: 2g4 means one band, not the characters '2', 'g', '4'
+        return (v,)
     return tuple(str(b) for b in v) if v else ()
 
 
@@ -181,7 +183,7 @@ class Scenario:
             pts = [tuple(q) for q in city_raw[kind][int(p.get("road", p.get("rail", 0)))]]
             return pts[::-1] if p.get("reverse") else pts
 
-        return cls(
+        sc = cls(
             name=d["name"],
             seed=d.get("seed", 0) if seed is None else seed,
             city=d["city"],
@@ -215,6 +217,10 @@ class Scenario:
             environment=Environment(**d.get("environment", {})),
             events=sorted(d.get("events", []), key=lambda e: e["t"]),
         )
+        bad = [f.kind for f in sc.faults if f.kind not in FAULT_KINDS]
+        if bad:
+            raise ValueError(f"unknown fault kind(s) {bad}, expected one of {FAULT_KINDS}")
+        return sc
 
     def active_sources(self, t: float) -> list[tuple[Source, tuple[float, float]]]:
         out = []
@@ -270,6 +276,8 @@ class Scenario:
             sid = op.get("id") or f"live_{cls.name.lower()}_{self._live_count}"
             if not isinstance(sid, str):
                 raise ValueError(f"id must be a string, got {sid!r}")
+            if any(s.id == sid for s in self.sources):
+                raise ValueError(f"source id {sid!r} already exists")
             self._live_count += 1
             src = Source(sid, cls, t, t + duration, path, level, bands)
             self.sources.append(src)
@@ -284,10 +292,12 @@ class Scenario:
             self.jamming = [replace(j, end=t) if j.active(t) else j for j in self.jamming]
             return "jamming cleared"
         if kind == "fault":
-            drone = int(_num(op["drone"], "drone"))
+            drone = _num(op["drone"], "drone")
+            if drone not in {d.id for d in self.drones}:
+                raise ValueError(f"no drone {drone!r}")
             if op["kind"] not in FAULT_KINDS:
                 raise ValueError(f"unknown fault kind {op['kind']!r}")
-            self.faults.append(Fault(drone, t, op["kind"]))
+            self.faults.append(Fault(int(drone), t, op["kind"]))
             return f"drone {op['drone']}: {op['kind']}"
         if kind == "clear_faults":
             who = op.get("drone")
@@ -298,6 +308,10 @@ class Scenario:
             return "faults cleared" + ("" if who is None else f" on drone {who}")
         if kind == "set_env":
             fields = {k: v for k, v in op.items() if k in Environment.__dataclass_fields__}
+            unknown = set(op) - set(fields) - {"op", "t", "live", "note"}
+            if unknown or not fields:
+                raise ValueError(f"set_env takes {sorted(Environment.__dataclass_fields__)}, "
+                                 f"got {sorted(unknown) or 'nothing'}")
             for k, v in fields.items():
                 if k == "ego_filter":
                     if not isinstance(v, bool):

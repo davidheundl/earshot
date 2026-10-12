@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -48,6 +49,12 @@ def test_observation_quantisation():
     assert back.bearing == pytest.approx(123.45, abs=0.01)
     assert back.class_probs[0] == pytest.approx(0.7, abs=0.005)
     assert back.level == pytest.approx(61.5, abs=0.01)
+
+
+def test_non_finite_fields_encode_instead_of_crashing():
+    bad = replace(SAMPLES[0], level=math.nan, bearing_sigma=math.inf)
+    back = decode(encode(bad, KEY), KEY)
+    assert len(encode(bad, KEY)) <= 40 and math.isfinite(back.level)
 
 
 def test_rf_observation_has_no_bearing():

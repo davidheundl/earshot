@@ -29,10 +29,12 @@ def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
                   policy=base.policy, environment=base.environment)
 
     # intruder: away from rail and roads, so it is not explained away by map knowledge
-    while True:
+    for _ in range(10_000):
         cx, cy = rng.uniform(x0 + 200, x1 - 200), rng.uniform(y0 + 200, y1 - 400)
         if city.distance_to_rail(cx, cy) > 200 and city.distance_to_road(cx, cy) > 60:
             break
+    else:
+        raise ValueError(f"{base.city}: no spot 200 m from rail and 60 m from roads")
     start = float(rng.uniform(30, 120))
     loiter = [(cx + rng.uniform(-60, 60), cy + rng.uniform(-60, 60)) for _ in range(5)]
     sc.sources.append(Source(
@@ -50,6 +52,8 @@ def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
         sc.sources.append(Source(f"train{k}", TargetClass.TRAIN, t0, t0 + 60, path, 120.0))
 
     for k in range(int(rng.integers(2, 4))):
+        if not city.roads:
+            break
         road = list(city.roads[int(rng.integers(len(city.roads)))].coords)
         t0 = float(rng.uniform(0, base.duration - 130))
         path = road if rng.random() < 0.5 else road[::-1]
@@ -57,6 +61,8 @@ def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
 
     roofs = city.perch_sites
     for k in range(int(rng.integers(1, 3))):
+        if not roofs:
+            break
         r = roofs[int(rng.integers(len(roofs)))]
         a = rng.uniform(0, 2 * math.pi)
         p = (r.x + 30 * math.cos(a), r.y + 30 * math.sin(a))

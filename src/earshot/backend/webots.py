@@ -18,6 +18,7 @@ Frames: City x = east, y = north, metres  ==  Webots ENU world (z up).
 from __future__ import annotations
 
 import math
+import re
 import time
 from collections.abc import Mapping
 
@@ -256,7 +257,7 @@ class WebotsBackend:
                 while node is not None and not (node.getDef() or "").startswith("SRC_"):
                     node = node.getParentNode()
                 self._seen[oid] = (None if node is None
-                                   else self._def_class.get(node.getDef().split("_w")[0]))
+                                   else self._def_class.get(re.sub(r"_w\d+$", "", node.getDef())))
             cls = self._seen[oid]
             if cls:
                 out.append(cls)

@@ -66,16 +66,20 @@ def main(argv=None) -> None:
     poller.register(world_sub, zmq.POLLIN)
     poller.register(radio_sub, zmq.POLLIN)
     inbox: list = []  # [frame, margin_db] pairs
+
+    def drain_radio() -> None:
+        while True:
+            try:
+                _, payload = radio_sub.recv_multipart(zmq.NOBLOCK)
+            except zmq.Again:
+                return
+            inbox.extend(unpack(payload))
+
     try:
         while True:
             ev = dict(poller.poll(1000))
             if radio_sub in ev:
-                while True:
-                    try:
-                        _, payload = radio_sub.recv_multipart(zmq.NOBLOCK)
-                    except zmq.Again:
-                        break
-                    inbox.extend(unpack(payload))
+                drain_radio()
             if world_sub in ev:
                 # if we fell behind, step once on the newest tick with every queued reading
                 payloads = []
@@ -90,8 +94,9 @@ def main(argv=None) -> None:
                 if array is not None:  # real sound replaces the simulated sound readings
                     keep = [r for r in sensed.readings if r.sensor != Sensor.SOUND]
                     sensed = Sensed(sensed.state, keep + array.readings(), sensed.camera_frame)
+                drain_radio()  # frames that arrived since the poll belong to this tick too
                 out = agent.step(sensed.state.t, sensed, inbox)
-                inbox = []
+                inbox.clear()
                 telemetry = out.telemetry
                 if array is not None:
                     telemetry = {**telemetry, "array": array.diagnostics}

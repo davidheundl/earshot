@@ -60,10 +60,10 @@ def load_classifier(spec: str) -> Classifier:
     function (audio, sr) -> probabilities."""
     mod, _, attr = spec.partition(":")
     obj = getattr(importlib.import_module(mod), attr or "classifier")
+    if isinstance(obj, type):  # before hasattr: a class has its method as an attribute too
+        return obj()
     if hasattr(obj, "classify"):
         return obj
-    if isinstance(obj, type):
-        return obj()
     try:  # a factory taking no arguments
         made = obj()
         if hasattr(made, "classify"):

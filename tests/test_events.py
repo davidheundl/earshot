@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from earshot.messages import TargetClass
 from earshot.runners.lockstep import build, run
-from earshot.scenario import Scenario
+from earshot.scenario import Scenario, _rf_bands
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,6 +63,17 @@ def test_bad_op_is_rejected_not_fatal():
     world.control({"op": "teleport"})
     world.step({})
     assert world.applied[-1]["note"].startswith("rejected")
+
+
+def test_ops_that_would_silently_do_nothing_are_rejected():
+    sc = _scenario()
+    taken = sc.sources[0].id
+    for op in ({"op": "set_env", "background": 55},  # typo of background_db
+               {"op": "fault", "drone": 99, "kind": "deaf"},
+               {"op": "add_source", "cls": "drone", "x": 0, "y": 0, "id": taken}):
+        with pytest.raises(ValueError):
+            sc.apply(op, 1.0)
+    assert _rf_bands("2g4") == ("2g4",)  # YAML `rf: 2g4` is one band, not three characters
 
 
 def test_replayed_events_are_deterministic():

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
@@ -170,6 +171,8 @@ Message = Observation | Track | Claim | Digest | Request
 
 
 def _clamp(v: float, lo: int, hi: int) -> int:
+    if not math.isfinite(v):  # round() raises on these; a bad reading must not kill the agent
+        return hi if v == math.inf else lo
     return max(lo, min(hi, round(v)))
 
 
