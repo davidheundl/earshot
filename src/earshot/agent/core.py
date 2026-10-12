@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from earshot.agent.belief import Belief, TrackEst
+from earshot.agent.belief import Belief, TrackEst, merge_overlapping, mergeable
 from earshot.agent.policy import VERIFY, Policy, task_kind
 from earshot.agent.store import MessageStore
 from earshot.city import City
@@ -190,17 +190,21 @@ class Agent:
                    for rx in self.belief.received_tracks(t))
 
     def _all_tracks(self, t: float) -> list[TrackEst]:
-        """Own Tracks, plus received ones where this drone's own map shows nothing."""
+        """Own Tracks plus received ones; overlapping drone Suspicions merge into one
+        (belief.merge_overlapping). Other received Tracks count only where this drone's own
+        map shows nothing."""
         out = list(self._tracks)
         for tr in self.belief.received_tracks(t):
-            if any(math.hypot(o.x - tr.x, o.y - tr.y) <= 150.0 for o in out):
-                continue
             status = TrackStatus.SUSPECTED if tr.status == TrackStatus.VERIFYING else tr.status
-            out.append(TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
-                                tr.cls, tr.confidence, status, origins=2,
-                                strength=math.log(max(tr.confidence, 1e-3)
-                                                  / max(1 - tr.confidence, 1e-3))))
-        return out
+            est = TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
+                           tr.cls, tr.confidence, status, origins=2,
+                           strength=math.log(max(tr.confidence, 1e-3)
+                                             / max(1 - tr.confidence, 1e-3)))
+            if not mergeable(est) and any(math.hypot(o.x - tr.x, o.y - tr.y) <= 150.0
+                                           for o in out):
+                continue
+            out.append(est)
+        return merge_overlapping(out, self.city.bounds)
 
     # -- radio ----------------------------------------------------------------------------
 

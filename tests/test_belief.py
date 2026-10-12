@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from earshot.agent.belief import TAU, Belief
+from earshot.agent.belief import TAU, Belief, TrackEst, cell_id, merge_overlapping
 from earshot.city import City
 from earshot.messages import Header, Mode, Observation, Sensor, TargetClass, TrackStatus
 
@@ -141,3 +141,32 @@ def test_evidence_of_a_silent_sensor_fades_with_tau():
     b.advance(t + 30.0)  # both drones silent for one TAU
     z_later = b._logits()[0, iy, ix] - b.prior[0, iy, ix]
     assert z_later == pytest.approx(z_now * math.exp(-30.0 / TAU), rel=0.05)
+
+
+def _zone(x, y, a=120.0, b=60.0, angle=0.0, strength=5.0, status=TrackStatus.SUSPECTED):
+    return TrackEst(cell_id(x, y, CITY.bounds), x, y, a, b, angle, TargetClass.DRONE, 0.9, status,
+                    origins=2, strength=strength)
+
+
+def test_overlapping_zones_merge_at_their_strength_weighted_mean():
+    truth, ghost_w, ghost_e = _zone(0, 0, strength=15.0), _zone(-150, 0), _zone(150, 30)
+    far = _zone(0, 600)  # a second danger: no overlap
+    out = merge_overlapping([truth, far, ghost_w, ghost_e], CITY.bounds)
+    assert len(out) == 2
+    merged = out[0]
+    assert merged.x == pytest.approx((15 * 0 - 5 * 150 + 5 * 150) / 25)
+    assert merged.y == pytest.approx(5 * 30 / 25)
+    assert merged.semi_major == truth.semi_major and merged.strength == 15.0
+    assert out[1] == far
+
+
+def test_zones_that_only_touch_end_to_end_overlap_and_side_by_side_ones_do_not():
+    # long axes along x: 120 m reach each way along x, 60 m along y
+    assert len(merge_overlapping([_zone(0, 0), _zone(230, 0)], CITY.bounds)) == 1
+    assert len(merge_overlapping([_zone(0, 0), _zone(0, 130)], CITY.bounds)) == 2
+
+
+def test_a_confirmed_zone_confirms_the_merged_one():
+    out = merge_overlapping([_zone(0, 0), _zone(100, 0, status=TrackStatus.CONFIRMED)],
+                            CITY.bounds)
+    assert len(out) == 1 and out[0].status == TrackStatus.CONFIRMED

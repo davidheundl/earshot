@@ -37,8 +37,8 @@ Model (concept section 6):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from itertools import pairwise
+from dataclasses import dataclass, replace
+from itertools import combinations, pairwise
 
 import numpy as np
 
@@ -106,7 +106,7 @@ class TrackEst:
     y: float
     semi_major: float
     semi_minor: float
-    angle: float  # degrees
+    angle: float  # degrees, major axis from east, counter-clockwise
     cls: TargetClass
     confidence: float
     status: TrackStatus
@@ -126,6 +126,67 @@ def cell_center(cid: int, bounds) -> tuple[float, float]:
     x0, y0, x1, _ = bounds
     nx = math.ceil((x1 - x0) / 100.0)
     return x0 + (cid % nx) * 100.0 + 50.0, y0 + (cid // nx) * 100.0 + 50.0
+
+
+def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
+    """Overlapping drone Suspicions are one danger seen several times (Ghosts beside the
+    truth, neighbours' reports of it): they become one Suspicion at the strength-weighted mean
+    of their positions, the most likely place to find it. Log-odds weight, not probability:
+    probability saturates near 1 for the truth and Ghosts alike. The merged ellipse is the
+    strongest member's, moved to the mean; it is CONFIRMED if any member is. Other Tracks
+    pass unchanged; a merged one takes its first member's place in the list."""
+    idx = [i for i, tr in enumerate(tracks) if mergeable(tr)]
+    root = {i: i for i in idx}
+
+    def find(i: int) -> int:
+        while root[i] != i:
+            i = root[i]
+        return i
+
+    for a, b in combinations(idx, 2):
+        if _overlap(tracks[a], tracks[b]):
+            ra, rb = find(a), find(b)
+            root[max(ra, rb)] = min(ra, rb)
+    groups: dict[int, list[TrackEst]] = {}
+    for i in idx:
+        groups.setdefault(find(i), []).append(tracks[i])
+    out = []
+    for i, tr in enumerate(tracks):
+        if i not in root:
+            out.append(tr)
+        elif i in groups:  # the group's first member
+            out.append(_merged(groups[i], bounds))
+    return out
+
+
+def mergeable(tr: TrackEst) -> bool:
+    return tr.cls == TargetClass.DRONE and tr.status != TrackStatus.EXPLAINED
+
+
+def _reach(tr: TrackEst, theta: float) -> float:
+    """Distance from the ellipse's centre to its edge in direction theta (radians from east)."""
+    a, b = max(tr.semi_major, 1.0), max(tr.semi_minor, 1.0)
+    phi = theta - math.radians(tr.angle)
+    return a * b / math.hypot(b * math.cos(phi), a * math.sin(phi))
+
+
+def _overlap(p: TrackEst, q: TrackEst) -> bool:
+    theta = math.atan2(q.y - p.y, q.x - p.x)
+    return math.hypot(q.x - p.x, q.y - p.y) <= _reach(p, theta) + _reach(q, theta)
+
+
+def _merged(group: list[TrackEst], bounds) -> TrackEst:
+    if len(group) == 1:
+        return group[0]
+    w = [max(tr.strength, 0.1) for tr in group]
+    x = sum(wi * tr.x for wi, tr in zip(w, group, strict=True)) / sum(w)
+    y = sum(wi * tr.y for wi, tr in zip(w, group, strict=True)) / sum(w)
+    best = max(group, key=lambda tr: tr.strength)
+    confirmed = any(tr.status == TrackStatus.CONFIRMED for tr in group)
+    return replace(best, track_id=cell_id(x, y, bounds), x=x, y=y,
+                   confidence=max(tr.confidence for tr in group),
+                   origins=max(tr.origins for tr in group),
+                   status=TrackStatus.CONFIRMED if confirmed else best.status)
 
 
 _PRIORS: tuple[City, float, np.ndarray] | None = None  # the last (City, cell)'s priors
@@ -459,8 +520,8 @@ class Belief:
                 support=by_sensor + ((-2, "prior", prior),),
             ))
             alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
-        self._track_cache = out
-        return out
+        self._track_cache = out  # raw peaks: the Faulty Sensor check wants tight ellipses
+        return merge_overlapping(out, self.city.bounds)
 
     def _status(self, cls: TargetClass, x: float, y: float, t_now: float) -> TrackStatus:
         if cls == TargetClass.TRAIN and self.city.distance_to_rail(x, y) <= EXPLAIN_DISTANCE:
