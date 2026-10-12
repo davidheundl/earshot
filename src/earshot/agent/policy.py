@@ -106,6 +106,8 @@ class Policy:
         xs = np.arange(city.bounds[0] + SECTOR_CELL / 2, city.bounds[2], SECTOR_CELL)
         ys = np.arange(city.bounds[1] + SECTOR_CELL / 2, city.bounds[3], SECTOR_CELL)
         self._SX, self._SY = np.meshgrid(xs, ys)
+        self._sectors: dict[tuple[int, ...], tuple] = {}  # available ids -> _sector()
+        self._p_hear: dict[tuple, float] = {}  # (site, x, y) -> P(hear an intruder there)
 
     # -- main -----------------------------------------------------------------------------
 
@@ -244,16 +246,22 @@ class Policy:
     def _best_listening_roof(self, s, task: _Task, taken) -> tuple:
         listeners = self._listeners(task)
         best, best_score = None, 0.0
+        if len(self._p_hear) > 4096:
+            self._p_hear.clear()
         for site in self._sites.values():
             d = math.hypot(site.x - task.x, site.y - task.y)
             if d > ROOF_SEARCH_RADIUS:
                 continue
             if any(math.hypot(site.x - x, site.y - y) < 20 for x, y in taken + listeners):
                 continue
-            nb = self.city.obstacles_between((site.x, site.y), (task.x, task.y), site.z + 0.5,
-                                             float(self.city.ground(task.x, task.y)) + 30.0)
-            lp = ac.received_level(INTRUDER_LW, TargetClass.DRONE, d, nb)
-            p_hear = ac.detection_probability(lp - ASSUMED_BACKGROUND_DB, TargetClass.DRONE)
+            key = (site.id, task.x, task.y)  # a Track moves at most once per second
+            if key not in self._p_hear:
+                nb = self.city.obstacles_between((site.x, site.y), (task.x, task.y), site.z + 0.5,
+                                                 float(self.city.ground(task.x, task.y)) + 30.0)
+                lp = ac.received_level(INTRUDER_LW, TargetClass.DRONE, d, nb)
+                self._p_hear[key] = ac.detection_probability(lp - ASSUMED_BACKGROUND_DB,
+                                                             TargetClass.DRONE)
+            p_hear = self._p_hear[key]
             ang = math.atan2(task.x - site.x, task.y - site.y)
             q = min((abs(math.sin(ang - math.atan2(task.x - lx, task.y - ly)))
                      for lx, ly in listeners), default=1.0)
@@ -371,6 +379,12 @@ class Policy:
 
     def _sector(self, available: list[int]):
         """Centroid, patrol radius and whether my Voronoi cell grew beyond its full-swarm size."""
+        key = tuple(sorted(available))
+        if key not in self._sectors:  # depends only on which drones are home
+            self._sectors[key] = self._compute_sector(available)
+        return self._sectors[key]
+
+    def _compute_sector(self, available: list[int]):
         def cell(ids):
             homes = np.array([self.swarm.homes[i] for i in ids])
             d = np.hypot(self._SX[..., None] - homes[:, 0], self._SY[..., None] - homes[:, 1])

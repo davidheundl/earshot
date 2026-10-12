@@ -126,6 +126,9 @@ def cell_center(cid: int, bounds) -> tuple[float, float]:
     return x0 + (cid % nx) * 100.0 + 50.0, y0 + (cid // nx) * 100.0 + 50.0
 
 
+_PRIORS: tuple[City, float, np.ndarray] | None = None  # the last (City, cell)'s priors
+
+
 class Belief:
     def __init__(self, city: City, cell: float = 20.0):
         self.city = city
@@ -147,17 +150,24 @@ class Belief:
         self._fault_streak: dict[int, int] = {}
         self._track_cache: list[TrackEst] = []  # last extracted Tracks, for check_faults
         self._fault_stats: dict[int, list[int]] = {}  # origin -> [checked, unconfirmed]
+        self._post: tuple[tuple, np.ndarray] | None = None  # (stamp, posterior) cache
         self.n_evidence = 0
 
     # -- priors ---------------------------------------------------------------------------
 
     def _priors(self) -> np.ndarray:
+        """Read-only; the drones of one process share them (lockstep runs ten Beliefs)."""
+        global _PRIORS
+        if _PRIORS is not None and _PRIORS[0] is self.city and _PRIORS[1] == self.cell:
+            return _PRIORS[2]
         prior = np.empty((3, *self.shape))
         prior[0] = PRIOR_DRONE
         d_road = self._distance_to(self.city.roads)
         d_rail = self._distance_to(self.city.rails)
         prior[1] = np.where(d_road <= ROAD_WIDTH, PRIOR_VEHICLE_ROAD, PRIOR_VEHICLE_ELSEWHERE)
         prior[2] = np.where(d_rail <= RAIL_WIDTH, PRIOR_TRAIN_RAIL, PRIOR_TRAIN_ELSEWHERE)
+        prior.flags.writeable = False
+        _PRIORS = (self.city, self.cell, prior)
         return prior
 
     def _distance_to(self, lines) -> np.ndarray:
@@ -276,21 +286,43 @@ class Belief:
 
     # -- reading --------------------------------------------------------------------------
 
-    def _logits(self, exclude: int | None = None) -> np.ndarray:
+    def _contributions(self) -> dict[tuple[int, str], np.ndarray]:
+        """Each trusted (origin, family)'s capped evidence, in insertion order."""
+        return {key: self._contribution(key, g) for key, g in self._G.items()
+                if key[0] not in self.faulty}
+
+    def _logits(self, contribs: dict | None = None) -> np.ndarray:
         total = self.prior + self._C
-        for key, g in self._G.items():
-            if key[0] in self.faulty or key[0] == exclude:
-                continue
-            total = total + self._contribution(key, g)
+        for c in (self._contributions() if contribs is None else contribs).values():
+            total = total + c
         return total
 
     def _contribution(self, key, g: np.ndarray) -> np.ndarray:
         """At most N_EFF readings' worth: the sum while few, the average times N_EFF after."""
         return g * np.minimum(1.0, N_EFF / np.maximum(self._W[key], 1e-9))
 
+    def _threat_logodds_at(self, iy: int, ix: int, exclude: int) -> float:
+        """Threat log-odds of one cell without `exclude`'s evidence (same sums as `_logits`)."""
+        total = self.prior[:, iy, ix] + self._C[:, iy, ix]
+        for key, g in self._G.items():
+            if key[0] in self.faulty or key[0] == exclude:
+                continue
+            total = total + g[:, iy, ix] * min(1.0, N_EFF / max(self._W[key][iy, ix], 1e-9))
+        return float(np.log(np.exp(total).sum()))
+
+    def _stamp(self) -> tuple:
+        """Changes whenever the map can change: decay, new evidence, a Faulty Sensor."""
+        return self._t, self.n_evidence, tuple(sorted(self.faulty))
+
     def posterior(self) -> np.ndarray:
-        """(4, ny, nx): P(drone), P(vehicle), P(train), P(nothing) per cell."""
-        z = self._logits()
+        """(4, ny, nx): P(drone), P(vehicle), P(train), P(nothing) per cell. Read-only."""
+        stamp = self._stamp()
+        if self._post is None or self._post[0] != stamp:
+            self._post = (stamp, self._posterior_of(self._logits()))
+        return self._post[1]
+
+    @staticmethod
+    def _posterior_of(z: np.ndarray) -> np.ndarray:
         m = np.maximum(z.max(axis=0), 0.0)
         e = np.exp(z - m)
         nothing = np.exp(-m)
@@ -320,7 +352,6 @@ class Belief:
                 continue
             last = hist[-1]
             perched = last.mode == Mode.LISTEN
-            zt = np.log(np.exp(self._logits(exclude=o)).sum(axis=0))
             verdicts = []
             for tr in self._track_cache:
                 d = math.hypot(tr.x - last.x, tr.y - last.y)
@@ -330,8 +361,7 @@ class Belief:
                     continue
                 if not self._should_hear(last, tr, d):
                     continue  # behind buildings or near the edge: silence proves nothing
-                iy, ix = self._cell(tr.x, tr.y)
-                if zt[iy, ix] < FAULT_STRONG:
+                if self._threat_logodds_at(*self._cell(tr.x, tr.y), exclude=o) < FAULT_STRONG:
                     continue
                 expected = math.degrees(math.atan2(tr.x - last.x, tr.y - last.y)) % 360.0
                 # the Track's own uncertainty plus motion lag, seen from this distance
@@ -371,15 +401,16 @@ class Belief:
 
     def tracks(self, t_now: float) -> list[TrackEst]:
         self.advance(t_now)
-        post = self.posterior()
+        contribs = self._contributions()
+        z = self._logits(contribs)
+        post = self._posterior_of(z)
+        self._post = (self._stamp(), post)
         threat = post[:3].sum(axis=0)
         alive = threat.copy()
         out: list[TrackEst] = []
         support: dict[int, np.ndarray] = {}
-        for key, g in self._G.items():
-            if key[0] not in self.faulty:
-                support[key[0]] = support.get(key[0], 0) + self._contribution(key, g)
-        z = self._logits()
+        for key, c in contribs.items():
+            support[key[0]] = support.get(key[0], 0) + c
         zt = np.log(np.exp(z).sum(axis=0))  # threat log-odds: sharp where bearings cross
         for _ in range(MAX_TRACKS):
             iy, ix = np.unravel_index(int(np.argmax(alive)), self.shape)
@@ -387,7 +418,8 @@ class Belief:
             if peak < TRACK_THRESHOLD:
                 break
             px, py = self.X[iy, ix], self.Y[iy, ix]
-            near = np.hypot(self.X - px, self.Y - py) <= TRACK_RADIUS
+            dist = np.hypot(self.X - px, self.Y - py)
+            near = dist <= TRACK_RADIUS
             # relative likelihood, not probability: probability saturates into a plateau
             wts = np.where(near, np.exp(np.clip(zt - zt[iy, ix], -30, 0)), 0.0)
             wts[wts < 0.05] = 0.0
@@ -403,8 +435,7 @@ class Belief:
             cls = THREATS[ci]
             origins = sum(1 for s in support.values() if s[ci][iy, ix] > 1.0)
             by_sensor = tuple(sorted(
-                ((o, fam, round(float(self._contribution((o, fam), g)[ci][iy, ix]), 2))
-                 for (o, fam), g in self._G.items() if o not in self.faulty),
+                ((o, fam, round(float(c[ci, iy, ix]), 2)) for (o, fam), c in contribs.items()),
                 key=lambda e: -abs(e[2])))
             by_sensor = tuple(e for e in by_sensor if abs(e[2]) >= 0.05)
             cam = float(self._C[ci][iy, ix])
@@ -419,7 +450,7 @@ class Belief:
                 strength=float(zt[iy, ix]),
                 support=by_sensor + ((-2, "prior", prior),),
             ))
-            alive = np.where(np.hypot(self.X - px, self.Y - py) <= TRACK_SUPPRESS, 0.0, alive)
+            alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
         self._track_cache = out
         return out
 
