@@ -252,14 +252,30 @@ def create_app(scenario_path: str) -> FastAPI:
 
     to_world = zmq.Context.instance().socket(zmq.PUSH)
     to_world.setsockopt(zmq.LINGER, 0)
+    to_world.setsockopt(zmq.SNDHWM, 100)
     to_world.connect(config.WORLD_PULL)
+
+    def send_world(msg: dict) -> bool:
+        """Never block the event loop: with no world running, drop instead of queueing."""
+        try:
+            to_world.send(pack(msg), zmq.NOBLOCK)
+            return True
+        except zmq.Again:
+            return False
+
+    async def json_body(request: Request):
+        try:
+            return await request.json()
+        except ValueError:
+            return None
 
     @app.post("/control")
     async def control(request: Request):
-        op = await request.json()
+        op = await json_body(request)
         if not isinstance(op, dict) or "op" not in op:
             return JSONResponse({"error": "missing op"}, status_code=400)
-        to_world.send(pack(op))
+        if not send_world(op):
+            return JSONResponse({"error": "no world running"}, status_code=503)
         return {"queued": op["op"]}
 
     scenario_json = {
@@ -302,15 +318,27 @@ def create_app(scenario_path: str) -> FastAPI:
         """Drone camera frames: only frames newer than the last one this client got."""
         await sock.accept()
         last: dict[int, str] = {}
+        closed = asyncio.Event()
+
+        async def watch():  # without a receive, a closed client is noticed only on a send
+            try:
+                while True:
+                    await sock.receive_text()
+            except Exception:  # noqa: BLE001 - closed: stop the sender
+                closed.set()
+
+        watcher = asyncio.create_task(watch())
         try:
-            while True:
+            while not closed.is_set():
                 for k, f in list(cams.items()):
                     if last.get(k) is not f["jpeg"]:
                         last[k] = f["jpeg"]
                         await sock.send_text(json.dumps({"k": k, **f}))
                 await asyncio.sleep(0.05)
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError, OSError):
             pass
+        finally:
+            watcher.cancel()
 
     @app.websocket("/ws/audio")
     async def ws_audio(sock: WebSocket):
@@ -344,9 +372,10 @@ def create_app(scenario_path: str) -> FastAPI:
     async def view(request: Request):
         """{"views": [[drone, "pilot" | "chase"], ...]} for the four view cameras, or
         {"views": null}: the screen still shows them (keepalive), assignment unchanged."""
-        body = await request.json()
-        to_world.send(pack({"op": "view", "views": body.get("views")}))
-        return {"ok": True}
+        body = await json_body(request)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "expected {\"views\": ...}"}, status_code=400)
+        return {"ok": send_world({"op": "view", "views": body.get("views")})}
 
     @app.get("/classic")
     async def classic():

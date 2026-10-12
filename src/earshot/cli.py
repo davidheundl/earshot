@@ -90,7 +90,7 @@ def stale_webots() -> list[str]:
     """Webots instances an earlier Earshot run left on our port (never the user's own Webots,
     which has no --port flag). While one lives, a new instance silently moves to the next
     port and our controller would connect to the stale one."""
-    out = subprocess.run(["pgrep", "-f", f"webots --port={config.WEBOTS_PORT}"],
+    out = subprocess.run(["pgrep", "-f", f"webots.* --port={config.WEBOTS_PORT}"],
                          capture_output=True, text=True, check=False).stdout
     return out.split()
 
@@ -155,10 +155,40 @@ def cmd_live(a) -> None:
     sc = Scenario.load(a.scenario)
     py = sys.executable
     procs: list[subprocess.Popen] = []
+    # everything that can fail on bad arguments, before the first process starts
+    events = _resolve_events(a.events) if a.events else None
+    bad = [x for x in (a.array or []) if "=" not in x]
+    if bad:
+        sys.exit(f"--array takes <drone id>=<device>[@rotation], got {bad}")
+    arrays = dict(x.split("=", 1) for x in (a.array or []))
 
     def spawn(args, env=None):
         procs.append(subprocess.Popen([py, "-m", *args], env=env))
 
+    def _stop(*_):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _stop)  # explicit: background jobs inherit SIGINT=ignore
+    signal.signal(signal.SIGTERM, _stop)
+    try:
+        _launch(a, sc, py, procs, spawn, events, arrays)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.terminate()
+        deadline = time.time() + 2.0
+        for p in procs:
+            try:
+                p.wait(timeout=max(0.0, deadline - time.time()))
+            except subprocess.TimeoutExpired:
+                p.kill()
+
+
+def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
+    """Start Webots (optional), radio, agents, dashboard and world; return when the world
+    ends. A crashed helper is reported, not fatal (the dashboard never stops a run)."""
     if a.backend == "webots":
         world_file = Path(f"webots/worlds/{sc.name}.wbt")
         subprocess.run([py, "tools/build_webots_world.py", a.scenario, str(world_file)], check=True)
@@ -176,7 +206,6 @@ def cmd_live(a) -> None:
             time.sleep(3)
 
     spawn(["earshot.runners.radio_proc", "--scenario", a.scenario])
-    arrays = dict(x.split("=", 1) for x in (a.array or []))
     for d in sc.drones:
         extra = ["--array", arrays[str(d.id)]] if str(d.id) in arrays else []
         spawn(["earshot.runners.agent_proc", "--id", str(d.id), "--scenario", a.scenario, *extra])
@@ -186,8 +215,8 @@ def cmd_live(a) -> None:
     time.sleep(1.0)
     world_args = ["earshot.runners.world_proc", "--scenario", a.scenario, "--backend", a.backend,
                   "--speed", str(a.speed)]
-    if a.events:
-        world_args += ["--events", str(_resolve_events(a.events))]
+    if events:
+        world_args += ["--events", str(events)]
     if a.duration:
         world_args += ["--duration", str(a.duration)]
     if a.audio:
@@ -196,25 +225,16 @@ def cmd_live(a) -> None:
         world_args += ["--classifier", a.classifier]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
-    def _stop(*_):
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGINT, _stop)  # explicit: background jobs inherit SIGINT=ignore
-    signal.signal(signal.SIGTERM, _stop)
-    try:
-        procs[-1].wait()  # the world ends the run
-    except KeyboardInterrupt:
-        pass
-    finally:
-        for p in procs:
-            if p.poll() is None:
-                p.terminate()
-        deadline = time.time() + 2.0
-        for p in procs:
-            try:
-                p.wait(timeout=max(0.0, deadline - time.time()))
-            except subprocess.TimeoutExpired:
-                p.kill()
+    world, reported = procs[-1], set()
+    while world.poll() is None:  # the world ends the run
+        for p in procs[:-1]:
+            if p.poll() is not None and p.pid not in reported:
+                reported.add(p.pid)
+                print(f"[live] {' '.join(map(str, p.args[-4:]))} exited with {p.returncode}",
+                      flush=True)
+        time.sleep(0.5)
+    if world.returncode:
+        print(f"[live] world exited with {world.returncode}", flush=True)
 
 
 # -- doctor -------------------------------------------------------------------------------

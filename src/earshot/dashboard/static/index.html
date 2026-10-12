@@ -256,7 +256,7 @@ function toast(msg) { const t = document.getElementById("toast"); t.textContent 
   t.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 1800); }
 function send(op) {
   fetch("/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(op) })
-    .then(r => r.json()).then(() => toast(`sent: ${op.op}`)).catch(() => toast("dashboard cannot reach the world"));
+    .then(r => r.json()).then(j => toast(j.error || `sent: ${op.op}`)).catch(() => toast("dashboard cannot reach the world"));
 }
 function nearestDrone([x, y]) {
   if (!last) return null;
