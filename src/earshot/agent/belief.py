@@ -12,13 +12,15 @@ Interface:
 
 Model (concept section 6):
 - Per cell and threat class k (drone, vehicle, train) a log-odds against "nothing here":
-      logit_k = prior_k(cell) + sum_(o,f) G_o,f,k(cell) * min(1, N_EFF / W_o,f(cell)) + C_k(cell)
+      logit_k = prior_k(cell) + sum_(o,f) G_o,f,k(cell) * min(1, N_EFF * D_o,f / W_o,f(cell)) + C_k(cell)
   G_o,f is the summed log-likelihood ratio from origin o (one Drone) through sensor family f
   (sound, RF) and W_o,f the summed weight (how many readings covered the cell). Repeated
   readings from one static sensor have correlated errors, so each contribution counts as at
   most N_EFF independent readings: beyond that it is their average, which keeps the wedge's
   shape (a capped sum would flatten it). G and W stay plain sums, so arrival order never
-  matters (concept 8.4). C holds camera evidence, which is strong and not capped.
+  matters (concept 8.4). D_o,f = exp(-(t - newest reading of o,f) / TAU): G and W decay
+  alike, so without it a capped average would never fade once its sensor falls silent.
+  C holds camera evidence, which is strong and not capped.
 - Evidence is a bounded log-likelihood ratio. A sound bearing raises cells along its wedge and
   mildly lowers the other cells within hearing range (mildly: the reading may come from a
   different source or be an outlier). An RF reading raises the ring at the distance its band
@@ -139,6 +141,7 @@ class Belief:
         self.prior = self._priors()
         self._G: dict[tuple[int, str], np.ndarray] = {}  # (origin, family) -> (3, ny, nx) LLR
         self._W: dict[tuple[int, str], np.ndarray] = {}  # (origin, family) -> (ny, nx) weight
+        self._newest: dict[tuple[int, str], float] = {}  # (origin, family) -> newest reading t
         self._C = np.zeros((3, *self.shape))  # camera evidence
         self._t = 0.0
         self._tracks_rx: dict[tuple[int, int], Track] = {}
@@ -212,6 +215,7 @@ class Belief:
         key = (obs.header.origin, family)
         g = self._G.setdefault(key, np.zeros((3, *self.shape)))
         wgt = self._W.setdefault(key, np.zeros(self.shape))
+        self._newest[key] = max(self._newest.get(key, obs.t), obs.t)
         if obs.sensor == Sensor.SOUND:
             self._sound(obs, g, wgt, w)
             last = self.last_sound.get(obs.header.origin)
@@ -298,8 +302,12 @@ class Belief:
         return total
 
     def _contribution(self, key, g: np.ndarray) -> np.ndarray:
-        """At most N_EFF readings' worth: the sum while few, the average times N_EFF after."""
-        return g * np.minimum(1.0, N_EFF / np.maximum(self._W[key], 1e-9))
+        """At most N_EFF readings' worth: the sum while few, the average times N_EFF after
+        (fading with TAU from the newest reading)."""
+        return g * np.minimum(1.0, self._cap(key) / np.maximum(self._W[key], 1e-9))
+
+    def _cap(self, key) -> float:
+        return N_EFF * math.exp(-max(0.0, self._t - self._newest[key]) / TAU)
 
     def _threat_logodds_at(self, iy: int, ix: int, exclude: int) -> float:
         """Threat log-odds of one cell without `exclude`'s evidence (same sums as `_logits`)."""
@@ -307,7 +315,7 @@ class Belief:
         for key, g in self._G.items():
             if key[0] in self.faulty or key[0] == exclude:
                 continue
-            total = total + g[:, iy, ix] * min(1.0, N_EFF / max(self._W[key][iy, ix], 1e-9))
+            total = total + g[:, iy, ix] * min(1.0, self._cap(key) / max(self._W[key][iy, ix], 1e-9))
         return float(np.log(np.exp(total).sum()))
 
     def _stamp(self) -> tuple:

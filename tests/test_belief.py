@@ -3,8 +3,9 @@ import random
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from earshot.agent.belief import Belief
+from earshot.agent.belief import TAU, Belief
 from earshot.city import City
 from earshot.messages import Header, Mode, Observation, Sensor, TargetClass, TrackStatus
 
@@ -129,3 +130,14 @@ def test_stuck_bearing_is_flagged_as_faulty_sensor():
         b.tracks(k)
         b.check_faults(k)
     assert b.faulty == {2}
+
+
+def test_evidence_of_a_silent_sensor_fades_with_tau():
+    b = Belief(CITY)
+    t = listen(b, {0: WEST, 1: SOUTH}, TARGET, seconds=60)  # saturated: W >> N_EFF
+    iy, ix = b._cell(*TARGET)
+    b.advance(t)
+    z_now = b._logits()[0, iy, ix] - b.prior[0, iy, ix]
+    b.advance(t + 30.0)  # both drones silent for one TAU
+    z_later = b._logits()[0, iy, ix] - b.prior[0, iy, ix]
+    assert z_later == pytest.approx(z_now * math.exp(-30.0 / TAU), rel=0.05)
