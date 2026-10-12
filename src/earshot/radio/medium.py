@@ -103,6 +103,7 @@ class RadioMedium:
         self._busy_until: dict[int, float] = {}
         self._history: dict[int, deque[tuple[float, float]]] = {}  # sender -> (start, airtime)
         self._in_flight: list[_Tx] = []
+        self._ended: list[_Tx] = []  # finished, but overlapping a frame still in flight
         self._t = 0.0
         self._s = _Stats()
         self.links: dict[tuple[int, int], float] = {}  # (sender, receiver) -> last delivery t
@@ -192,8 +193,8 @@ class RadioMedium:
             if any(math.dist(p[:2], z.center) <= z.radius for z in jam_zones)
         }
         for tx in sorted(done, key=lambda x: x.end):
-            overlapping = [o for o in self._in_flight if o is not tx and o.start < tx.end
-                           and tx.start < o.end]
+            overlapping = [o for o in self._in_flight + self._ended if o is not tx
+                           and o.start < tx.end and tx.start < o.end]
             for r, rpos in positions.items():
                 if r == tx.sender:
                     continue
@@ -215,4 +216,7 @@ class RadioMedium:
                 self.links[(tx.sender, r)] = t
                 self._s.delivered += 1
         self._in_flight = [x for x in self._in_flight if x.end > t]
+        # a frame that ends in a later tick still collides with one that ended in this one
+        self._ended = [x for x in self._ended + done
+                       if any(o.start < x.end for o in self._in_flight)]
         return out

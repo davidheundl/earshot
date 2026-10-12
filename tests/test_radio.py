@@ -56,3 +56,15 @@ def test_simultaneous_equal_power_collide():
     pos = {0: (-200, 0, 40), 1: (200, 0, 40), 2: (0, 0, 40)}
     got = _run(m, pos, {0: [b"a" * 30], 1: [b"b" * 30]})
     assert 2 not in got
+
+
+def test_overlap_across_a_tick_boundary_collides_both_frames():
+    from earshot.radio.medium import _Tx
+    m = _medium(nominal_range_m=500)
+    pos = {0: (-200, 0, 40), 1: (200, 0, 40), 2: (0, 0, 40)}
+    # A ends in the first tick, B (overlapping A) in the second
+    m._in_flight = [_Tx(0, b"a" * 30, 0.070, 0.091, pos[0]), _Tx(1, b"b" * 30, 0.085, 0.106, pos[1])]
+    got = m.step(0.1, pos, {})
+    for r, frames in m.step(0.2, pos, {}).items():
+        got.setdefault(r, []).extend(frames)
+    assert got == {}  # half duplex at 0 and 1, equal-power collision at 2
