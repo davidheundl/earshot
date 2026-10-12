@@ -130,11 +130,12 @@ def cell_center(cid: int, bounds) -> tuple[float, float]:
 
 def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
     """Overlapping drone Suspicions are one danger seen several times (Ghosts beside the
-    truth, neighbours' reports of it): they become one Suspicion at the strength-weighted mean
-    of their positions, the most likely place to find it. Log-odds weight, not probability:
-    probability saturates near 1 for the truth and Ghosts alike. The merged ellipse is the
-    strongest member's, moved to the mean; it is CONFIRMED if any member is. Other Tracks
-    pass unchanged; a merged one takes its first member's place in the list."""
+    truth, neighbours' reports of it): they become one Suspicion at the likelihood-weighted
+    mean of their positions (weight exp(log-odds)), the most likely place to find it: zones
+    of similar strength average evenly, a clearly weaker Ghost barely pulls (the peak
+    probability saturates near 1 for the truth and Ghosts alike, so it cannot rank them).
+    The merged ellipse is the strongest member's, moved to the mean; it is CONFIRMED if any
+    member is. Other Tracks pass unchanged; a merged one takes its first member's place."""
     idx = [i for i, tr in enumerate(tracks) if mergeable(tr)]
     root = {i: i for i in idx}
 
@@ -178,7 +179,8 @@ def _overlap(p: TrackEst, q: TrackEst) -> bool:
 def _merged(group: list[TrackEst], bounds) -> TrackEst:
     if len(group) == 1:
         return group[0]
-    w = [max(tr.strength, 0.1) for tr in group]
+    top = max(tr.strength for tr in group)
+    w = [math.exp(tr.strength - top) for tr in group]  # likelihood, relative to the strongest
     x = sum(wi * tr.x for wi, tr in zip(w, group, strict=True)) / sum(w)
     y = sum(wi * tr.y for wi, tr in zip(w, group, strict=True)) / sum(w)
     best = max(group, key=lambda tr: tr.strength)

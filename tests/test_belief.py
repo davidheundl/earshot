@@ -148,15 +148,15 @@ def _zone(x, y, a=120.0, b=60.0, angle=0.0, strength=5.0, status=TrackStatus.SUS
                     origins=2, strength=strength)
 
 
-def test_overlapping_zones_merge_at_their_strength_weighted_mean():
-    truth, ghost_w, ghost_e = _zone(0, 0, strength=15.0), _zone(-150, 0), _zone(150, 30)
+def test_overlapping_zones_merge_at_their_likelihood_weighted_mean():
+    a, b = _zone(0, 0, strength=9.0), _zone(160, 40, strength=9.0)  # equally likely
+    ghost = _zone(-150, 0, strength=3.0)  # e^6 times less likely
     far = _zone(0, 600)  # a second danger: no overlap
-    out = merge_overlapping([truth, far, ghost_w, ghost_e], CITY.bounds)
+    out = merge_overlapping([a, far, b, ghost], CITY.bounds)
     assert len(out) == 2
     merged = out[0]
-    assert merged.x == pytest.approx((15 * 0 - 5 * 150 + 5 * 150) / 25)
-    assert merged.y == pytest.approx(5 * 30 / 25)
-    assert merged.semi_major == truth.semi_major and merged.strength == 15.0
+    assert merged.x == pytest.approx(80.0, abs=1.0) and merged.y == pytest.approx(20.0, abs=0.5)
+    assert merged.semi_major == a.semi_major and merged.strength == 9.0
     assert out[1] == far
 
 
