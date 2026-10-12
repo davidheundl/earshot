@@ -5,7 +5,8 @@ Interface:
     sensed = world.step(commands)     -> {drone_id: Sensed}, advances by scenario.dt
     world.detections                  -> this step's readings with their truth (logs, metrics)
     world.snapshot(telemetry)         -> JSON-able dict for the dashboard / run log
-    world.audio                       -> this step's sound windows as audio (with `audio=`)
+    world.audio                       -> this step's sound windows as audio (with `audio=`);
+                                         snapshot() then carries each drone's sound spectrum
 
 The World is the only module that sees both truth and drones; Sensed carries readings only,
 so Agents cannot see ground truth (ADR 0001). Runners own the clock.
@@ -21,6 +22,7 @@ from earshot.backend import Backend
 from earshot.city import City
 from earshot.scenario import Scenario
 from earshot.sensors import Audio, SensorSuite
+from earshot.sensors.waveform import spectrum
 from earshot.state import Command, DroneState, Sensed
 
 
@@ -41,6 +43,7 @@ class World:
         self.sensors = SensorSuite(city, scenario, np.random.default_rng(scenario.seed + 1),
                                    audio)
         self.audio: list = []  # sensors.waveform.AudioWindow rendered this step
+        self._spectra: dict[int, list[int]] = {}  # drone -> its newest window's spectrum
 
     def control(self, op: dict) -> None:
         """Queue a live event (dashboard hotkey); it takes effect at the next step."""
@@ -79,6 +82,8 @@ class World:
                     "truth": det.truth, "snr": det.snr_db,
                 })
             sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame)
+        for w in self.audio:
+            self._spectra[w.drone] = spectrum(w.mix)
         self._recent = [d for d in self._recent if self.t - d["t"] < 3.0] + [
             d for d in self.detections if d["sensor"] == "SOUND"
         ]
@@ -116,6 +121,7 @@ class World:
                     "agl": round(s.z - float(self.city.ground(s.x, s.y)), 1),
                     "mode": s.mode.name, "perched_on": s.perched_on, "battery": s.battery,
                     "camera_on": s.camera_on, "telemetry": telemetry.get(s.id, {}),
+                    **({"spectrum": self._spectra[s.id]} if s.id in self._spectra else {}),
                 }
                 for s in self.states.values()
             ],

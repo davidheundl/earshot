@@ -25,6 +25,7 @@ a beam into the class probabilities of a SensorReading before it leaves the Worl
 from __future__ import annotations
 
 import importlib
+import itertools
 import math
 import wave
 import zlib
@@ -225,6 +226,23 @@ class AudioWindow:
                              "snr_db": _r(p.snr_db), "distance": round(p.distance, 1),
                              "buildings": p.n_buildings, "bearing": round(p.bearing, 1)}
                             for p in self.parts]}
+
+
+SPECTRUM_BANDS = 24  # log-spaced, SPECTRUM_LO_HZ..SPECTRUM_HI_HZ
+SPECTRUM_LO_HZ, SPECTRUM_HI_HZ = 50.0, 8000.0
+
+
+def spectrum(x: np.ndarray) -> list[int]:
+    """Level per log-spaced band in dB(A) (same scale as the window), for the dashboard."""
+    p = np.abs(np.fft.rfft(np.asarray(x, np.float64))) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    edges = np.geomspace(SPECTRUM_LO_HZ, SPECTRUM_HI_HZ, SPECTRUM_BANDS + 1)
+    scale = 2.0 / len(x) ** 2  # Parseval: band powers sum to the mean square
+    out = []
+    for lo, hi in itertools.pairwise(edges):
+        ms = float(p[(f >= lo) & (f < hi)].sum()) * scale
+        out.append(round(FULL_SCALE_DB + 10 * math.log10(ms)) if ms > 0 else 0)
+    return out
 
 
 def _r(x: float) -> float | None:

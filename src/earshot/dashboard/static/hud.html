@@ -39,7 +39,7 @@
   #link.live { color: var(--own); } #link.down { color: var(--warn); }
 
   main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
-  #left { display: grid; grid-template-rows: minmax(0, 1fr) 24% 74px; gap: 8px; padding: 8px; min-width: 0; min-height: 0; }
+  #left { display: grid; grid-template-rows: minmax(0, 1fr) 24% 108px; gap: 8px; padding: 8px; min-width: 0; min-height: 0; }
   #right { display: grid; grid-template-rows: 400px minmax(0, 1fr); border-left: 1px solid var(--rule); min-height: 0; }
 
   /* camera views */
@@ -64,6 +64,7 @@
   .drone .bat { height: 3px; background: var(--rule); border-radius: 2px; margin-top: 4px; }
   .drone .bat i { display: block; height: 100%; background: var(--own); border-radius: 2px; }
   .drone .task { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drone canvas.sig { display: block; width: 100%; height: 30px; margin-top: 3px; }
 
   /* map */
   #scope { position: relative; border-bottom: 1px solid var(--rule); }
@@ -82,6 +83,13 @@
   .bars .b { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
   .bars .b i { display: block; height: 100%; }
   canvas.trace { width: 100%; height: 64px; margin-top: 10px; }
+  canvas.freq { width: 100%; height: 130px; display: block; margin-top: 10px; }
+  #freqgrid { position: absolute; inset: 52px 8px 8px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); grid-auto-rows: minmax(120px, 1fr); }
+  #freqgrid[hidden] { display: none; }
+  #freqgrid .fg { position: relative; background: var(--sky); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px 4px; display: grid; grid-template-rows: auto minmax(0, 1fr); cursor: pointer; }
+  #freqgrid .fg[aria-pressed="true"] { border-color: var(--select); }
+  #freqgrid .fg h3 { margin: 0; font-size: 11px; font-weight: 700; }
+  #freqgrid .fg canvas { position: static; width: 100%; height: 100%; }
   .fused { font-size: 12px; margin-top: 8px; color: var(--muted); }
 
   /* evidence view */
@@ -145,6 +153,7 @@
         <img id="cam0" alt="">
         <canvas id="pfd"></canvas>
         <div class="empty" id="nocam" hidden><p>No camera images. Start with <span class="num">--backend webots</span> to see the drones' views.</p></div>
+        <div id="freqgrid" hidden></div>
       </div>
       <div id="tiles">
         <div class="view" data-k="1"><img id="cam1" alt=""><div class="tag" id="tag1"></div></div>
@@ -162,8 +171,8 @@
           <div class="sub" id="ev-ear-sub">Bearings of the last 30 s, north up. Ray length is loudness, colour the heard class.</div>
           <canvas class="big-polar" id="bigpolar"></canvas>
           <div id="arraybox" hidden>
-            <h2 style="margin-top:12px">Live microphone array</h2>
-            <div class="sub">Spectrum of each 1 s block (left to right) and the direction-finding power around the array.</div>
+            <h2 style="margin-top:12px" id="arraybox-title">Live microphone array</h2>
+            <div class="sub">Spectrum of each 1 s block, low frequencies at the bottom, newest on the right.</div>
             <canvas class="spectro" id="spectro"></canvas>
           </div>
         </div>
@@ -188,6 +197,7 @@
             <div class="bars" id="classbars"></div>
           </div>
         </div>
+        <canvas class="freq" id="freq" title="What this drone's sensors receive: sound per frequency band (earshot live --audio) and RF power per band"></canvas>
         <canvas class="trace" id="leveltrace"></canvas>
         <div class="fused" id="fused"></div>
       </div>
@@ -306,11 +316,12 @@ function connect() {
     for (const [k, rt] of seen) if (t - rt > 130 || rt > t + 1) seen.delete(k);
     for (const d of msg.state.drones) {
       const a = d.telemetry?.array;
-      if (!a?.spectrum) continue;
-      const key = a.spectrum.join(",");  // array blocks carry no sequence; a new block has a new spectrum
+      const sp = a?.spectrum || d.spectrum?.map(v => v - 90);  // the sim's dB(A) bands, on the arrays' scale
+      if (!sp) continue;
+      const key = sp.join(",");  // array blocks carry no sequence; a new block has a new spectrum
       if (key === spectroKey[d.id]) continue;
       spectroKey[d.id] = key;
-      const col = (spectro[d.id] ||= []); col.push(a.spectrum); if (col.length > 120) col.shift();
+      const col = (spectro[d.id] ||= []); col.push(sp); if (col.length > 120) col.shift();
     }
     schedule();
   };
@@ -498,7 +509,10 @@ function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
   const d = shownDrones(now).find(x => x.id === selected); if (!d) return;
   const f = frames[0];
-  if (!f) $("nocam").hidden = false;
+  const grid = !f && drones().some(x => x.spectrum);  // no camera: the main view shows every drone's frequencies
+  $("freqgrid").hidden = !grid;
+  if (!f) $("nocam").hidden = grid;
+  if (grid) drawFreqGrid();
   const heading = d.heading, st = last.state;
   // heading tape across the top: ±60 deg
   const cx = w / 2, tapeW = Math.min(w * 0.6, 640), span = 120, px = tapeW / span, y = 26;
@@ -550,7 +564,7 @@ const argmax = a => a.reduce((bi, v, i) => v > a[bi] ? i : bi, 0);
 function drawSwarm() {
   const el = $("swarm"), ds = drones();
   if (el.childElementCount !== ds.length) {
-    el.innerHTML = ds.map(d => `<button class="drone" data-id="${d.id}"><div class="row"><span class="id">${d.id}</span><span class="mode"></span></div><div class="bat"><i></i></div><div class="task"></div></button>`).join("");
+    el.innerHTML = ds.map(d => `<button class="drone" data-id="${d.id}"><div class="row"><span class="id">${d.id}</span><span class="mode"></span></div><div class="bat"><i></i></div><div class="task"></div><canvas class="sig" title="Sound spectrum 50 Hz-8 kHz (needs --audio) | RF 915 MHz, 2.4 GHz, 5.8 GHz"></canvas></button>`).join("");
     el.querySelectorAll(".drone").forEach(b => b.onclick = () => select(+b.dataset.id));
   }
   for (const d of ds) {
@@ -561,7 +575,80 @@ function drawSwarm() {
     const task = d.telemetry?.task, fault = isFaulty(d.id), arr = !!d.telemetry?.array;
     setHTML(b.querySelector(".task"), fault ? `<span style="color:${css("--warn")}">sensor fault</span>` :
       arr ? `<span style="color:${css("--select")}">real microphones</span>` : task ? (task.kind === "verify" ? "verifying" : "listening") : d.perched_on ? "on a roof" : "in its sector");
+    drawSignals(b.querySelector("canvas.sig"), d);
   }
+}
+
+/* Frequency graphs: sound level per band (log Hz, dB(A)) and RF power per band (dBm) */
+const FREQ_LO = 50, FREQ_HI = 8000, DB_LO = 10, DB_HI = 90, DBM_LO = -110, DBM_HI = -40;
+function drawFreq(canvas, d, compact) {
+  const [w, h, ctx] = fitCanvas(canvas); ctx.clearRect(0, 0, w, h);
+  const t = last.state.t, font = `${compact ? 9 : 10}px ${css("--mono")}`, split = Math.round(w * 0.74);
+  const L = 26, B = h - 14, T = 12, sx0 = L, sx1 = split - 8;
+  const X = f => sx0 + Math.log(f / FREQ_LO) / Math.log(FREQ_HI / FREQ_LO) * (sx1 - sx0), Y = v => B - (Math.min(DB_HI, Math.max(DB_LO, v)) - DB_LO) / (DB_HI - DB_LO) * (B - T);
+  ctx.font = font; ctx.lineWidth = 1;
+  // axes and grid
+  ctx.strokeStyle = css("--rule"); ctx.fillStyle = css("--faint"); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (const v of [30, 50, 70, 90]) { ctx.beginPath(); ctx.moveTo(sx0, Y(v)); ctx.lineTo(sx1, Y(v)); ctx.stroke(); ctx.fillText(v, sx0 - 3, Y(v)); }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (const [f, lab] of [[100, "100"], [300, "300"], [1000, "1k"], [3000, "3k"], [8000, "8k Hz"]]) {
+    ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), B); ctx.stroke(); ctx.fillText(lab, Math.min(X(f), sx1 - 14), B + 2); }
+  ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--muted"); ctx.fillText("Sound dB", sx0 + 2, 0);
+  const sp = d.spectrum;
+  if (sp) {
+    const edges = sp.map((_, i) => FREQ_LO * (FREQ_HI / FREQ_LO) ** (i / sp.length)).concat(FREQ_HI);
+    ctx.beginPath(); ctx.moveTo(X(FREQ_LO), B);
+    sp.forEach((v, i) => { ctx.lineTo(X(edges[i]), Y(v)); ctx.lineTo(X(edges[i + 1]), Y(v)); });
+    ctx.lineTo(X(FREQ_HI), B); ctx.closePath();
+    ctx.fillStyle = "rgba(245,181,59,.28)"; ctx.fill(); ctx.strokeStyle = css("--caution"); ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+    const bg = last.state.environment?.background_db;
+    if (bg != null) { ctx.setLineDash([3, 3]); ctx.strokeStyle = css("--faint"); ctx.beginPath(); ctx.moveTo(sx0, Y(bg)); ctx.lineTo(sx1, Y(bg)); ctx.stroke(); ctx.setLineDash([]); }
+  } else { ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("start with --audio to see sound", (sx0 + sx1) / 2, (T + B) / 2); }
+  // RF: received power per band, noise floor marked
+  const rx0 = split + 4, rx1 = w - 2, cw = (rx1 - rx0) / RF_BANDS.length, R = v => B - (Math.min(DBM_HI, Math.max(DBM_LO, v)) - DBM_LO) / (DBM_HI - DBM_LO) * (B - T);
+  ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--muted"); ctx.fillText("RF dBm", rx0, 0);
+  const rs = hist[d.id] || [];
+  RF_BANDS.forEach(([sensor, label, floor], i) => {
+    const x0 = rx0 + i * cw + 3, bw = cw - 6, r = rs.findLast(x => x.sensor === sensor && t - x.t < 10);
+    ctx.fillStyle = "#0d1824"; ctx.fillRect(x0, T, bw, B - T);
+    if (r) { ctx.globalAlpha = Math.max(0.25, 1 - (t - r.t) / 12); ctx.fillStyle = css("--select"); ctx.fillRect(x0, R(r.level), bw, B - R(r.level)); ctx.globalAlpha = 1;
+      ctx.fillStyle = css("--text"); ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(Math.round(r.level), x0 + bw / 2, R(r.level) - 1); }
+    ctx.strokeStyle = css("--faint"); ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(x0, R(floor)); ctx.lineTo(x0 + bw, R(floor)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(label, x0 + bw / 2, B + 2);
+  });
+}
+function drawFreqGrid() {
+  const el = $("freqgrid"), ds = drones();
+  if (el.childElementCount !== ds.length) {
+    el.innerHTML = ds.map(d => `<div class="fg" data-id="${d.id}"><h3></h3><canvas></canvas></div>`).join("");
+    el.querySelectorAll(".fg").forEach(b => b.onclick = () => select(+b.dataset.id));
+  }
+  for (const d of ds) {
+    const b = el.querySelector(`[data-id="${d.id}"]`); if (!b) continue;
+    b.setAttribute("aria-pressed", d.id === selected);
+    setHTML(b.querySelector("h3"), `Drone ${d.id} <span style="font-weight:400;color:${css(MODE_COL[d.mode] || "--own")}">${MODE_NAME[d.mode] || d.mode}${d.perched_on ? ", motors off" : ", motors on"}</span>`);
+    drawFreq(b.querySelector("canvas"), d, true);
+  }
+}
+
+/* What each drone receives: sound spectrum (left, from earshot live --audio) and RF power per band (right) */
+const RF_BANDS = [["RF_915", "915", -105], ["RF_2G4", "2.4", -85], ["RF_5G8", "5.8", -85]];  // noise floor dBm (sensors/rf.py)
+function drawSignals(canvas, d) {
+  const [w, h, ctx] = fitCanvas(canvas), t = last.state.t, split = Math.round(w * 0.68);
+  ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#0d1824"; ctx.fillRect(0, 0, split - 2, h); ctx.fillRect(split + 2, 0, w - split - 2, h);
+  ctx.font = "8px " + css("--mono"); ctx.textBaseline = "bottom";
+  const sp = d.spectrum;
+  if (sp) {  // dB(A) per band, 20 dB (empty) to 90 dB (full)
+    const bw = (split - 2) / sp.length; ctx.fillStyle = css("--caution");
+    sp.forEach((v, i) => { const k = Math.min(1, Math.max(0, (v - 20) / 70)); ctx.fillRect(i * bw, h - k * h, Math.max(1, bw - 0.5), k * h); });
+  } else { ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.fillText("sound: --audio", (split - 2) / 2, h / 2 + 4); }
+  const rs = hist[d.id] || [], cw = (w - split - 2) / RF_BANDS.length;
+  RF_BANDS.forEach(([sensor, label, floor], i) => {
+    const r = rs.findLast(x => x.sensor === sensor && t - x.t < 10), x0 = split + 2 + i * cw;
+    if (r) { const k = Math.min(1, Math.max(0.05, (r.level - floor) / 50)); ctx.globalAlpha = 1 - (t - r.t) / 12;
+      ctx.fillStyle = css("--select"); ctx.fillRect(x0 + 1, h - k * (h - 9), cw - 2, k * (h - 9)); ctx.globalAlpha = 1; }
+    ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.fillText(label, x0 + cw / 2, 9);
+  });
 }
 
 /* ---------- the ear: polar of recent bearings ---------- */
@@ -614,6 +701,7 @@ function drawEar() {
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
   const probs = newest?.probs || [0, 0, 0, 0];
   setHTML($("classbars"), CLS.map((c, i) => `<span>${CLS_NAME[c]}</span><span class="b"><i style="width:${Math.round(probs[i] * 100)}%;background:${css(CLS_COL[c])}"></i></span><span class="num">${Math.round(probs[i] * 100)}%</span>`).join(""));
+  drawFreq($("freq"), d, false);
   drawLevelTrace(rs, t);
   const fused = d.telemetry?.belief?.fused || {}, parts = Object.entries(fused).sort((a, b) => +a[0] - +b[0]).map(([o, f]) => `drone ${o}: ${(f.sound || 0) + (f.rf || 0) + (f.camera || 0)}`);
   $("fused").textContent = parts.length ? `This drone's map fused, last 30 s: ${parts.join(", ")}` : "No readings fused in the last 30 s.";
@@ -644,7 +732,8 @@ function drawEvidence() {
   const d = droneById(selected);
   $("ev-ear-title").textContent = `What drone ${selected} hears`;
   polar($("bigpolar"), selected, 30, true);
-  const hasArray = !!d?.telemetry?.array; $("arraybox").hidden = !hasArray;
+  const hasArray = !!d?.telemetry?.array || !!d?.spectrum; $("arraybox").hidden = !hasArray;
+  $("arraybox-title").textContent = d?.telemetry?.array ? "Live microphone array" : "Sound spectrum";
   if (hasArray) drawSpectro();
   drawTrace(d);
 }

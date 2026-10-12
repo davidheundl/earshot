@@ -100,3 +100,11 @@ def test_audio_is_deterministic(tmp_path):
         return (d / "drone0.wav").read_bytes()
 
     assert once(tmp_path / "a") == once(tmp_path / "b")
+
+
+def test_spectrum_puts_a_tone_in_its_band_at_its_level():
+    tone = np.sin(2 * np.pi * 1000 * np.arange(wf.SR) / wf.SR) * math.sqrt(2) * wf._amp(70.0)
+    sp = wf.spectrum(tone)
+    edges = np.geomspace(wf.SPECTRUM_LO_HZ, wf.SPECTRUM_HI_HZ, wf.SPECTRUM_BANDS + 1)
+    i = int(np.argmax(sp))
+    assert edges[i] <= 1000 < edges[i + 1] and sp[i] == 70
