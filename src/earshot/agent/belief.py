@@ -114,7 +114,7 @@ class TrackEst:
 
 
 def cell_id(x: float, y: float, bounds) -> int:
-    """100 m cell index over the City bounds; also the basis of task ids (fits in 10 bits)."""
+    """100 m cell index over the City bounds; also the basis of task ids (policy.TASK_STRIDE)."""
     x0, y0, x1, _ = bounds
     nx = math.ceil((x1 - x0) / 100.0)
     return int((y - y0) // 100) * nx + int((x - x0) // 100)

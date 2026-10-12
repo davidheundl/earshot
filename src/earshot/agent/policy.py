@@ -8,7 +8,7 @@ Concept section 7:
 - Tasks come from Suspicions (drone-class Tracks that are not Explained or Confirmed):
   LISTEN (two slots per Suspicion: land on a roof whose bearing crosses the existing ones near
   a right angle) while it is poorly localised, VERIFY (fly there, camera on) once it is likely
-  and localised. Task ids are kind * 1024 + the Suspicion's 100 m cell, so identical maps give
+  and localised. Task ids are kind * 4096 + the Suspicion's 100 m cell, so identical maps give
   identical ids, and every bidder can decode where a task is.
 - Allocation without a central node: each drone bids on the best task for itself and
   broadcasts a Claim (task, bid, lease, target point). Highest bid wins, ties to the lower id.
@@ -57,12 +57,15 @@ V_VERIFY = 15.0
 SECTOR_CELL = 100.0
 
 
+TASK_STRIDE = 4096  # 100 m cells per task kind: cities up to 6.4 x 6.4 km; ids stay 14 bits
+
+
 def task_id(kind: int, cid: int) -> int:
-    return kind * 1024 + cid
+    return kind * TASK_STRIDE + cid
 
 
 def task_kind(tid: int) -> int:
-    return tid // 1024
+    return tid // TASK_STRIDE
 
 
 @dataclass
@@ -97,6 +100,9 @@ class Policy:
             self.default = Mode.LISTEN
         self._sites = {p.id: p for p in city.perch_sites}
         self._home_site = self._best_roof_near(self.home)
+        x0, y0, x1, y1 = city.bounds
+        if math.ceil((x1 - x0) / 100.0) * math.ceil((y1 - y0) / 100.0) > TASK_STRIDE:
+            raise ValueError(f"city too large for task ids: more than {TASK_STRIDE} 100 m cells")
         self._task: _Task | None = None
         self._claimed_at = 0.0
         self._last_claim = -1e9
@@ -405,5 +411,5 @@ class Policy:
 
 
 def decode_task(tid: int, bounds) -> tuple[str, float, float]:
-    x, y = cell_center(tid % 1024, bounds)
+    x, y = cell_center(tid % TASK_STRIDE, bounds)
     return KIND_NAME[task_kind(tid)], x, y
