@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import base64
 import json
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from earshot.runners.wire import pack, topic, unpack
 from earshot.scenario import Scenario
 
 STATIC = Path(__file__).parent / "static"
+log = logging.getLogger(__name__)
 
 
 LANDUSE_RGB = {"meadow": (118, 150, 84), "field": (178, 168, 104), "forest": (52, 84, 52),
@@ -65,6 +67,103 @@ def basemap(city_json: dict, city_dir: Path) -> bytes | None:
     return buf.getvalue()
 
 
+QUEUE = 20  # messages per screen (2 s); a screen further behind gets a fresh snapshot
+HISTORY = 200  # readings a new screen starts with
+
+
+class Hub:
+    """Latest world state for the screens, serialized once per tick for all of them.
+
+    A delta carries the full state except the big parts that change about once per second:
+    each drone's telemetry.heatmap only when it changed (else the key is absent, the pages
+    keep the last one) and "camera" only when it changed (null when it went away).
+    A snapshot carries everything and the recent readings, for a new or lagging screen.
+    """
+
+    def __init__(self):
+        self.state: dict | None = None
+        self.radio: dict | None = None
+        self.camera: dict | None = None
+        self.pump_alive = True
+        self.readings: list = []  # (seq, reading): every reading, so no screen misses one
+        self.seq = 0
+        self.version = 0  # bumped per state message
+        self._heat: dict = {}  # drone -> (raw p, raw cls, w, h)
+        self._heat_json: dict = {}  # drone -> encoded heatmap or None
+        self._heat_v: dict = {}  # drone -> version it last changed
+        self._camera_v = 0
+        self._sent = (0, 0)  # (version, seq) of the last delta
+
+    def ingest_state(self, msg: dict) -> None:
+        if self.state is not None and msg["t"] < self.state["t"] - 1.0:
+            self.readings.clear()  # a new run: last run's readings are not history
+        self.version += 1
+        for r in msg.pop("readings", []):
+            self.seq += 1
+            self.readings.append((self.seq, r))
+        del self.readings[:-2000]
+        if "camera" in msg:
+            cam = msg.pop("camera")
+            if cam:
+                cam["rgba"] = base64.b64encode(cam["rgba"]).decode()
+            if cam != self.camera:
+                self.camera = cam
+                self._camera_v = self.version
+        for d in msg["drones"]:
+            tm = d.get("telemetry")
+            if not isinstance(tm, dict) or "heatmap" not in tm:
+                continue
+            hm = tm.pop("heatmap")
+            raw = (hm["p"], hm["cls"], hm.get("w"), hm.get("h")) if hm else None
+            if d["id"] not in self._heat or raw != self._heat[d["id"]]:
+                self._heat[d["id"]] = raw
+                self._heat_json[d["id"]] = None if hm is None else {
+                    **hm, "p": base64.b64encode(hm["p"]).decode(),
+                    "cls": base64.b64encode(hm["cls"]).decode()}
+                self._heat_v[d["id"]] = self.version
+        self.state = msg
+
+    def _message(self, since_version: int | None, since_seq: int) -> dict:
+        drones = []
+        for d in self.state["drones"]:
+            i = d["id"]
+            if i in self._heat_json and (since_version is None
+                                         or self._heat_v[i] > since_version):
+                d = {**d, "telemetry": {**d.get("telemetry", {}), "heatmap": self._heat_json[i]}}
+            drones.append(d)
+        out = {"state": {**self.state, "drones": drones}, "radio": self.radio,
+               "readings": [r for s, r in self.readings if s > since_seq]}
+        if since_version is None or self._camera_v > since_version:
+            out["camera"] = self.camera
+        return out
+
+    def delta_text(self) -> str | None:
+        """What changed since the last delta, or None if no new state arrived."""
+        if self.state is None or self.version == self._sent[0]:
+            return None
+        msg = self._message(*self._sent)
+        self._sent = (self.version, self.seq)
+        return json.dumps(msg)
+
+    def snapshot_text(self) -> str:
+        """Everything as of the last delta, for a screen that joins now."""
+        s = self._sent[1]
+        msg = self._message(None, s - HISTORY)
+        # pending changes go out with the next delta; readings must not arrive twice
+        msg["readings"] = [r for q, r in self.readings if s - HISTORY < q <= s]
+        return json.dumps(msg)
+
+
+def offer(q: asyncio.Queue, text: str, hub: Hub) -> None:
+    """Queue a delta; a screen too far behind drops its backlog and gets a fresh snapshot."""
+    try:
+        q.put_nowait(text)
+    except asyncio.QueueFull:
+        while not q.empty():
+            q.get_nowait()
+        q.put_nowait(hub.snapshot_text())
+
+
 def create_app(scenario_path: str) -> FastAPI:
     scenario = Scenario.load(scenario_path)
     city_path = Path(scenario.city)
@@ -72,50 +171,66 @@ def create_app(scenario_path: str) -> FastAPI:
     base_png = basemap(city_json, city_path.parent)
     for k in ("terrain", "terrain_outer"):  # big; the basemap carries them
         city_json.pop(k, None)
-    latest: dict = {"state": None, "radio": None, "camera": None}
+    hub = Hub()
     cams: dict = {}  # view camera k -> {drone, mode, w, h, jpeg (base64)}
-    readings: list = []  # (seq, reading): every reading, so no client misses one between frames
-    seq = [0]
 
     async def pump():
-        ctx = zmq.asyncio.Context.instance()
-        ctx.setsockopt(zmq.LINGER, 0)
-        sub = ctx.socket(zmq.SUB)
-        sub.connect(config.WORLD_PUB)
-        sub.connect(config.RADIO_PUB)
-        sub.setsockopt(zmq.SUBSCRIBE, topic("state"))
-        sub.setsockopt(zmq.SUBSCRIBE, topic("radio"))
-        sub.setsockopt(zmq.SUBSCRIBE, topic("cams"))
+        try:
+            ctx = zmq.asyncio.Context.instance()
+            ctx.setsockopt(zmq.LINGER, 0)
+            sub = ctx.socket(zmq.SUB)
+            sub.connect(config.WORLD_PUB)
+            sub.connect(config.RADIO_PUB)
+            sub.setsockopt(zmq.SUBSCRIBE, topic("state"))
+            sub.setsockopt(zmq.SUBSCRIBE, topic("radio"))
+            sub.setsockopt(zmq.SUBSCRIBE, topic("cams"))
+            while True:
+                t, payload = await sub.recv_multipart()
+                try:  # one bad message must not freeze the screen
+                    msg = unpack(payload)
+                    if t == topic("cams"):
+                        for k, f in msg["frames"].items():
+                            f["jpeg"] = base64.b64encode(f["jpeg"]).decode()
+                            cams[int(k)] = f
+                    elif t == topic("state"):
+                        hub.ingest_state(msg)
+                    else:
+                        hub.radio = msg
+                except Exception:
+                    log.exception("dashboard: skipped a bad %r message", t)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("dashboard: the pump stopped; screens are told the data is stale")
+        finally:
+            hub.pump_alive = False
+
+    clients: set[asyncio.Queue] = set()
+
+    async def broadcast():
+        """Serialize each new state once for all screens; per-screen queues, so a slow one
+        only delays itself."""
+        idle = 0
         while True:
-            t, payload = await sub.recv_multipart()
-            msg = unpack(payload)
-            if t == topic("cams"):
-                for k, f in msg["frames"].items():
-                    f["jpeg"] = base64.b64encode(f["jpeg"]).decode()
-                    cams[int(k)] = f
-                continue
-            if t == topic("state"):
-                for r in msg.pop("readings", []):
-                    seq[0] += 1
-                    readings.append((seq[0], r))
-                del readings[:-2000]
-                if "camera" in msg:
-                    cam = msg.pop("camera")
-                    if cam:
-                        cam["rgba"] = base64.b64encode(cam["rgba"]).decode()
-                    latest["camera"] = cam
-                for d in msg["drones"]:
-                    hm = d.get("telemetry", {}).get("heatmap")
-                    if hm:
-                        hm["p"] = base64.b64encode(hm["p"]).decode()
-                        hm["cls"] = base64.b64encode(hm["cls"]).decode()
-            latest["state" if t == topic("state") else "radio"] = msg
+            await asyncio.sleep(0.1)
+            try:
+                text = hub.delta_text()
+                idle = 0 if text is not None else idle + 1
+                if text is None and idle >= 10:  # nothing new for 1 s: say why
+                    text, idle = json.dumps({"heartbeat": True, "pump": hub.pump_alive}), 0
+                if text is None:
+                    continue
+                for q in list(clients):
+                    offer(q, text, hub)
+            except Exception:
+                log.exception("dashboard: broadcast failed")
 
     @asynccontextmanager
     async def lifespan(_app):
-        task = asyncio.create_task(pump())
+        tasks = [asyncio.create_task(pump()), asyncio.create_task(broadcast())]
         yield
-        task.cancel()
+        for task in tasks:
+            task.cancel()
 
     app = FastAPI(title="Earshot dashboard", lifespan=lifespan)
 
@@ -158,16 +273,17 @@ def create_app(scenario_path: str) -> FastAPI:
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
         await sock.accept()
-        sent = seq[0] - 200  # a new screen starts with the recent history
+        q: asyncio.Queue = asyncio.Queue(maxsize=QUEUE)
+        if hub.state is not None:  # a new screen starts with everything and the recent history
+            q.put_nowait(hub.snapshot_text())
+        clients.add(q)  # no await since the snapshot: the next delta continues from it
         try:
             while True:
-                if latest["state"] is not None:
-                    new = [r for s, r in readings if s > sent]
-                    sent = seq[0]
-                    await sock.send_text(json.dumps({**latest, "readings": new}))
-                await asyncio.sleep(0.1)
-        except WebSocketDisconnect:
+                await sock.send_text(await q.get())
+        except (WebSocketDisconnect, RuntimeError, OSError):  # closed; the type depends on the server
             pass
+        finally:
+            clients.discard(q)
 
     @app.websocket("/ws/cams")
     async def ws_cams(sock: WebSocket):
