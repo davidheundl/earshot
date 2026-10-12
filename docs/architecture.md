@@ -48,7 +48,7 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 | `eval` | `evaluate(scenario, runs, seed, policy, scheme, bw)`, `summarize` | Section 17 metrics from decision events + ground truth; `scenario_gen` makes a random world per seed. |
 | `audio` | `ArraySensor(device, rotation).readings()`, `doa.estimate_bearing` | Real microphone arrays as a perched drone's sound sensor (SRP-PHAT, 500-4000 Hz). |
 | `runners.*` | processes and lockstep | Thin shells. `wire.py` holds the msgpack shapes. |
-| `dashboard` | `GET /`, `GET /city`, `WS /ws`, `WS /ws/audio`, `POST /control` | Operator console: hotkeys send Events to the world. Agents never see it; a crash never stops a run. With `earshot live --audio`, Listen (`l`) plays the selected drone's microphone, and frequency graphs (sound per band from the snapshot's `spectrum`, RF dBm per band from the readings) show in the side panel and, without camera images, for every drone in the main view. |
+| `dashboard` | `GET /`, `GET /city`, `WS /ws`, `WS /ws/audio`, `POST /control` | Operator console: hotkeys send Events to the world. Agents never see it; a crash never stops a run. With `earshot live --audio`, Listen (`l`) plays the selected drone's microphone, and the Evidence screen graphs every drone's frequencies (sound per band from the snapshot's `spectrum`, RF dBm per band from the readings). |
 
 ## Pre-built vs. on the day
 

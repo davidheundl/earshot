@@ -83,9 +83,8 @@
   .bars .b { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
   .bars .b i { display: block; height: 100%; }
   canvas.trace { width: 100%; height: 64px; margin-top: 10px; }
-  canvas.freq { width: 100%; height: 130px; display: block; margin-top: 10px; }
-  #freqgrid { position: absolute; inset: 52px 8px 8px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); grid-auto-rows: minmax(120px, 1fr); }
-  #freqgrid[hidden] { display: none; }
+  #freqcol { grid-column: 1 / -1; }
+  #freqgrid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 130px; }
   #freqgrid .fg { position: relative; background: var(--sky); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px 4px; display: grid; grid-template-rows: auto minmax(0, 1fr); cursor: pointer; }
   #freqgrid .fg[aria-pressed="true"] { border-color: var(--select); }
   #freqgrid .fg h3 { margin: 0; font-size: 11px; font-weight: 700; }
@@ -93,7 +92,7 @@
   .fused { font-size: 12px; margin-top: 8px; color: var(--muted); }
 
   /* evidence view */
-  #evidence { display: none; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-height: 0; grid-row: 1 / span 2; }
+  #evidence { display: none; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 42%); gap: 8px; min-height: 0; grid-row: 1 / span 2; }
   body.evidence #evidence { display: grid; }
   body.evidence #mainview, body.evidence #tiles { display: none; }
   .col { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 10px 12px; overflow: auto; min-height: 0; }
@@ -153,7 +152,6 @@
         <img id="cam0" alt="">
         <canvas id="pfd"></canvas>
         <div class="empty" id="nocam" hidden><p>No camera images. Start with <span class="num">--backend webots</span> to see the drones' views.</p></div>
-        <div id="freqgrid" hidden></div>
       </div>
       <div id="tiles">
         <div class="view" data-k="1"><img id="cam1" alt=""><div class="tag" id="tag1"></div></div>
@@ -182,6 +180,11 @@
           <div class="pipeline" id="pipeline"></div>
           <div id="trace"></div>
         </div>
+        <div class="col" id="freqcol">
+          <h2>What every drone's sensors receive</h2>
+          <div class="sub">Sound per frequency band in dB (needs <span class="num">earshot live --audio</span>; dashed: background) and the newest RF power per band in dBm (dashed: noise floor). Click one to select that drone.</div>
+          <div id="freqgrid"></div>
+        </div>
       </div>
       <div id="swarm"></div>
     </section>
@@ -197,7 +200,6 @@
             <div class="bars" id="classbars"></div>
           </div>
         </div>
-        <canvas class="freq" id="freq" title="What this drone's sensors receive: sound per frequency band (earshot live --audio) and RF power per band"></canvas>
         <canvas class="trace" id="leveltrace"></canvas>
         <div class="fused" id="fused"></div>
       </div>
@@ -509,10 +511,7 @@ function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
   const d = shownDrones(now).find(x => x.id === selected); if (!d) return;
   const f = frames[0];
-  const grid = !f && drones().some(x => x.spectrum);  // no camera: the main view shows every drone's frequencies
-  $("freqgrid").hidden = !grid;
-  if (!f) $("nocam").hidden = grid;
-  if (grid) drawFreqGrid();
+  if (!f) $("nocam").hidden = false;
   const heading = d.heading, st = last.state;
   // heading tape across the top: ±60 deg
   const cx = w / 2, tapeW = Math.min(w * 0.6, 640), span = 120, px = tapeW / span, y = 26;
@@ -701,7 +700,6 @@ function drawEar() {
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
   const probs = newest?.probs || [0, 0, 0, 0];
   setHTML($("classbars"), CLS.map((c, i) => `<span>${CLS_NAME[c]}</span><span class="b"><i style="width:${Math.round(probs[i] * 100)}%;background:${css(CLS_COL[c])}"></i></span><span class="num">${Math.round(probs[i] * 100)}%</span>`).join(""));
-  drawFreq($("freq"), d, false);
   drawLevelTrace(rs, t);
   const fused = d.telemetry?.belief?.fused || {}, parts = Object.entries(fused).sort((a, b) => +a[0] - +b[0]).map(([o, f]) => `drone ${o}: ${(f.sound || 0) + (f.rf || 0) + (f.camera || 0)}`);
   $("fused").textContent = parts.length ? `This drone's map fused, last 30 s: ${parts.join(", ")}` : "No readings fused in the last 30 s.";
@@ -718,6 +716,7 @@ function drawLevelTrace(rs, t) {
 
 /* ---------- evidence view ---------- */
 function drawEvidence() {
+  drawFreqGrid();
   // new readings are prepended in place, so each row keeps its 1.2 s highlight
   const tb = $("stream"), fresh = stream.filter(r => r.fresh);
   for (const r of fresh.reverse()) {
