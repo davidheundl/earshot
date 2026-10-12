@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import signal
+import sys
 import time
 from pathlib import Path
 
@@ -70,6 +71,7 @@ def main(argv=None) -> None:
     commands: dict = {}
     telemetry: dict = {}
     decisions: list[dict] = []
+    counts = {"dispatch": 0, "confirmed": 0, "dismissed": 0}  # verify decisions so far
     events_path = Path("runs") / time.strftime("live-%Y%m%d-%H%M%S.events.jsonl")
     events_file = None  # created on the first live event, so idle runs leave no file
     logged = 0
@@ -88,16 +90,25 @@ def main(argv=None) -> None:
                     msg = unpack(pull.recv(zmq.NOBLOCK))
                 except zmq.Again:
                     break
-                if msg.get("op") == "view":  # game screen camera assignment, not a scenario Event
-                    if hasattr(backend, "set_views"):
-                        backend.set_views(msg["views"])
-                    continue
-                if "op" in msg:
-                    world.control(msg)
-                    continue
-                commands[msg["id"]] = command_from_dict(msg["command"])
-                telemetry[msg["id"]] = msg["telemetry"]
-                decisions.extend(msg.get("events", []))
+                try:
+                    if not isinstance(msg, dict):
+                        raise TypeError(f"not a dict: {type(msg).__name__}")
+                    if msg.get("op") == "view":  # game screen camera assignment, not an Event
+                        if hasattr(backend, "set_views"):
+                            backend.set_views(msg.get("views"))
+                        continue
+                    if "op" in msg:
+                        world.control(msg)
+                        continue
+                    commands[msg["id"]] = command_from_dict(msg["command"])
+                    telemetry[msg["id"]] = msg["telemetry"]
+                    for d in msg.get("events", []):
+                        decisions.append(d)
+                        if d.get("task") == "verify" and d.get("kind") in counts:
+                            counts[d["kind"]] += 1
+                except Exception as e:  # noqa: BLE001 - a bad message must not stop the world
+                    print(f"[world] ignored message: {type(e).__name__}: {e}", file=sys.stderr,
+                          flush=True)
             sensed = world.step(commands)
             for ev in world.applied[logged:]:
                 if ev.get("live"):  # scripted and replayed events are not recorded again
@@ -114,9 +125,7 @@ def main(argv=None) -> None:
             if round(world.t / scenario.dt) % round(1.0 / scenario.dt) == 0:
                 snap["camera"] = world.camera_preview()  # once per second; frames are big
             snap["decisions"] = decisions[-12:]
-            snap["counts"] = {k: sum(1 for d in decisions if d["kind"] == k
-                                     and d.get("task") == "verify")
-                              for k in ("dispatch", "confirmed", "dismissed")}
+            snap["counts"] = dict(counts)
             pub.send_multipart([topic("state"), pack(snap)])
             if hasattr(backend, "view_frames"):  # main view every tick (10 Hz), tiles every 2nd
                 tick = round(world.t / scenario.dt)

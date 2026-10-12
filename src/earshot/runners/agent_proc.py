@@ -21,6 +21,15 @@ from earshot.scenario import Scenario
 from earshot.state import Sensed, SwarmConfig
 
 
+def merge_ticks(ticks: list[Sensed]) -> Sensed:
+    """The newest tick's state and camera frame, with the readings of all ticks (oldest
+    first). Sensors report once per second per drone, so a dropped tick would lose them."""
+    newest = ticks[-1]
+    if len(ticks) == 1:
+        return newest
+    return Sensed(newest.state, [r for s in ticks for r in s.readings], newest.camera_frame)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--id", type=int, required=True)
@@ -68,14 +77,16 @@ def main(argv=None) -> None:
                         break
                     inbox.extend(unpack(payload))
             if world_sub in ev:
-                # only the newest tick matters if we fell behind
-                payload = None
+                # if we fell behind, step once on the newest tick with every queued reading
+                payloads = []
                 while True:
                     try:
-                        _, payload = world_sub.recv_multipart(zmq.NOBLOCK)
+                        payloads.append(world_sub.recv_multipart(zmq.NOBLOCK)[1])
                     except zmq.Again:
                         break
-                sensed = sensed_from_dict(unpack(payload))
+                if not payloads:
+                    continue
+                sensed = merge_ticks([sensed_from_dict(unpack(p)) for p in payloads])
                 if array is not None:  # real sound replaces the simulated sound readings
                     keep = [r for r in sensed.readings if r.sensor != Sensor.SOUND]
                     sensed = Sensed(sensed.state, keep + array.readings(), sensed.camera_frame)

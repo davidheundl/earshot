@@ -32,12 +32,21 @@ def live_slot(cls_name: str, k: int) -> str:
     return f"live_{cls_name.lower()}_slot{k}"
 
 
-def _def_name(src) -> str:
-    """Live sources (id live_<cls>_<n>) borrow spare node slot n % LIVE_SLOTS."""
-    tail = src.id.rsplit("_", 1)[-1]
-    if src.id.startswith("live_") and tail.isdigit():
-        return f"SRC_{live_slot(src.cls.name, int(tail) % LIVE_SLOTS)}"
-    return f"SRC_{src.id}"
+def def_names(sources) -> dict[str, str]:
+    """Source id -> DEF name. Live sources (id live_<cls>_<n>) borrow their class's spare
+    node slots in turn: the k-th live source of a class takes slot k % LIVE_SLOTS (`n` counts
+    across all classes, so it cannot pick the slot). Sources are only ever appended, so an
+    assignment never changes once made."""
+    names, per_class = {}, {}
+    for src in sources:
+        tail = src.id.rsplit("_", 1)[-1]
+        if src.id.startswith("live_") and tail.isdigit():
+            k = per_class.get(src.cls.name, 0)
+            per_class[src.cls.name] = k + 1
+            names[src.id] = f"SRC_{live_slot(src.cls.name, k % LIVE_SLOTS)}"
+        else:
+            names[src.id] = f"SRC_{src.id}"
+    return names
 
 
 def _yaw(heading_deg: float) -> float:
@@ -95,6 +104,8 @@ class WebotsBackend:
             cam.enable(VIEW_PERIOD_MS[k])
             self._view_cams.append((cam, node))
         self._view_yaw: dict[int, float] = {}
+        self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
+        self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
         for cls in ("DRONE", "VEHICLE", "TRAIN", "NOTHING"):
             for k in range(LIVE_SLOTS):
@@ -103,9 +114,15 @@ class WebotsBackend:
     # -- views (the game screen's drone cameras) -------------------------------------------
 
     def set_views(self, views: list) -> None:
-        """[[drone_id, "pilot" | "chase"], ...] for CAM_0 (main) .. CAM_3."""
-        for k, (did, mode) in enumerate(views[: len(self._view_cams)]):
-            if did in self._drones and mode in ("pilot", "chase"):
+        """[[drone_id, "pilot" | "chase"], ...] for CAM_0 (main) .. CAM_3. Malformed entries
+        are ignored."""
+        if not isinstance(views, list | tuple):
+            return
+        for k, v in enumerate(views[: len(self._view_cams)]):
+            if not (isinstance(v, list | tuple) and len(v) == 2):
+                continue
+            did, mode = v
+            if isinstance(did, int) and did in self._drones and mode in ("pilot", "chase"):
                 self.views[k] = [did, mode]
 
     def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
@@ -165,17 +182,21 @@ class WebotsBackend:
         return states
 
     def camera_frame(self, drone_id: int) -> object | None:
+        """{"w", "h", "objects"}: what the Verifier recognises. The image is copied only on
+        request (`camera_image`, the dashboard preview); the sensors need just the objects."""
         if drone_id != self._verifier:
             return None
         c = self.camera
-        frame = {"w": c.getWidth(), "h": c.getHeight(), "bgra": c.getImage()}
+        frame = {"w": c.getWidth(), "h": c.getHeight()}
         if c.hasRecognition():
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
             frame["objects"] = self._recognised()
-            if c.hasRecognitionSegmentation():
-                frame["seg"] = c.getRecognitionSegmentationImage()
         return frame
+
+    def camera_image(self) -> bytes | None:
+        """The Verifier camera's current BGRA image."""
+        return self.camera.getImage() if self._verifier is not None else None
 
     def close(self) -> None:
         pass
@@ -194,12 +215,14 @@ class WebotsBackend:
         """Class names of the Sources in view: object -> its node -> nearest SRC_ ancestor."""
         out = []
         for o in self.camera.getRecognitionObjects():
-            node = self.sup.getFromId(o.getId())
-            while node is not None and not (node.getDef() or "").startswith("SRC_"):
-                node = node.getParentNode()
-            if node is None:
-                continue
-            cls = self._def_class.get(node.getDef().split("_w")[0])
+            oid = o.getId()
+            if oid not in self._seen:  # node lookup and parent walk once per object
+                node = self.sup.getFromId(oid)
+                while node is not None and not (node.getDef() or "").startswith("SRC_"):
+                    node = node.getParentNode()
+                self._seen[oid] = (None if node is None
+                                   else self._def_class.get(node.getDef().split("_w")[0]))
+            cls = self._seen[oid]
             if cls:
                 out.append(cls)
         return out
@@ -213,8 +236,10 @@ class WebotsBackend:
         t = self.twin.t
         placed: dict[str, tuple] = {}  # one pose per node; an active source wins
         ground = self.twin.city.ground
+        if len(self._names) != len(self.scenario.sources):  # a Source was added
+            self._names = def_names(self.scenario.sources)
         for src in self.scenario.sources:
-            base = _def_name(src)
+            base = self._names[src.id]
             cls = src.cls.name
             names = [f"{base}_w{k}" for k in range(TRAIN_WAGONS)] if cls == "TRAIN" else [base]
             for k, name in enumerate(names):

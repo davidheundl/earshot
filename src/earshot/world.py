@@ -32,6 +32,7 @@ class World:
         self.states: dict[int, DroneState] = {}
         self.detections: list[dict] = []
         self.camera: tuple[int, dict] | None = None  # (drone, frame) of the latest Verifier view
+        self._preview: dict | None = None  # last dashboard camera preview, kept when it ends
         self.applied: list[dict] = []  # every event that took effect, with its sim time
         self._pending: list[dict] = []
         self._recent: list[dict] = []  # last few seconds of sound bearings, for the dashboard
@@ -48,7 +49,7 @@ class World:
         for op in due:
             try:
                 note = self.scenario.apply(op, self.t)
-            except (KeyError, ValueError, TypeError) as e:
+            except Exception as e:  # noqa: BLE001 - one bad Event must never stop the world
                 note = f"rejected {op.get('op')}: {e}"
             self.applied.append({**op, "t": round(self.t, 3), "note": note})
 
@@ -82,17 +83,23 @@ class World:
         return {d: (s.x, s.y, s.z) for d, s in self.states.items()}
 
     def camera_preview(self) -> dict | None:
-        """The latest Verifier frame, halved and as RGBA bytes, for the dashboard."""
+        """The latest Verifier frame, halved and as RGBA bytes, for the dashboard. The image is
+        fetched here, not every step, when the backend renders on demand (`camera_image`)."""
         if self.camera is None:
             return None
         did, f = self.camera
+        s = self.states.get(did)
+        if "bgra" not in f and s is not None and s.camera_on and hasattr(self.backend,
+                                                                           "camera_image"):
+            f["bgra"] = self.backend.camera_image()
         if not f.get("bgra"):
-            return None
+            return self._preview
         img = np.frombuffer(f["bgra"], dtype=np.uint8).reshape(f["h"], f["w"], 4)[::2, ::2]
         rgba = img[..., [2, 1, 0, 3]].copy()
         rgba[..., 3] = 255
-        return {"drone": did, "w": rgba.shape[1], "h": rgba.shape[0], "rgba": rgba.tobytes(),
-                "objects": f.get("objects", [])}
+        self._preview = {"drone": did, "w": rgba.shape[1], "h": rgba.shape[0],
+                         "rgba": rgba.tobytes(), "objects": f.get("objects", [])}
+        return self._preview
 
     def snapshot(self, telemetry: Mapping[int, dict] | None = None) -> dict:
         telemetry = telemetry or {}

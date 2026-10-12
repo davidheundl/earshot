@@ -36,7 +36,8 @@ def sensed_to_dict(s: Sensed) -> dict:
             [int(r.sensor), r.bearing, r.bearing_sigma, list(r.class_probs), r.level]
             for r in s.readings
         ],
-        "camera_frame": s.camera_frame,
+        # no camera_frame: the world already turned it into CAMERA readings, and Agents never
+        # read images (a Webots frame would be ~400 KB per tick)
     }
 
 

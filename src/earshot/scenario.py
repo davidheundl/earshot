@@ -110,6 +110,41 @@ def _rf_bands(v) -> tuple[str, ...]:
     return tuple(str(b) for b in v) if v else ()
 
 
+# -- validation of Events: check everything before an op changes anything ------------------
+
+FAULT_KINDS = ("stuck_bearing", "deaf", "phantom")
+
+
+def _num(v, name: str):
+    """A finite int or float, returned unchanged (so valid Events log exactly as before)."""
+    if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v):
+        raise ValueError(f"{name} must be a finite number, got {v!r}")
+    return v
+
+
+def _float(v, name: str, positive: bool = False) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number, got {v!r}") from None
+    if not math.isfinite(f) or (positive and f <= 0):
+        raise ValueError(f"{name} must be {'positive and ' if positive else ''}finite, got {v!r}")
+    return f
+
+
+def _point(p, name: str) -> tuple:
+    if not isinstance(p, list | tuple) or len(p) != 2:
+        raise ValueError(f"{name} must be [x, y], got {p!r}")
+    return (_num(p[0], name), _num(p[1], name))
+
+
+def _target_class(v) -> TargetClass:
+    name = _CLASS_ALIASES.get(v.lower(), v.upper()) if isinstance(v, str) else None
+    if name not in TargetClass.__members__:
+        raise ValueError(f"unknown cls {v!r}")
+    return TargetClass[name]
+
+
 @dataclass
 class Scenario:
     name: str
@@ -204,40 +239,71 @@ class Scenario:
         return due
 
     def apply(self, op: dict, t: float) -> str:
-        """Apply one event at sim time t. Returns a one-line description for logs and UI."""
+        """Apply one event at sim time t. Returns a one-line description for logs and UI.
+
+        Every field is checked before anything changes: a bad op raises ValueError (or
+        KeyError for a missing field) and leaves the scenario as it was."""
         kind = op["op"]
         if kind == "add_source":
-            cls = TargetClass[_CLASS_ALIASES.get(op["cls"].lower(), op["cls"].upper())]
-            path = [tuple(p) for p in op["path"]] if "path" in op else [(op["x"], op["y"])]
-            if "to" in op:
-                path.append(tuple(op["to"]))
-            sid = op.get("id") or f"live_{cls.name.lower()}_{self._live_count}"
-            self._live_count += 1
             from earshot.sensors.acoustics import DEFAULT_LEVEL  # avoid import cycle
+            from earshot.sensors.rf import BANDS
 
-            src = Source(sid, cls, t, t + float(op.get("duration", 120.0)), path,
-                         float(op.get("level_db", DEFAULT_LEVEL[cls])),
-                         _rf_bands(op.get("rf", cls == TargetClass.DRONE)))
+            cls = _target_class(op["cls"])
+            if "path" in op:
+                if not isinstance(op["path"], list | tuple) or not op["path"]:
+                    raise ValueError(f"path must be a non-empty list of [x, y], got {op['path']!r}")
+                path = [_point(p, "path point") for p in op["path"]]
+            else:
+                path = [(_num(op["x"], "x"), _num(op["y"], "y"))]
+            if "to" in op:
+                path.append(_point(op["to"], "to"))
+            duration = _float(op.get("duration", 120.0), "duration", positive=True)
+            level = _float(op.get("level_db", DEFAULT_LEVEL[cls]), "level_db")
+            rf = op.get("rf", cls == TargetClass.DRONE)
+            if not (isinstance(rf, bool) or rf is None or (
+                    isinstance(rf, list | tuple) and all(isinstance(b, str) for b in rf))):
+                raise ValueError(f"rf must be true/false or a list of bands, got {rf!r}")
+            bands = _rf_bands(rf)
+            unknown = [b for b in bands if b not in BANDS]
+            if unknown:
+                raise ValueError(f"unknown rf band(s) {unknown}")
+            sid = op.get("id") or f"live_{cls.name.lower()}_{self._live_count}"
+            if not isinstance(sid, str):
+                raise ValueError(f"id must be a string, got {sid!r}")
+            self._live_count += 1
+            src = Source(sid, cls, t, t + duration, path, level, bands)
             self.sources.append(src)
             return f"{sid}: {cls.name.lower()} at {path[0][0]:.0f}, {path[0][1]:.0f}"
         if kind == "jam":
-            z = JamZone(t, t + float(op.get("duration", 30.0)), (op["x"], op["y"]),
-                        float(op.get("r", 300.0)))
+            center = (_num(op["x"], "x"), _num(op["y"], "y"))
+            z = JamZone(t, t + _float(op.get("duration", 30.0), "duration", positive=True),
+                        center, _float(op.get("r", 300.0), "r", positive=True))
             self.jamming.append(z)
             return f"jam r={z.radius:.0f} m at {z.center[0]:.0f}, {z.center[1]:.0f}"
         if kind == "clear_jam":
             self.jamming = [replace(j, end=t) if j.active(t) else j for j in self.jamming]
             return "jamming cleared"
         if kind == "fault":
-            self.faults.append(Fault(int(op["drone"]), t, op["kind"]))
+            drone = int(_num(op["drone"], "drone"))
+            if op["kind"] not in FAULT_KINDS:
+                raise ValueError(f"unknown fault kind {op['kind']!r}")
+            self.faults.append(Fault(drone, t, op["kind"]))
             return f"drone {op['drone']}: {op['kind']}"
         if kind == "clear_faults":
             who = op.get("drone")
+            if who is not None:
+                _num(who, "drone")
             self.faults = [replace(f, end=min(f.end, t)) if who in (None, f.drone) else f
                            for f in self.faults]
             return "faults cleared" + ("" if who is None else f" on drone {who}")
         if kind == "set_env":
             fields = {k: v for k, v in op.items() if k in Environment.__dataclass_fields__}
+            for k, v in fields.items():
+                if k == "ego_filter":
+                    if not isinstance(v, bool):
+                        raise ValueError(f"ego_filter must be true or false, got {v!r}")
+                else:
+                    _num(v, k)
             self.environment = replace(self.environment, **fields)
             return "environment: " + ", ".join(f"{k}={v}" for k, v in fields.items())
         raise ValueError(f"unknown op {kind!r}")

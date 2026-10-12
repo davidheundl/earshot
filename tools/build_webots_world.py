@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import itertools
 
+import earshot.backend.webots as webots_backend
 from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
@@ -416,7 +417,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     assets = out.with_name(out.stem + "_assets")
     assets.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
-                         + Path(__file__).read_bytes() + f"{markers}{BUILDER_VERSION}".encode()).hexdigest()
+                         + Path(__file__).read_bytes() + Path(webots_backend.__file__).read_bytes()
+                         + f"{markers}{BUILDER_VERSION}".encode()).hexdigest()
     stamp = assets / "build.hash"
     if not force and out.exists() and stamp.exists() and stamp.read_text() == key:
         print(f"{out}: up to date")
