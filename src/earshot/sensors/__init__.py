@@ -24,13 +24,14 @@ from earshot.messages import Mode, Sensor, TargetClass
 from earshot.scenario import Scenario
 from earshot.sensors import acoustics as ac
 from earshot.sensors import rf
+from earshot.sensors import waveform as wf
 from earshot.state import DroneState, SensorReading
 
 WINDOW_S = 1.0
 # emitter height above ground (m): what the sound and RF line-of-sight tests start from
 SOURCE_AGL = {TargetClass.DRONE: 30.0, TargetClass.VEHICLE: 2.0, TargetClass.TRAIN: 3.0,
               TargetClass.NOTHING: 2.0}
-MASKING_OFFSET_DB = 6.0  # other sources raise the floor, partly separable in frequency
+MASKING_OFFSET_DB = wf.MASKING_OFFSET_DB
 LEVEL_NOISE_DB = 2.0
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
 CAMERA_P_DETECT = 0.9
@@ -46,6 +47,21 @@ CONFUSION = {
 }
 
 
+@dataclass
+class Audio:
+    """Waveform rendering for the sound sensor (off unless the World gets one): every sound
+    window is mixed as audio, and with a classifier its beams decide the class probabilities
+    instead of CONFUSION."""
+
+    mixer: wf.Mixer
+    classifier: wf.Classifier | None = None
+
+    def classify(self, win: wf.AudioWindow, i: int) -> tuple[float, float, float, float]:
+        p = np.clip(np.asarray(self.classifier.classify(self.mixer.beam(win, i), wf.SR),
+                               float), 0.0, None)
+        return tuple(p / p.sum()) if p.sum() > 0 else (0.25,) * 4  # type: ignore[return-value]
+
+
 @dataclass(frozen=True)
 class Detection:
     reading: SensorReading
@@ -54,10 +70,13 @@ class Detection:
 
 
 class SensorSuite:
-    def __init__(self, city: City, scenario: Scenario, rng: np.random.Generator):
+    def __init__(self, city: City, scenario: Scenario, rng: np.random.Generator,
+                 audio: Audio | None = None):
         self.city = city
         self.scenario = scenario
         self.rng = rng
+        self.audio = audio
+        self.windows: list[wf.AudioWindow] = []  # rendered audio, collected by the World
         self._window: dict[int, int] = {}
 
     def sense(self, s: DroneState, t: float, frame: dict | None = None) -> list[Detection]:
@@ -104,12 +123,23 @@ class SensorSuite:
             d = math.hypot(sx - s.x, sy - s.y)
             levels.append((src, sx, sy, ac.received_level(src.level_db, src.cls, d, nb)))
         ego = ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db)
+        noises = []
+        for i in range(len(levels)):
+            others = [lv - MASKING_OFFSET_DB for j, (*_, lv) in enumerate(levels) if j != i]
+            noises.append(ac.db_sum(env.background_db, ego, *others))
+        snrs = [lp - nz for (*_, lp), nz in zip(levels, noises, strict=True)]
+        win = None
+        if self.audio is not None:
+            win = self.audio.mixer.window(s.id, t, [
+                wf.Part(src.id, src.cls, lp, math.hypot(sx - s.x, sy - s.y), nb,
+                        math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0, snr)
+                for (src, sx, sy, lp), nb, snr in zip(levels, nbs, snrs, strict=True)
+            ], ego, env.background_db)
+            self.windows.append(win)
 
         out = []
         for i, (src, sx, sy, lp) in enumerate(levels):
-            others = [lv - MASKING_OFFSET_DB for j, (*_, lv) in enumerate(levels) if j != i]
-            noise = ac.db_sum(env.background_db, ego, *others)
-            snr = lp - noise
+            noise, snr = noises[i], snrs[i]
             if self.rng.random() >= ac.detection_probability(snr, src.cls):
                 continue
             sigma = ac.bearing_sigma(src.cls, perched, snr)
@@ -121,7 +151,11 @@ class SensorSuite:
             else:
                 b = (true_b + self.rng.normal(0, sigma)) % 360.0
             level = ac.db_sum(lp, noise) + self.rng.normal(0, LEVEL_NOISE_DB)
-            r = SensorReading(Sensor.SOUND, b, sigma, self._class_probs(src.cls, snr), level)
+            if win is not None and self.audio.classifier is not None:
+                probs = self.audio.classify(win, i)
+            else:
+                probs = self._class_probs(src.cls, snr)
+            r = SensorReading(Sensor.SOUND, b, sigma, probs, level)
             out.append(Detection(r, src.id, snr))
         return out
 

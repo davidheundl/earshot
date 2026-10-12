@@ -60,6 +60,10 @@ _Avoid_: map (ambiguous with Probability Map)
 Something that emits sound and possibly RF: a drone, heavy vehicle or train. Ground truth; Agents never see it.
 _Avoid_: target, emitter, threat (a Source is only a threat if it is a drone)
 
+**Beam**:
+What a sound classifier is given for one Source in one 1 s window: that Source's sound, every other Source 6 dB down, and the background and ego-noise. Rendered by the World from waveforms; Agents never see it.
+_Avoid_: mix (that is everything the microphone gets, unsteered)
+
 **Nuisance**:
 A Source whose true Target Class is Nothing but which sounds drone-like (a fan, an AC unit).
 

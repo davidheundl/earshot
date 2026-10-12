@@ -38,10 +38,10 @@ class RunResult:
     jams: list = None  # [(start, end)] of the run's jam zones
 
 
-def build(scenario: Scenario, root: Path = Path(".")):
+def build(scenario: Scenario, root: Path = Path("."), audio=None):
     city = City.load(root / scenario.city)
     backend = Twin2D(city, scenario.drones)
-    world = World(scenario, city, backend)
+    world = World(scenario, city, backend, audio)
     radio = RadioMedium(
         RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)
     )
@@ -51,10 +51,13 @@ def build(scenario: Scenario, root: Path = Path(".")):
     return city, world, radio, agents
 
 
-def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> RunResult:
+def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
+        audio=None, audio_out=None) -> RunResult:
     """Run one scenario. With `log`, writes 1 Hz snapshots to `log` and every sensor
-    detection with its true source to `<log stem>.detections.jsonl`."""
-    _, world, radio, agents = build(scenario, root)
+    detection with its true source to `<log stem>.detections.jsonl`. With `audio`
+    (sensors.Audio), sound is rendered as waveforms; `audio_out` (sensors.export.AudioExport)
+    then writes them."""
+    _, world, radio, agents = build(scenario, root, audio)
     commands: dict = {}
     inbox: dict[int, list[tuple[bytes, float]]] = {}
     telemetry: dict[int, dict] = {}
@@ -83,6 +86,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path(".")) -> 
                                          if tm.get("task") and tm["task"]["settled"]))
             if i % log_every == 0:
                 spread.append((round(t, 1), _spread(agents)))
+            if audio_out is not None:
+                audio_out.add(world.audio)
             if dh:
                 for d in world.detections:
                     dh.write(json.dumps(d) + "\n")

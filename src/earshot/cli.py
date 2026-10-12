@@ -1,7 +1,9 @@
 """earshot <command>
 
     earshot fast   --scenario S [--runs N] [--seed K] [--log] [--events F]   lockstep, no sockets
+                   [--audio DIR [--audio-beams]] [--classifier MOD:ATTR]       sound as waveforms
     earshot live   --scenario S [--backend twin2d|webots] [--events F|latest] [--no-dashboard]
+                   [--audio] [--classifier MOD:ATTR]
     earshot doctor                                                pre-flight checks (run offline)
 """
 
@@ -55,7 +57,11 @@ def cmd_fast(a) -> None:
         if a.log:
             log = Path("runs") / f"{sc.name}-seed{sc.seed}.jsonl"
             log.parent.mkdir(exist_ok=True)
-        r = run(sc, log=log)
+        audio, audio_out = _audio(a, sc)
+        r = run(sc, log=log, audio=audio, audio_out=audio_out)
+        if audio_out is not None:
+            audio_out.close()
+            print(f"audio: {audio_out.root}")
         results.append({"seed": r.seed, "radio": r.radio})
         print(f"seed {r.seed}: sent {r.radio['sent']} delivered {r.radio['delivered']} "
               f"collided {r.radio['collided']} load {r.radio['channel_load']:.1%}")
@@ -97,6 +103,22 @@ def cmd_arrays(_a) -> None:
         print(f"{i}: {name} ({ch} channels)")
     if not found:
         print("no input with 4+ channels: plug in the ReSpeaker, use the 6-channel firmware")
+
+
+def _audio(a, sc):
+    """(sensors.Audio, sensors.export.AudioExport) as the flags ask, or Nones."""
+    if not (a.audio or a.classifier):
+        return None, None
+    from earshot.sensors import Audio
+    from earshot.sensors import waveform as wf
+    from earshot.sensors.export import AudioExport
+
+    mixer = wf.Mixer(wf.ClipBank(Path(a.sounds)))
+    clf = wf.load_classifier(a.classifier) if a.classifier else None
+    out = None
+    if a.audio:
+        out = AudioExport(Path(a.audio) / f"{sc.name}-seed{sc.seed}", mixer, a.audio_beams)
+    return Audio(mixer, clf), out
 
 
 # -- eval ---------------------------------------------------------------------------------
@@ -168,6 +190,10 @@ def cmd_live(a) -> None:
         world_args += ["--events", str(_resolve_events(a.events))]
     if a.duration:
         world_args += ["--duration", str(a.duration)]
+    if a.audio:
+        world_args += ["--audio", "--sounds", a.sounds]
+    if a.classifier:
+        world_args += ["--classifier", a.classifier]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
     def _stop(*_):
@@ -247,6 +273,14 @@ def main(argv=None) -> None:
     f.add_argument("--out", help="write summary JSON here")
     f.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")
     f.add_argument("--events", help="replay a recorded session: a runs/live-*.events.jsonl file, or 'latest'")
+    f.add_argument("--audio", metavar="DIR",
+                   help="render sound as waveforms and write them to DIR/<name>-seed<k>/")
+    f.add_argument("--audio-beams", action="store_true",
+                   help="with --audio, also write each Source's beam (what a classifier gets)")
+    f.add_argument("--sounds", default="data/sounds",
+                   help="recordings per class: <dir>/<class>/*.wav (else synthetic)")
+    f.add_argument("--classifier", metavar="MOD:ATTR",
+                   help="a trained sound classifier decides the class probabilities")
     f.set_defaults(fn=cmd_fast)
 
     lv = sub.add_parser("live", help="multi-process run with radio, agents and dashboard")
@@ -259,6 +293,12 @@ def main(argv=None) -> None:
     lv.add_argument("--array", action="append", metavar="ID=DEVICE[@ROT]",
                     help="drone ID hears through a real microphone array (see `earshot arrays`)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
+    lv.add_argument("--audio", action="store_true",
+                    help="render sound as waveforms; the dashboard's Listen button plays them")
+    lv.add_argument("--sounds", default="data/sounds",
+                    help="recordings per class: <dir>/<class>/*.wav (else synthetic)")
+    lv.add_argument("--classifier", metavar="MOD:ATTR",
+                    help="a trained sound classifier decides the class probabilities")
     lv.add_argument("--no-webots-view", action="store_true",
                     help="don't draw Webots' own 3D window (the drone cameras still render)")
     lv.set_defaults(fn=cmd_live)

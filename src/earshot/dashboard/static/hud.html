@@ -136,6 +136,7 @@
       <button id="btn-live" aria-pressed="true">Live view</button>
       <button id="btn-evidence" aria-pressed="false">Evidence</button>
     </div>
+    <button class="switch" id="btn-listen" aria-pressed="false" title="Hear the selected drone's microphone (earshot live --audio)" style="padding:5px 10px;background:none;cursor:pointer">Listen</button>
     <button class="switch" id="btn-help" style="padding:5px 10px;background:none;cursor:pointer">Keys</button>
   </header>
   <main>
@@ -203,6 +204,7 @@
     <tr><td><kbd>x</kbd></td><td>Live view or evidence</td></tr>
     <tr><td><kbd>h</kbd></td><td>Probability map on the scope</td></tr>
     <tr><td><kbd>g</kbd></td><td>Ground truth on the scope</td></tr>
+    <tr><td><kbd>l</kbd></td><td>Listen to the selected drone's microphone (needs <code>--audio</code>)</td></tr>
     <tr><td colspan="2" class="muted" style="padding-top:6px">With the mouse over the map:</td></tr>
     <tr><td><kbd>d</kbd> <kbd>v</kbd> <kbd>t</kbd> <kbd>n</kbd></td><td>Add a drone, truck, train, fan</td></tr>
     <tr><td><kbd>j</kbd> / <kbd>J</kbd></td><td>Jam here / clear jamming</td></tr>
@@ -348,6 +350,32 @@ setInterval(chooseViews, 2000);
 function select(id) {
   if (!droneById(id)) return;
   selected = id; views = null; chooseViews(); schedule();
+  if (listen?.ws.readyState === 1) listen.ws.send(JSON.stringify({ drone: id }));
+}
+
+/* ---------- listen: the selected drone's microphone, 1 s windows from /ws/audio ---------- */
+const LISTEN_GAIN_DB = 40;  // RMS 1.0 is 110 dB(A); +40 dB makes a 60 dB drone audible
+let listen = null;  // { ctx, ws, at: when the next window starts playing }
+function setListen(on) {
+  if (!on && listen) { listen.ws.close(); listen.ctx.close(); listen = null; }
+  if (on && !listen) {
+    const ctx = new AudioContext({ sampleRate: 16000 }), ws = new WebSocket(`ws://${location.host}/ws/audio`);
+    const gain = ctx.createGain(), limit = ctx.createDynamicsCompressor();  // ego-noise and trains stay bearable
+    gain.gain.value = 10 ** (LISTEN_GAIN_DB / 20); gain.connect(limit); limit.connect(ctx.destination);
+    ws.binaryType = "arraybuffer";
+    listen = { ctx, ws, at: 0 };
+    ws.onopen = () => ws.send(JSON.stringify({ drone: selected }));
+    ws.onclose = () => { if (listen?.ws === ws) setListen(false); };
+    ws.onmessage = e => {
+      const pcm = new Float32Array(e.data), buf = ctx.createBuffer(1, pcm.length, 16000);
+      buf.copyToChannel(pcm, 0);
+      if (listen.at - ctx.currentTime > 1.5) return;  // the sim runs ahead of the speakers: skip a second
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(gain);
+      listen.at = Math.max(listen.at, ctx.currentTime + 0.15); src.start(listen.at); listen.at += buf.duration;
+    };
+  }
+  $("btn-listen").setAttribute("aria-pressed", !!listen);
+}
 
 /* ---------- render loop: map and flight display every frame, the panels on new data ---------- */
 let pending = false, dirty = true, lastPanels = 0;
@@ -686,6 +714,7 @@ document.querySelectorAll("#tiles .view").forEach(v => v.onclick = () => { const
 function setEvidence(on) { evidence = on; document.body.classList.toggle("evidence", on); $("btn-live").setAttribute("aria-pressed", !on); $("btn-evidence").setAttribute("aria-pressed", on); if (!on) chooseViews(); schedule(); }
 $("btn-live").onclick = () => setEvidence(false); $("btn-evidence").onclick = () => setEvidence(true);
 $("btn-help").onclick = () => $("help").classList.toggle("show");
+$("btn-listen").onclick = () => setListen(!listen);
 addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || !city) return;
   if (/^[0-9]$/.test(e.key)) { select(+e.key); return; }
@@ -694,6 +723,7 @@ addEventListener("keydown", e => {
   if (e.key === "x") { setEvidence(!evidence); return; }
   if (e.key === "h") { showHeat = !showHeat; schedule(); return; }
   if (e.key === "g") { showTruth = !showTruth; schedule(); return; }
+  if (e.key === "l") { setListen(!listen); return; }
   if (e.key === "?") { $("help").classList.toggle("show"); return; }
   const env = last?.state.environment || {};
   if ("dvnjf".includes(e.key) && !mouse) return;

@@ -178,6 +178,7 @@ def create_app(scenario_path: str) -> FastAPI:
         city_json.pop(k, None)
     hub = Hub()
     cams: dict = {}  # view camera k -> {drone, mode, w, h, jpeg (base64)}
+    listeners: dict[asyncio.Queue, dict] = {}  # /ws/audio screen -> {"drone": the one it hears}
 
     async def pump():
         try:
@@ -189,6 +190,7 @@ def create_app(scenario_path: str) -> FastAPI:
             sub.setsockopt(zmq.SUBSCRIBE, topic("state"))
             sub.setsockopt(zmq.SUBSCRIBE, topic("radio"))
             sub.setsockopt(zmq.SUBSCRIBE, topic("cams"))
+            sub.setsockopt(zmq.SUBSCRIBE, topic("audio"))
             while True:
                 t, payload = await sub.recv_multipart()
                 try:  # one bad message must not freeze the screen
@@ -197,6 +199,11 @@ def create_app(scenario_path: str) -> FastAPI:
                         for k, f in msg["frames"].items():
                             f["jpeg"] = base64.b64encode(f["jpeg"]).decode()
                             cams[int(k)] = f
+                    elif t == topic("audio"):
+                        for q, want in list(listeners.items()):
+                            pcm = msg["windows"].get(str(want["drone"]))
+                            if pcm is not None and not q.full():  # a slow screen skips a second
+                                q.put_nowait(pcm)
                     elif t == topic("state"):
                         hub.ingest_state(msg)
                     else:
@@ -304,6 +311,34 @@ def create_app(scenario_path: str) -> FastAPI:
                 await asyncio.sleep(0.05)
         except WebSocketDisconnect:
             pass
+
+    @app.websocket("/ws/audio")
+    async def ws_audio(sock: WebSocket):
+        """The microphone sound of one drone (earshot live --audio): binary 1 s windows,
+        float32 mono at 16 kHz, RMS 1.0 = sensors.waveform.FULL_SCALE_DB. The screen picks
+        the drone by sending {"drone": id}."""
+        await sock.accept()
+        q: asyncio.Queue = asyncio.Queue(maxsize=4)
+        want = {"drone": 0}
+        listeners[q] = want
+
+        async def choose():
+            try:
+                while True:
+                    want["drone"] = int(json.loads(await sock.receive_text())["drone"])
+            except Exception:  # noqa: BLE001 - closed or garbage: stop sending
+                listeners.pop(q, None)
+                await q.put(None)
+
+        chooser = asyncio.create_task(choose())
+        try:
+            while (pcm := await q.get()) is not None:
+                await sock.send_bytes(pcm)
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            pass
+        finally:
+            chooser.cancel()
+            listeners.pop(q, None)
 
     @app.post("/view")
     async def view(request: Request):

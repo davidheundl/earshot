@@ -5,6 +5,7 @@ Interface:
     sensed = world.step(commands)     -> {drone_id: Sensed}, advances by scenario.dt
     world.detections                  -> this step's readings with their truth (logs, metrics)
     world.snapshot(telemetry)         -> JSON-able dict for the dashboard / run log
+    world.audio                       -> this step's sound windows as audio (with `audio=`)
 
 The World is the only module that sees both truth and drones; Sensed carries readings only,
 so Agents cannot see ground truth (ADR 0001). Runners own the clock.
@@ -19,12 +20,13 @@ import numpy as np
 from earshot.backend import Backend
 from earshot.city import City
 from earshot.scenario import Scenario
-from earshot.sensors import SensorSuite
+from earshot.sensors import Audio, SensorSuite
 from earshot.state import Command, DroneState, Sensed
 
 
 class World:
-    def __init__(self, scenario: Scenario, city: City, backend: Backend):
+    def __init__(self, scenario: Scenario, city: City, backend: Backend,
+                 audio: Audio | None = None):
         self.scenario = scenario
         self.city = city
         self.backend = backend
@@ -36,7 +38,9 @@ class World:
         self.applied: list[dict] = []  # every event that took effect, with its sim time
         self._pending: list[dict] = []
         self._recent: list[dict] = []  # last few seconds of sound bearings, for the dashboard
-        self.sensors = SensorSuite(city, scenario, np.random.default_rng(scenario.seed + 1))
+        self.sensors = SensorSuite(city, scenario, np.random.default_rng(scenario.seed + 1),
+                                   audio)
+        self.audio: list = []  # sensors.waveform.AudioWindow rendered this step
 
     def control(self, op: dict) -> None:
         """Queue a live event (dashboard hotkey); it takes effect at the next step."""
@@ -58,6 +62,7 @@ class World:
         self.states = self.backend.step(self.scenario.dt, commands)
         self.t = next(iter(self.states.values())).t if self.states else self.t + self.scenario.dt
         self.detections = []
+        self.sensors.windows = self.audio = []
         sensed = {}
         for did, s in self.states.items():
             frame = self.backend.camera_frame(did) if s.camera_on else None

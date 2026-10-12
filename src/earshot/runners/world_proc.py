@@ -3,7 +3,8 @@
     python -m earshot.runners.world_proc --scenario scenarios/demo.yaml --backend twin2d
     (backend webots: start via `earshot live --backend webots`, which sets the Webots env)
 
-Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot) to radio + dashboard.
+Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot) to radio + dashboard;
+with --audio also "audio." (each drone's newest 1 s of microphone sound) to the dashboard.
 Pulls commands + telemetry from agents (a drone without a fresh command keeps its last one)
 and operator events from the dashboard ({"op": ...}, see earshot/scenario.py). Every event
 that took effect is appended to runs/live-<time>.events.jsonl, replayable with
@@ -47,6 +48,9 @@ def main(argv=None) -> None:
     ap.add_argument("--speed", type=float, default=1.0, help="real-time factor (twin2d only)")
     ap.add_argument("--events", help="recorded session to replay (runs/live-*.events.jsonl)")
     ap.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")
+    ap.add_argument("--audio", action="store_true", help="render sound as waveforms")
+    ap.add_argument("--sounds", default="data/sounds", help="recordings: <dir>/<class>/*.wav")
+    ap.add_argument("--classifier", metavar="MOD:ATTR", help="trained sound classifier")
     a = ap.parse_args(argv)
 
     scenario = Scenario.load(a.scenario)
@@ -58,7 +62,14 @@ def main(argv=None) -> None:
         scenario.events = sorted(scenario.events + replay, key=lambda e: e["t"])
     city = City.load(Path(scenario.city))
     backend, self_paced = make_backend(a.backend, city, scenario)
-    world = World(scenario, city, backend)
+    audio = None
+    if a.audio or a.classifier:
+        from earshot.sensors import Audio
+        from earshot.sensors import waveform as wf
+
+        audio = Audio(wf.Mixer(wf.ClipBank(Path(a.sounds))),
+                      wf.load_classifier(a.classifier) if a.classifier else None)
+    world = World(scenario, city, backend, audio)
 
     ctx = zmq.Context.instance()
     ctx.setsockopt(zmq.LINGER, 0)  # never block exit on unsent messages
@@ -121,6 +132,9 @@ def main(argv=None) -> None:
             logged = len(world.applied)
             for did, s in sensed.items():
                 pub.send_multipart([topic("tick", did), pack(sensed_to_dict(s))])
+            if world.audio:  # float32, RMS 1.0 = waveform.FULL_SCALE_DB
+                pub.send_multipart([topic("audio"), pack({"t": world.t, "windows": {
+                    str(w.drone): w.mix.astype("<f4").tobytes() for w in world.audio}})])
             snap = world.snapshot(telemetry)
             if round(world.t / scenario.dt) % round(1.0 / scenario.dt) == 0:
                 snap["camera"] = world.camera_preview()  # once per second; frames are big

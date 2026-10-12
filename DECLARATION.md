@@ -18,6 +18,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Message store with duplicate filter and plain hop-limited flooding (baseline).
 - Sensor models: sound propagation (spherical spreading, per-class air absorption and building loss), ego-noise by motor speed with a filter gain, masking, SNR-based detection, bearing error and outliers, placeholder classifier confusion (fan mistaken for drone); passive RF energy per band (2.4 / 5.8 GHz, 915 MHz) with log-distance path loss and shadowing; camera stand-in with an error rate. Calibrated to the concept's range tables.
 - Detection log with ground-truth source per measurement (for the evaluation metrics).
+- Sound as waveforms (infrastructure only, no trained model): per-class clip bank (recordings in `data/sounds/`, synthetic stand-ins otherwise), per-drone 1 s mixes calibrated to the level model, per-Source beams, a classifier hook, training-data export (`earshot fast --audio`) and live playback in the dashboard (`earshot live --audio`, Listen).
 - Scenario events (add source, jam, fault, day/night, ego filter): scripted in YAML or sent live from dashboard hotkeys; live sessions recorded and replayable in fast mode.
 - Stub belief and duty-cycle policy.
 
