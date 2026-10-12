@@ -47,7 +47,7 @@ VERIFY_MIN_CONFIDENCE = 0.5
 TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
 CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
 NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nearest drone
-VERIFY_MIN_STRENGTH = 8.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
+VERIFY_MIN_STRENGTH = 4.0  # log-odds; 8 waited ~4x as long to confirm (eval 2026-10-12), 0 floods
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
 ARRIVE = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
 DISMISS_AFTER = 8.0  # s at the target with no Suspicion left -> dismissed
@@ -201,7 +201,7 @@ class Policy:
 
     def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
-        current = tasks.get(task.tid) or self._drifted(task, tasks)
+        current = tasks.get(task.tid) or self._drifted(task, tasks) or self._held(task, tracks)
         self._verify_progress(t, s, tracks, current, d)
         if self._task is None:
             return
@@ -224,6 +224,15 @@ class Policy:
         same = [x for x in tasks.values() if task_kind(x.tid) == task.kind
                 and math.hypot(x.x - task.x, x.y - task.y) <= SAME_TASK_RADIUS]
         return min(same, key=lambda x: math.hypot(x.x - task.x, x.y - task.y), default=None)
+
+    def _held(self, task: _Task, tracks) -> _Task | None:
+        """A task once claimed lasts while its Suspicion does, below the strength gate too:
+        strengths hover around the gate, and a claim dropped before it settles flies nobody."""
+        same = [tr for tr in tracks if tr.cls == TargetClass.DRONE
+                and tr.status == TrackStatus.SUSPECTED and tr.confidence >= VERIFY_MIN_CONFIDENCE
+                and math.hypot(tr.x - task.x, tr.y - task.y) <= SAME_TASK_RADIUS]
+        tr = min(same, key=lambda tr: math.hypot(tr.x - task.x, tr.y - task.y), default=None)
+        return None if tr is None else _Task(task.tid, task.kind, tr.x, tr.y, tr, (tr.x, tr.y))
 
     def _verify_progress(self, t, s, tracks, current, d: Decision) -> None:
         task = self._task

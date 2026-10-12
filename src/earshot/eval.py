@@ -5,6 +5,8 @@
 Per run, from the lockstep RunResult (decision events + ground truth):
     t_confirm      s from a drone Source appearing to the first camera confirmation within
                    CONFIRM_MATCH of it (None if never)
+    t_dispatch     s from a drone Source appearing to the first Verifier dispatched within
+                   FALSE_RADIUS of it (None if never)
     loc_err        m between the Suspicion and the true drone when a Verifier is dispatched
     false_verify   Verifier dispatches with no drone Source within FALSE_RADIUS
     missed         drone Sources never confirmed
@@ -36,6 +38,7 @@ class RunMetrics:
     seed: int
     policy: str
     t_confirm: float | None
+    t_dispatch: float | None
     loc_err: float | None
     false_verify: int
     verify_flights: int
@@ -73,11 +76,16 @@ def metrics(r: RunResult, policy: str) -> RunMetrics:
             t_conf.append(min(hits) - s.start)
         else:
             missed += 1
+    t_disp = [min(hits) - s.start for s in drones
+              if (hits := [e["t"] for e in dispatches if e["t"] >= s.start
+                           and (p := s.position(e["t"])) is not None
+                           and math.hypot(p[0] - e["x"], p[1] - e["y"]) <= FALSE_RADIUS])]
     errs = [_nearest_drone(sources, e["x"], e["y"], e["t"]) for e in dispatches]
     true_errs = [d for d in errs if d <= FALSE_RADIUS]
     return RunMetrics(
         seed=r.seed, policy=policy,
         t_confirm=min(t_conf) if t_conf else None,
+        t_dispatch=min(t_disp) if t_disp else None,
         loc_err=statistics.median(true_errs) if true_errs else None,
         false_verify=sum(1 for d in errs if d > FALSE_RADIUS),
         verify_flights=len(dispatches),
@@ -132,6 +140,7 @@ def summarize(rows: list[RunMetrics], label: str | None = None) -> dict:
         "policy": label or rows[0].policy,
         "runs": n,
         "confirmed": f"{sum(r.t_confirm is not None for r in rows)}/{n}",
+        "t_dispatch_s": stat([r.t_dispatch for r in rows]),
         "t_confirm_s": stat([r.t_confirm for r in rows]),
         "loc_err_m": stat([r.loc_err for r in rows]),
         "false_verify": stat([r.false_verify for r in rows]),
