@@ -229,25 +229,58 @@ const hist = {};      // drone -> readings (last 120 s)
 const stream = [];    // all readings, newest first (for the evidence table)
 const spectro = {};   // drone -> spectrum columns from a live array
 const frames = {};    // view k -> {drone, mode}
+const spectroKey = {}; // drone -> last array block's spectrum, to add one column per block
+const heat = {};      // drone -> last heatmap (the server sends one only when it changed)
+const seen = new Map(); // reading key -> t, so readings replayed after a reconnect count once
+const rkey = r => `${r.t}|${r.drone}|${r.sensor}|${r.bearing}|${r.level}`;
+let wsOpen = false, pumpUp = true, lastData = 0, lastT = -Infinity;
 
 /* ---------- data ---------- */
+function linkStatus() {
+  const fresh = Date.now() - lastData < 2500;
+  const [txt, cls] = !wsOpen ? ["reconnecting", "down"] : !pumpUp ? ["no data, dashboard stopped listening", "down"]
+    : fresh ? ["live", "live"] : ["no data", "down"];
+  if ($("link").textContent !== txt) { $("link").textContent = txt; $("link").className = cls; }
+}
+setInterval(linkStatus, 1000);
+function newRun() {
+  // the run restarted with the tab open: forget everything of the old run
+  for (const k of [hist, spectro, spectroKey, heat]) for (const d in k) delete k[d];
+  stream.length = 0; seen.clear(); $("stream").textContent = ""; heatSrc = null;
+  lastConfirmed = 0; views = null;
+  loadStatic(true);
+}
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => { $("link").textContent = "live"; $("link").className = "live"; };
-  ws.onclose = () => { $("link").textContent = "reconnecting"; $("link").className = "down"; setTimeout(connect, 1000); };
+  ws.onopen = () => { wsOpen = true; linkStatus(); };
+  ws.onclose = () => { wsOpen = false; linkStatus(); setTimeout(connect, 1000); };
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
+    if (!msg.state) { pumpUp = msg.pump !== false; linkStatus(); return; }  // heartbeat
+    const t = msg.state.t;
+    if (t < lastT - 1) newRun();
+    lastT = t; lastData = Date.now(); pumpUp = true; linkStatus();
+    for (const d of msg.state.drones) {
+      const tm = d.telemetry ||= {};
+      if ("heatmap" in tm) heat[d.id] = tm.heatmap; else tm.heatmap = heat[d.id];
+    }
     last = msg;
     for (const r of msg.readings || []) {
+      const k = rkey(r); if (seen.has(k)) continue;
+      seen.set(k, r.t);
       (hist[r.drone] ||= []).push(r);
       stream.unshift({ ...r, fresh: true });
     }
     stream.length = Math.min(stream.length, 80);
-    const t = msg.state.t;
-    for (const d in hist) hist[d] = hist[d].filter(r => t - r.t < 120);
+    for (const d in hist) hist[d] = hist[d].filter(r => t - r.t < 120 && r.t <= t + 1);
+    for (const [k, rt] of seen) if (t - rt > 130 || rt > t + 1) seen.delete(k);
     for (const d of msg.state.drones) {
       const a = d.telemetry?.array;
-      if (a?.spectrum) { const col = (spectro[d.id] ||= []); col.push(a.spectrum); if (col.length > 120) col.shift(); }
+      if (!a?.spectrum) continue;
+      const key = a.spectrum.join(",");  // array blocks carry no sequence; a new block has a new spectrum
+      if (key === spectroKey[d.id]) continue;
+      spectroKey[d.id] = key;
+      const col = (spectro[d.id] ||= []); col.push(a.spectrum); if (col.length > 120) col.shift();
     }
     schedule();
   };
@@ -293,16 +326,20 @@ function render(ts) {
   lastDraw = ts;
   if (!last || !city) return;
   $("clock").textContent = fmtTime(last.state.t);
-  drawMap(); drawPFD(); drawSwarm(); drawEar(); drawTicker(); checkAlerts();
-  if (evidence) drawEvidence();
+  for (const f of [drawMap, drawPFD, drawSwarm, drawEar, drawTicker, checkAlerts, ...(evidence ? [drawEvidence] : [])]) {
+    try { f(); } catch (err) { console.error(err); }  // one broken panel must not stop the others
+  }
 }
+function each(list, f) { for (const x of list || []) try { f(x); } catch (err) { console.error(err); } }
+function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 
 /* ---------- map (scope) ---------- */
 const map = $("map"), mctx = map.getContext("2d");
 function fitCanvas(c) {
   const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = r.width * dpr; c.height = r.height * dpr; }
+  const W = Math.floor(r.width * dpr), H = Math.floor(r.height * dpr);  // the size setters truncate too
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [r.width, r.height, ctx];
 }
 function mapView(w, h) {
@@ -321,7 +358,7 @@ function drawMap() {
   for (const b of city.buildings) { line(ctx, P, b.footprint); ctx.fill(); }
   const me = droneById(selected);
   if (showHeat && me?.telemetry?.heatmap) drawHeat(ctx, P, me.telemetry.heatmap);
-  for (const j of st.jamming) { const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,90,82,.14)"; ctx.fill(); ctx.strokeStyle = "rgba(255,90,82,.6)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
+  for (const j of st.jamming || []) { if (!(j.r > 0)) continue; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,90,82,.14)"; ctx.fill(); ctx.strokeStyle = "rgba(255,90,82,.6)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
   const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
   ctx.strokeStyle = "rgba(60,203,234,.18)"; ctx.lineWidth = 1;
   for (const [a, b] of last.radio?.links || []) if (byId[a] && byId[b]) { line(ctx, P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); }
@@ -334,7 +371,7 @@ function drawMap() {
     ctx.strokeStyle = r.drone === selected ? "rgba(245,181,59,.85)" : "rgba(245,181,59,.35)";
     ctx.lineWidth = r.drone === selected ? 1.5 : 1; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
   }
-  for (const tr of me?.telemetry?.tracks || []) drawTrack(ctx, P, s, tr);
+  each(me?.telemetry?.tracks, tr => drawTrack(ctx, P, s, tr));
   // tasks: commanded lines in magenta
   for (const d of st.drones) { const task = d.telemetry?.task; if (!task) continue;
     const [a, b] = P(d.x, d.y), [c, e] = P(task.x, task.y);
@@ -344,7 +381,7 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke(); }
   // drones: triangles pointing along the heading; camera wedges for the ones on screen
   const viewed = new Set((views || []).map(v => v[0]));
-  for (const d of st.drones) {
+  each(st.drones, d => {
     const [a, b] = P(d.x, d.y), th = d.heading * Math.PI / 180;
     if (viewed.has(d.id)) { ctx.fillStyle = d.id === selected ? "rgba(60,203,234,.22)" : "rgba(232,238,244,.10)";
       ctx.beginPath(); ctx.moveTo(a, b); ctx.arc(a, b, 26, th - Math.PI / 2 - 0.5, th - Math.PI / 2 + 0.5); ctx.closePath(); ctx.fill(); }
@@ -354,20 +391,24 @@ function drawMap() {
     if ((d.telemetry?.belief?.faulty || []).includes(d.id) || isFaulty(d.id)) { ctx.strokeStyle = css("--warn"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 10, 0, 7); ctx.stroke(); }
     if (d.id === selected) { ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, 12, 0, 7); ctx.stroke(); }
     ctx.fillStyle = css("--text"); ctx.font = "11px B612, sans-serif"; ctx.fillText(d.id, a + 9, b - 7);
-  }
+  });
   $("maplegend").textContent = `Map of drone ${selected}${showHeat ? ", red is probable threat" : ""}`;
 }
 function isFaulty(id) { return drones().some(d => (d.telemetry?.belief?.faulty || []).includes(id)); }
 function line(ctx, P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
+let heatSrc = null;  // the heatmap now decoded in heatCanvas
 function drawHeat(ctx, P, hm) {
-  const p = b64(hm.p), cls = b64(hm.cls); heatCanvas.width = hm.w; heatCanvas.height = hm.h;
-  const hctx = heatCanvas.getContext("2d"), img = hctx.createImageData(hm.w, hm.h);
-  const rgb = [[255, 90, 82], [245, 181, 59], [201, 168, 106]];
-  for (let r = 0; r < hm.h; r++) for (let c = 0; c < hm.w; c++) {
-    const s = r * hm.w + c, o = ((hm.h - 1 - r) * hm.w + c) * 4, [R, G, B] = rgb[cls[s]] || rgb[0];
-    img.data[o] = R; img.data[o + 1] = G; img.data[o + 2] = B; img.data[o + 3] = p[s] * 0.75;
+  if (hm !== heatSrc) {  // decode only when a new map arrived or another drone is selected
+    heatSrc = hm;
+    const p = b64(hm.p), cls = b64(hm.cls); heatCanvas.width = hm.w; heatCanvas.height = hm.h;
+    const hctx = heatCanvas.getContext("2d"), img = hctx.createImageData(hm.w, hm.h);
+    const rgb = [[255, 90, 82], [245, 181, 59], [201, 168, 106]];
+    for (let r = 0; r < hm.h; r++) for (let c = 0; c < hm.w; c++) {
+      const s = r * hm.w + c, o = ((hm.h - 1 - r) * hm.w + c) * 4, [R, G, B] = rgb[cls[s]] || rgb[0];
+      img.data[o] = R; img.data[o + 1] = G; img.data[o + 2] = B; img.data[o + 3] = p[s] * 0.75;
+    }
+    hctx.putImageData(img, 0, 0);
   }
-  hctx.putImageData(img, 0, 0);
   const [x0, y0, x1, y1] = city.bounds, [ax, ay] = P(x0, y1), [bx, by] = P(x1, y0);
   ctx.imageSmoothingEnabled = true; ctx.drawImage(heatCanvas, ax, ay, bx - ax, by - ay);
 }
@@ -446,14 +487,14 @@ function drawSwarm() {
     const m = b.querySelector(".mode"); m.textContent = MODE_NAME[d.mode] || d.mode; m.style.color = css(MODE_COL[d.mode] || "--own");
     const bat = b.querySelector(".bat i"); bat.style.width = `${Math.round(d.battery * 100)}%`; bat.style.background = d.battery < .25 ? css("--warn") : css("--own");
     const task = d.telemetry?.task, fault = isFaulty(d.id), arr = !!d.telemetry?.array;
-    b.querySelector(".task").innerHTML = fault ? `<span style="color:${css("--warn")}">sensor fault</span>` :
-      arr ? `<span style="color:${css("--select")}">real microphones</span>` : task ? (task.kind === "verify" ? "verifying" : "listening") : d.perched_on ? "on a roof" : "in its sector";
+    setHTML(b.querySelector(".task"), fault ? `<span style="color:${css("--warn")}">sensor fault</span>` :
+      arr ? `<span style="color:${css("--select")}">real microphones</span>` : task ? (task.kind === "verify" ? "verifying" : "listening") : d.perched_on ? "on a roof" : "in its sector");
   }
 }
 
 /* ---------- the ear: polar of recent bearings ---------- */
 function polar(canvas, id, seconds, big) {
-  const [w, h, ctx] = fitCanvas(canvas), r0 = Math.min(w, h) / 2 - (big ? 18 : 10), cx = w / 2, cy = h / 2;
+  const [w, h, ctx] = fitCanvas(canvas), r0 = Math.max(1, Math.min(w, h) / 2 - (big ? 18 : 10)), cx = w / 2, cy = h / 2;
   ctx.clearRect(0, 0, w, h);
   ctx.strokeStyle = css("--rule"); ctx.lineWidth = 1;
   for (const f of [1, 0.66, 0.33]) { ctx.beginPath(); ctx.arc(cx, cy, r0 * f, 0, 7); ctx.stroke(); }
@@ -492,15 +533,15 @@ function drawEar() {
   const rs = hist[selected] || [], t = last.state.t;
   const rf = [...rs].reverse().find(r => r.sensor.startsWith("RF"));
   const nSound = rs.filter(r => r.sensor === "SOUND" && t - r.t <= 30).length, nRF = rs.filter(r => r.sensor.startsWith("RF") && t - r.t <= 30).length;
-  $("kv").innerHTML = [
+  setHTML($("kv"), [
     ["Last bearing", newest ? `<span class="num">${String(Math.round(newest.bearing)).padStart(3, "0")}° ±${Math.round(newest.sigma)}°</span>` : "–"],
     ["Sound level", newest ? `<span class="num">${newest.level.toFixed(0)} dB</span>` : "–"],
     ["RF received", rf ? `<span class="num">${rf.level.toFixed(0)} dBm</span> ${SENSOR[rf.sensor]}` : "–"],
     ["Readings, 30 s", `<span class="num">${nSound}</span> sound, <span class="num">${nRF}</span> RF`],
     ["Height", `<span class="num">${Math.round(d.agl ?? d.z)} m</span>`],
-  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
   const probs = newest?.probs || [0, 0, 0, 0];
-  $("classbars").innerHTML = CLS.map((c, i) => `<span>${CLS_NAME[c]}</span><span class="b"><i style="width:${Math.round(probs[i] * 100)}%;background:${css(CLS_COL[c])}"></i></span><span class="num">${Math.round(probs[i] * 100)}%</span>`).join("");
+  setHTML($("classbars"), CLS.map((c, i) => `<span>${CLS_NAME[c]}</span><span class="b"><i style="width:${Math.round(probs[i] * 100)}%;background:${css(CLS_COL[c])}"></i></span><span class="num">${Math.round(probs[i] * 100)}%</span>`).join(""));
   drawLevelTrace(rs, t);
   const fused = d.telemetry?.belief?.fused || {}, parts = Object.entries(fused).sort((a, b) => +a[0] - +b[0]).map(([o, f]) => `drone ${o}: ${(f.sound || 0) + (f.rf || 0) + (f.camera || 0)}`);
   $("fused").textContent = parts.length ? `This drone's map fused, last 30 s: ${parts.join(", ")}` : "No readings fused in the last 30 s.";
@@ -517,15 +558,17 @@ function drawLevelTrace(rs, t) {
 
 /* ---------- evidence view ---------- */
 function drawEvidence() {
-  const tb = $("stream");
-  tb.innerHTML = stream.slice(0, 60).map(r => {
+  // new readings are prepended in place, so each row keeps its 1.2 s highlight
+  const tb = $("stream"), fresh = stream.filter(r => r.fresh);
+  for (const r of fresh.reverse()) {
     const cls = r.sensor === "SOUND" || r.sensor === "CAMERA" ? CLS[argmax(r.probs)] : null;
     const bars = `<span class="mini">${r.probs.map((p, i) => `<i style="height:${3 + p * 9}px;background:${css(CLS_COL[CLS[i]])};opacity:${0.35 + p * 0.65}"></i>`).join("")}</span>`;
     const bearing = r.bearing === null || Number.isNaN(r.bearing) ? "ring" : `${String(Math.round(r.bearing)).padStart(3, "0")}° ±${Math.round(r.sigma)}°`;
     const level = r.sensor.startsWith("RF") ? `${r.level.toFixed(0)} dBm` : r.sensor === "CAMERA" ? "" : `${r.level.toFixed(0)} dB`;
-    const row = `<tr class="${r.fresh ? "fresh" : ""}"><td class="num">${fmtTime(r.t)}</td><td>${r.drone}</td><td>${SENSOR[r.sensor] || r.sensor}</td><td class="num">${bearing}</td><td class="num">${level}</td><td>${bars} ${cls ? CLS_NAME[cls] : ""}</td></tr>`;
-    r.fresh = false; return row;
-  }).join("");
+    r.fresh = false;
+    tb.insertAdjacentHTML("afterbegin", `<tr class="fresh"><td class="num">${fmtTime(r.t)}</td><td>${r.drone}</td><td>${SENSOR[r.sensor] || r.sensor}</td><td class="num">${bearing}</td><td class="num">${level}</td><td>${bars} ${cls ? CLS_NAME[cls] : ""}</td></tr>`);
+  }
+  while (tb.rows.length > 60) tb.deleteRow(-1);
   const d = droneById(selected);
   $("ev-ear-title").textContent = `What drone ${selected} hears`;
   polar($("bigpolar"), selected, 30, true);
@@ -547,16 +590,16 @@ function drawTrace(d) {
   const tr = tracks.sort((a, b) => b.strength - a.strength)[0];
   const st = last.state, c = st.counts || {};
   const readings30 = Object.values(hist).flat().filter(r => st.t - r.t <= 30).length;
-  $("pipeline").innerHTML = [["Readings, 30 s", readings30], ["Suspicions", (d?.telemetry?.tracks || []).filter(x => x.status !== "EXPLAINED").length],
-    ["Verify flights", c.dispatch ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join("");
-  if (!tr) { $("trace").innerHTML = `<p class="muted">No drone suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks) stay off this list.</p>`; return; }
+  setHTML($("pipeline"), [["Readings, 30 s", readings30], ["Suspicions", (d?.telemetry?.tracks || []).filter(x => x.status !== "EXPLAINED").length],
+    ["Verify flights", c.dispatch ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join(""));
+  if (!tr) { setHTML($("trace"), `<p class="muted">No drone suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks) stay off this list.</p>`); return; }
   const sup = tr.support || [], maxAbs = Math.max(1, ...sup.map(s => Math.abs(s[2])));
   const name = ([o, fam]) => fam === "prior" ? "map prior" : fam === "camera" ? "camera" : `drone ${o} ${fam === "rf" ? "RF" : "sound"}`;
   const rows = sup.map(s => { const v = s[2], wpc = Math.abs(v) / maxAbs * 50, left = v >= 0 ? 50 : 50 - wpc;
     const col = s[1] === "prior" ? css("--muted") : v >= 0 ? css("--own") : css("--warn");
     return `<span>${name(s)}</span><span class="track"><span class="zero" style="left:50%"></span><i style="left:${left}%;width:${wpc}%;background:${col}"></i></span><span class="num">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`; }).join("");
   const claim = drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
-  $("trace").innerHTML = `
+  setHTML($("trace"), `
     <dl class="kv" style="margin-bottom:10px">
       <dt>Suspicion</dt><dd>${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</dd>
       <dt>Probability</dt><dd class="num">${Math.round(tr.conf * 100)} %</dd>
@@ -565,14 +608,14 @@ function drawTrace(d) {
       <dt>Action</dt><dd>${claim ? `drone ${claim.id} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}` : tr.status === "CONFIRMED" ? "handed to operators" : "waiting for a better fix"}</dd>
     </dl>
     <div class="sub">Each reading adds or removes evidence (log-odds) at the suspicion. Green raises it, red lowers it.</div>
-    <div class="support">${rows}</div>`;
+    <div class="support">${rows}</div>`);
 }
 
 /* ---------- ticker and alerts ---------- */
 function drawTicker() {
   const st = last.state, items = [...(st.decisions || []).map(e => ({ t: e.t, txt: decisionText(e) })), ...(st.events || []).map(e => ({ t: e.t, txt: e.note }))]
     .sort((a, b) => b.t - a.t).slice(0, 8);
-  $("ticker").innerHTML = items.length ? items.map(i => `<span class="ev"><span class="num muted">${fmtTime(i.t)}</span> ${i.txt}</span>`).join("") : `<span class="muted">Waiting for the swarm.</span>`;
+  setHTML($("ticker"), items.length ? items.map(i => `<span class="ev"><span class="num muted">${fmtTime(i.t)}</span> ${i.txt}</span>`).join("") : `<span class="muted">Waiting for the swarm.</span>`);
 }
 function decisionText(e) {
   const what = e.task === "verify" ? "verify" : "listen";
@@ -612,18 +655,24 @@ addEventListener("keydown", e => {
   if ("dvnjf".includes(e.key) && !mouse) return;
   const [x, y] = mouse || [0, 0];
   const near = () => drones().reduce((b, d) => (!b || Math.hypot(d.x - x, d.y - y) < Math.hypot(b.x - x, b.y - y)) ? d : b, null);
-  const op = { d: { op: "add_source", cls: "drone", x, y }, v: { op: "add_source", cls: "vehicle", x, y, to: [x + 400, y], duration: 60 },
-    t: city.rails?.length ? { op: "add_source", cls: "train", path: city.rails[0], duration: 120 } : null, n: { op: "add_source", cls: "nuisance", x, y, duration: 300 },
-    j: { op: "jam", x, y }, J: { op: "clear_jam" }, f: mouse ? { op: "fault", drone: near().id, kind: "stuck_bearing" } : null, F: { op: "clear_faults" },
-    b: { op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }, e: { op: "set_env", ego_filter: !env.ego_filter } }[e.key];
+  const ops = { d: () => ({ op: "add_source", cls: "drone", x, y }), v: () => ({ op: "add_source", cls: "vehicle", x, y, to: [x + 400, y], duration: 60 }),
+    t: () => city.rails?.length ? { op: "add_source", cls: "train", path: city.rails[0], duration: 120 } : null, n: () => ({ op: "add_source", cls: "nuisance", x, y, duration: 300 }),
+    j: () => ({ op: "jam", x, y }), J: () => ({ op: "clear_jam" }), f: () => { const d = near(); return d && { op: "fault", drone: d.id, kind: "stuck_bearing" }; }, F: () => ({ op: "clear_faults" }),
+    b: () => ({ op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }), e: () => ({ op: "set_env", ego_filter: !env.ego_filter }) };
+  if (e.repeat && e.key in ops) { e.preventDefault(); return; }  // holding a key adds one source, not thirty a second
+  const op = ops[e.key]?.();
   if (op) { e.preventDefault(); post("/control", op); }
 });
 addEventListener("resize", schedule);
 
 /* ---------- start ---------- */
-const baseImg = new Image(); baseImg.onload = () => { base = baseImg; schedule(); }; baseImg.src = "/basemap.png";
-fetch("/scenario").then(r => r.json()).then(s => scen = s).catch(() => {});
-fetch("/city").then(r => r.json()).then(c => { city = c; connect(); connectCams(); });
+function loadStatic(again) {
+  const q = again ? `?run=${Date.now()}` : "";  // a new run may bring a new city
+  const img = new Image(); img.onload = () => { base = img; schedule(); }; img.onerror = () => { base = null; }; img.src = `/basemap.png${q}`;
+  fetch(`/scenario${q}`).then(r => r.json()).then(s => scen = s).catch(() => {});
+  return fetch(`/city${q}`).then(r => r.json()).then(c => { city = c; schedule(); });
+}
+loadStatic(false).then(() => { connect(); connectCams(); });
 </script>
 </body>
 </html>

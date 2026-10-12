@@ -80,6 +80,13 @@ const MODE = { PATROL: "--patrol", LISTEN: "--listen", VERIFY: "--verify", FILL_
 const CLS = { DRONE: "--drone", VEHICLE: "--vehicle", TRAIN: "--train" };
 const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
 let city = null, last = null, scen = null, selected = 0, showMap = true, base = null;
+const heatmaps = {}, link = { open: false, pump: true, data: 0 };
+function linkStatus() {
+  const txt = !link.open ? "reconnecting…" : !link.pump ? "no data (dashboard stopped listening)"
+    : Date.now() - link.data < 2500 ? "live" : "no data";
+  document.getElementById("status").textContent = txt;
+}
+setInterval(linkStatus, 1000);
 const baseImg = new Image();
 baseImg.onload = () => { base = baseImg; draw(); };
 baseImg.src = "/basemap.png";
@@ -118,7 +125,7 @@ function draw() {
   const me = st.drones.find(d => d.id === selected) || st.drones[0];
   if (showMap && scen) drawSectors(P, s, st);
   if (showMap && me?.telemetry?.heatmap) drawHeat(P, me.telemetry.heatmap);
-  st.jamming.forEach(j => { const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = css("--jam"); ctx.fill(); });
+  (st.jamming || []).forEach(j => { if (!(j.r > 0)) return; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = css("--jam"); ctx.fill(); });
   const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
   ctx.strokeStyle = css("--link"); ctx.lineWidth = 1;
   (last.radio?.links || []).forEach(([a, b]) => { if (byId[a] && byId[b]) { line(P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); } });
@@ -198,7 +205,6 @@ function camera(cam) {
 }
 function panels() {
   const st = last.state, rd = last.radio;
-  camera(last.camera);
   document.getElementById("clock").textContent = `t = ${st.t.toFixed(1)} s`;
   const faulty = new Set(st.drones.flatMap(d => d.telemetry?.belief?.faulty || []));
   rows(document.getElementById("drones"), st.drones.map(d => [
@@ -228,9 +234,18 @@ function panels() {
 
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => document.getElementById("status").textContent = "live";
-  ws.onclose = () => { document.getElementById("status").textContent = "reconnecting…"; setTimeout(connect, 1000); };
-  ws.onmessage = e => { last = JSON.parse(e.data); panels(); draw(); };
+  ws.onopen = () => { link.open = true; linkStatus(); };
+  ws.onclose = () => { link.open = false; linkStatus(); setTimeout(connect, 1000); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (!m.state) { link.pump = m.pump !== false; linkStatus(); return; }  // heartbeat: no new state
+    link.pump = true; link.data = Date.now(); linkStatus();
+    // heatmaps and the camera come only when they changed: keep the last ones
+    m.state.drones.forEach(d => { const tm = d.telemetry ||= {};
+      if ("heatmap" in tm) heatmaps[d.id] = tm.heatmap; else tm.heatmap = heatmaps[d.id]; });
+    if ("camera" in m) camera(m.camera);
+    last = m; panels(); draw();
+  };
 }
 let mouse = null;
 canvas.addEventListener("mousemove", e => { const r = canvas.getBoundingClientRect();
