@@ -181,7 +181,7 @@ class Agent:
             self._sent_tracks[tr.track_id] = (tr.x, tr.y, status, t)
             self._emit(Track(self._next_header(TRACK_HOPS), t, tr.track_id, tr.x, tr.y,
                              tr.semi_major, tr.semi_minor, tr.angle, tr.cls, tr.confidence,
-                             status), outbox)
+                             status, tr.strength), outbox)
 
     def _reported_by_others(self, tr: TrackEst, status: TrackStatus, t: float) -> bool:
         return any(rx.header.origin != self.me and t - rx.t < TRACK_RESEND
@@ -197,9 +197,7 @@ class Agent:
         for tr in self.belief.received_tracks(t):
             status = TrackStatus.SUSPECTED if tr.status == TrackStatus.VERIFYING else tr.status
             est = TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
-                           tr.cls, tr.confidence, status, origins=2,
-                           strength=math.log(max(tr.confidence, 1e-3)
-                                             / max(1 - tr.confidence, 1e-3)))
+                           tr.cls, tr.confidence, status, origins=2, strength=tr.strength)
             if not mergeable(est) and any(math.hypot(o.x - tr.x, o.y - tr.y) <= 150.0
                                            for o in out):
                 continue

@@ -114,9 +114,10 @@ class Track:
     cls: TargetClass
     confidence: float  # 0..1
     status: TrackStatus
+    strength: float = 0.0  # threat log-odds at the peak, 0..25.5 (probability saturates)
 
     TYPE = MsgType.TRACK
-    _S = struct.Struct("<IHhh BBB BBB")
+    _S = struct.Struct("<IHhh BBB BBB B")
 
 
 @dataclass(frozen=True)
@@ -216,6 +217,7 @@ def _payload(msg: Message) -> bytes:
             int(msg.cls),
             _q_prob(msg.confidence),
             int(msg.status),
+            _clamp(msg.strength * 10.0, 0, 255),
         )
     if isinstance(msg, Claim):
         return Claim._S.pack(
@@ -279,10 +281,11 @@ def _unpack(mtype: MsgType, header: Header, p: bytes) -> Message:
             Sensor(sensor), Mode(mode), lvl / 100.0,
         )
     if mtype is MsgType.TRACK:
-        t, tid, x, y, a, b, ang, cls, conf, status = Track._S.unpack(p)
+        t, tid, x, y, a, b, ang, cls, conf, status, strength = Track._S.unpack(p)
         return Track(
             header, t / 1000.0, tid, float(x), float(y), a * 5.0, b * 5.0,
             ang / 255.0 * 180.0, TargetClass(cls), conf / 255.0, TrackStatus(status),
+            strength / 10.0,
         )
     if mtype is MsgType.CLAIM:
         t, task, bid, lease, x, y = Claim._S.unpack(p)

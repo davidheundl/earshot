@@ -45,7 +45,7 @@ LOCALISED = 100.0  # m, semi-major axis below which more bearings add little
 VERIFY_MIN_CONFIDENCE = 0.5
 TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
 CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
-VERIFY_MAX_ELLIPSE = 150.0  # semi-major (2 sigma); the strength gate separates truth from ghosts
+NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nearest drone
 VERIFY_MIN_STRENGTH = 8.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
 ROOF_SEARCH_RADIUS = 300.0
@@ -121,19 +121,15 @@ class Policy:
                claims: dict[tuple[int, int], Claim]) -> Decision:
         self._belief, self._belief_t = belief, t
         active = {k: c for k, c in claims.items() if c.lease > 0 and t < c.t + c.lease}
-        winners = self._winners(active)
         tasks = self._tasks(tracks, belief, active, s)
         d = Decision(command=self._default_command(t, s, active))
         if self.fixed:
             return d  # a microphone array on a roof: it listens, it never flies
 
         if self._task is not None:
-            self._continue(t, s, tasks, winners, tracks, d)
-        if self._task is not None and self._task.kind != VERIFY \
-                and self._maybe_switch_to_verify(t, s, tasks, winners, active, d):
-            tasks = {tid: x for tid, x in tasks.items() if x.kind == VERIFY}  # what it left for
+            self._continue(t, s, tasks, active, tracks, d)
         if self._task is None:
-            self._bid_for_best(t, s, tasks, winners, active, d)
+            self._bid_for_best(t, s, tasks, active, d)
 
         if self._task is not None and self._settled:
             d.command = self._task_command(s)
@@ -164,48 +160,36 @@ class Policy:
                 continue
             if tr.cls != TargetClass.DRONE or tr.status != TrackStatus.SUSPECTED:
                 continue  # Explained: not every alarm deserves a drone
-            if self.swarm.policy != "no_perch" and (tr.semi_major > LOCALISED or tr.origins < 2):
-                for kind in (LISTEN_A, LISTEN_B):
-                    tid = task_id(kind, tr.track_id)
-                    out[tid] = _Task(tid, kind, tr.x, tr.y, tr, (tr.x, tr.y))
-            if (tr.confidence >= VERIFY_MIN_CONFIDENCE and tr.semi_major <= VERIFY_MAX_ELLIPSE
-                    and tr.strength >= VERIFY_MIN_STRENGTH):
+            # one Verifier per Suspicion and nobody else moves: the other drones hold their
+            # posts to catch further dangers (no listening tasks)
+            if tr.confidence >= VERIFY_MIN_CONFIDENCE and tr.strength >= VERIFY_MIN_STRENGTH:
                 tid = task_id(VERIFY, tr.track_id)
                 out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
         return out
 
-    @staticmethod
-    def _winners(active) -> dict[int, tuple[float, int]]:
-        best: dict[int, tuple[float, int]] = {}
+    def _rival(self, task: _Task, active) -> tuple[float, int] | None:
+        """The best (bid, -origin) among other drones' Claims for the same danger: any task
+        id of the same kind within SAME_TASK_RADIUS + 100 m. Each drone's (averaged)
+        Suspicion can sit in a different 100 m cell, so the auction is by place, not by id."""
+        best = None
         for (origin, tid), c in active.items():
-            cur = best.get(tid)
-            if cur is None or (c.bid, -origin) > (cur[0], -cur[1]):
-                best[tid] = (c.bid, origin)
-        return best
-
-    def _covered(self, task: _Task, active) -> bool:
-        """Someone else holds a Claim of the same kind for this Suspicion under an older id
-        (the Suspicion drifted into another 100 m cell). Same id: the auction decides."""
-        for (origin, tid), c in active.items():
-            if origin == self.me or tid == task.tid or task_kind(tid) != task.kind:
+            if origin == self.me or task_kind(tid) != task.kind:
                 continue
             if math.hypot(c.x - task.x, c.y - task.y) <= SAME_TASK_RADIUS + 100.0:
-                return True
-        return False
+                best = max(best or (c.bid, -origin), (c.bid, -origin))
+        return best
 
     # -- bidding --------------------------------------------------------------------------
 
-    def _bid_for_best(self, t, s, tasks, winners, active, d: Decision) -> None:
+    def _bid_for_best(self, t, s, tasks, active, d: Decision) -> None:
         best: tuple[float, _Task] | None = None
         for task in tasks.values():
-            if self._covered(task, active):
-                continue
             bid, target, site = self._bid(task, s, active)
             if bid <= 0:
                 continue
-            w = winners.get(task.tid)
-            if w is not None and w[1] != self.me and (w[0], -w[1]) >= (bid, -self.me):
-                continue
+            rival = self._rival(task, active)
+            if rival is not None and rival >= (bid, -self.me):
+                continue  # a nearer drone has it
             task.target, task.perch_site = target, site
             if best is None or bid > best[0]:
                 best = (bid, task)
@@ -216,36 +200,15 @@ class Policy:
         self._send_claim(t, d, LEASE)
         d.events.append(self._event(t, "claim"))
 
-    def _maybe_switch_to_verify(self, t, s, tasks, winners, active, d: Decision) -> bool:
-        """Verification outranks listening: a listener that would win a verify task drops its
-        roof for it (otherwise a swarm that is all listening never verifies). True if it did;
-        the caller then bids on verify tasks only, or it would take its roof straight back."""
-        for task in tasks.values():
-            if task.kind != VERIFY or self._covered(task, active):
-                continue
-            bid, _, _ = self._bid(task, s, active)
-            w = winners.get(task.tid)
-            if bid > 0 and (w is None or (bid, -self.me) > (w[0], -w[1])):
-                self._release(t, d, "switch")
-                return True
-        return False
-
     def _bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
         """Rounded as the Claim carries it, so every drone compares the same numbers."""
         bid, target, site = self._raw_bid(task, s, active)
         return round(bid * 100.0) / 100.0, target, site
 
     def _raw_bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
-        if task.kind == VERIFY:
-            tr = task.track
+        if task.kind == VERIFY:  # the nearest drone wins, whatever it is doing now
             dist = math.hypot(task.x - s.x, task.y - s.y)
-            value = tr.confidence if tr else 0.5
-            cost = dist / V_VERIFY / 120.0  # minutes of flight, scaled
-            if self.default == Mode.LISTEN and self.swarm.policy == "earshot":
-                cost += 0.25  # leaving a listening post opens a Gap
-            if s.perched_on is not None and self._hears(s, task) and self.swarm.policy == "earshot":
-                cost += 0.3  # it is one of the bearings localising this Suspicion
-            return 10.0 * (value - cost), (task.x, task.y), None
+            return max(0.01, NEAREST_BID - dist / 10.0), (task.x, task.y), None
         if s.perched_on is not None and self._hears(s, task):
             return 0.0, (0, 0), None  # already listening to it
         taken = [(c.x, c.y) for (o, _), c in active.items() if o != self.me]
@@ -299,7 +262,7 @@ class Policy:
 
     # -- holding a task -------------------------------------------------------------------
 
-    def _continue(self, t, s, tasks, winners, tracks, d: Decision) -> None:
+    def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
         current = tasks.get(task.tid) or self._drifted(task, tasks)
         if task.kind == VERIFY:
@@ -313,9 +276,10 @@ class Policy:
             task.x, task.y, task.track = current.x, current.y, current.track
             if task.kind == VERIFY:
                 task.target = (current.x, current.y)
-        w = winners.get(task.tid)
-        if w is not None and w[1] != self.me and (w[0], -w[1]) > (self._my_bid, -self.me):
-            self._task = None  # outbid: let my lease lapse
+        self._my_bid = self._bid(task, s, active)[0]  # it gets nearer as it flies
+        rival = self._rival(task, active)
+        if rival is not None and rival > (self._my_bid, -self.me):
+            self._task = None  # a nearer drone has it: let my lease lapse
             d.events.append({"t": round(t, 2), "kind": "outbid", "drone": self.me})
             return
         if not self._settled and t - self._claimed_at >= SETTLE:
