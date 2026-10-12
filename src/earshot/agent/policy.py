@@ -231,6 +231,11 @@ class Policy:
         return False
 
     def _bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
+        """Rounded as the Claim carries it, so every drone compares the same numbers."""
+        bid, target, site = self._raw_bid(task, s, active)
+        return round(bid * 100.0) / 100.0, target, site
+
+    def _raw_bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
         if task.kind == VERIFY:
             tr = task.track
             dist = math.hypot(task.x - s.x, task.y - s.y)
