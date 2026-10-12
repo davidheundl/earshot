@@ -7,8 +7,9 @@ Interface (everything a caller must know):
         drones without a new command keep their previous one. Kinematics, landing on
         Perch Sites, battery drain and motor speed are the backend's business.
     backend.camera_frame(drone_id) -> object | None
-        An image only for drones whose last Command had camera_on=True, else None.
-        Rendering is the expensive part; nobody else should trigger it.
+        What the camera recognises, only for drones whose last Command had camera_on=True,
+        else None. Rendering is the expensive part; nobody else should trigger it. A
+        rendering backend may also offer camera_image() for the dashboard preview.
     backend.close()
 
 Both adapters read the same City, so Perch Site ids and coordinates agree.
