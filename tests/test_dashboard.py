@@ -51,12 +51,20 @@ def test_snapshot_has_everything_and_no_double_readings():
     assert [r["bearing"] for r in json.loads(hub.delta_text())["readings"]] == [20]
 
 
-def test_new_run_drops_old_readings():
+def test_first_camera_counts_even_when_none():
     hub = Hub()
-    hub.ingest_state(state(50.0, readings=[10]))
+    hub.ingest_state(state(0.1, camera=None))
+    msg = json.loads(hub.delta_text())
+    assert "camera" in msg and msg["camera"] is None
+
+
+def test_new_run_drops_old_readings_and_resends_the_kept_parts():
+    hub = Hub()
+    hub.ingest_state(state(50.0, camera=None, readings=[10]))
     hub.delta_text()
-    hub.ingest_state(state(0.1, readings=[20]))
-    hub.delta_text()
+    hub.ingest_state(state(0.1, camera=None, readings=[20]))
+    delta = json.loads(hub.delta_text())  # the pages cleared their copies on the new run
+    assert heat(delta)["p"] == "AQI=" and "camera" in delta
     assert [r["bearing"] for r in json.loads(hub.snapshot_text())["readings"]] == [20]
 
 

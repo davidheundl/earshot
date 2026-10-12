@@ -95,9 +95,13 @@ class Hub:
         self._sent = (0, 0)  # (version, seq) of the last delta
 
     def ingest_state(self, msg: dict) -> None:
-        if self.state is not None and msg["t"] < self.state["t"] - 1.0:
-            self.readings.clear()  # a new run: last run's readings are not history
         self.version += 1
+        if self.state is not None and msg["t"] < self.state["t"] - 1.0:
+            # a new run: last run's readings are not history, and the screens forget the
+            # heatmaps and camera they kept, so send them all again
+            self.readings.clear()
+            self._heat_v = dict.fromkeys(self._heat_v, self.version)
+            self._camera_v = self.version
         for r in msg.pop("readings", []):
             self.seq += 1
             self.readings.append((self.seq, r))
@@ -106,7 +110,7 @@ class Hub:
             cam = msg.pop("camera")
             if cam:
                 cam["rgba"] = base64.b64encode(cam["rgba"]).decode()
-            if cam != self.camera:
+            if self._camera_v == 0 or cam != self.camera:  # the first one counts, even None
                 self.camera = cam
                 self._camera_v = self.version
         for d in msg["drones"]:
