@@ -482,7 +482,8 @@ class Belief:
         support: dict[int, np.ndarray] = {}
         for key, c in contribs.items():
             support[key[0]] = support.get(key[0], 0) + c
-        zt = np.log(np.exp(z).sum(axis=0))  # threat log-odds: sharp where bearings cross
+        with np.errstate(divide="ignore"):  # -inf where every class is impossible: fine
+            zt = np.log(np.exp(z).sum(axis=0))  # threat log-odds: sharp where bearings cross
         for _ in range(MAX_TRACKS):
             iy, ix = np.unravel_index(int(np.argmax(alive)), self.shape)
             peak = alive[iy, ix]

@@ -4,23 +4,26 @@ Interface:
     policy = Policy(me, city, swarm)
     decision = policy.decide(t, state, tracks, belief, claims)   -> Decision
 
-Concept section 7:
-- Tasks come from Suspicions (drone-class Tracks that are not Explained or Confirmed):
-  LISTEN (two slots per Suspicion: land on a roof whose bearing crosses the existing ones near
-  a right angle) while it is poorly localised, VERIFY (fly there, camera on) once it is likely
-  and localised. Task ids are kind * 4096 + the Suspicion's 100 m cell, so identical maps give
-  identical ids, and every bidder can decode where a task is.
-- Allocation without a central node: each drone bids on the best task for itself and
-  broadcasts a Claim (task, bid, lease, target point). Highest bid wins, ties to the lower id.
-  A drone acts only after holding the best bid for a settle window, renews its lease while
-  working, and releases with lease 0. A silent drone's lease lapses and someone else bids.
+Concept section 7, as reworked on 2026-10-11:
+- One drone per danger, the nearest; everyone else holds their post (perched drones stay on
+  their roof, patrollers in their Sector) to catch further dangers. A Suspicion (a drone-class
+  Track that is not Explained or Confirmed; overlapping ones are already merged, see
+  belief.merge_overlapping) becomes a VERIFY task once it is likely and strong. Task ids are
+  kind * 4096 + the Suspicion's 100 m cell, so every bidder can decode where a task is.
+- Allocation without a central node: each free drone bids on its nearest task and broadcasts a
+  Claim (task, bid, lease, target point). Bid = NEAREST_BID - metres / 10, so the highest bid
+  is the nearest drone (ties to the lower id); it follows the Verifier's distance as it flies.
+  The auction is by place: Claims within SAME_TASK_RADIUS + 100 m are one danger, whatever
+  cell each drone's averaged Suspicion falls in. A drone flies only after holding the best bid
+  for a settle window, renews its lease while working, and releases with lease 0. A silent
+  drone's lease lapses and someone else bids; a nearer drone that bids later takes over.
 - Sectors are Voronoi cells of the homes of available drones (no active Claim); when a drone
   leaves, its neighbours' cells grow and patrollers fly Fill Gap.
 
 Baselines for the evaluation (SwarmConfig.policy):
-- "nearest": every non-confirmed Track of any class is verified by whoever bids highest
-  (that is the nearest drone); no listening tasks, no explaining away.
-- "no_perch": nobody ever perches; listening tasks are disabled.
+- "nearest": every non-confirmed Track of any class is verified by the nearest drone; no
+  explaining away, no strength gate.
+- "no_perch": nobody ever perches.
 """
 
 from __future__ import annotations
@@ -33,27 +36,21 @@ import numpy as np
 from earshot.agent.belief import CONFIRM_RADIUS, TrackEst, cell_center
 from earshot.city import City
 from earshot.messages import Claim, Mode, TargetClass, TrackStatus
-from earshot.sensors import acoustics as ac
 from earshot.state import Command, DroneState, SwarmConfig
 
-VERIFY, LISTEN_A, LISTEN_B = 0, 1, 2
-KIND_NAME = {VERIFY: "verify", LISTEN_A: "listen", LISTEN_B: "listen"}
+VERIFY = 0  # the only task kind (listening tasks were dropped: listeners hold their posts)
+KIND_NAME = {VERIFY: "verify"}
 LEASE = 10.0  # s
 RENEW = 4.0
 SETTLE = 3.0  # > typical 3-hop Claim latency, so competing bids arrive before anyone flies
-LOCALISED = 100.0  # m, semi-major axis below which more bearings add little
 VERIFY_MIN_CONFIDENCE = 0.5
 TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
 CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
 NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nearest drone
 VERIFY_MIN_STRENGTH = 8.0  # log-odds; crossing bearings reach 10-20, RF-ring overlaps 3-7
 SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
-ROOF_SEARCH_RADIUS = 300.0
 ARRIVE = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
 DISMISS_AFTER = 8.0  # s at the target with no Suspicion left -> dismissed
-ASSUMED_BACKGROUND_DB = 40.0
-INTRUDER_LW = 89.0  # plan for the larger drone class
-V_VERIFY = 15.0
 SECTOR_CELL = 100.0
 
 
@@ -83,8 +80,7 @@ class _Task:
     x: float
     y: float
     track: TrackEst | None
-    target: tuple[float, float]  # roof or verify point
-    perch_site: str | None = None
+    target: tuple[float, float]  # verify point
 
 
 class Policy:
@@ -113,13 +109,11 @@ class Policy:
         ys = np.arange(city.bounds[1] + SECTOR_CELL / 2, city.bounds[3], SECTOR_CELL)
         self._SX, self._SY = np.meshgrid(xs, ys)
         self._sectors: dict[tuple[int, ...], tuple] = {}  # available ids -> _sector()
-        self._p_hear: dict[tuple, float] = {}  # (site, x, y) -> P(hear an intruder there)
 
     # -- main -----------------------------------------------------------------------------
 
     def decide(self, t: float, s: DroneState, tracks: list[TrackEst], belief,
                claims: dict[tuple[int, int], Claim]) -> Decision:
-        self._belief, self._belief_t = belief, t
         active = {k: c for k, c in claims.items() if c.lease > 0 and t < c.t + c.lease}
         tasks = self._tasks(tracks, belief, active, s)
         d = Decision(command=self._default_command(t, s, active))
@@ -184,13 +178,10 @@ class Policy:
     def _bid_for_best(self, t, s, tasks, active, d: Decision) -> None:
         best: tuple[float, _Task] | None = None
         for task in tasks.values():
-            bid, target, site = self._bid(task, s, active)
-            if bid <= 0:
-                continue
+            bid = self._bid(task, s)
             rival = self._rival(task, active)
             if rival is not None and rival >= (bid, -self.me):
                 continue  # a nearer drone has it
-            task.target, task.perch_site = target, site
             if best is None or bid > best[0]:
                 best = (bid, task)
         if best is None:
@@ -200,83 +191,24 @@ class Policy:
         self._send_claim(t, d, LEASE)
         d.events.append(self._event(t, "claim"))
 
-    def _bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
-        """Rounded as the Claim carries it, so every drone compares the same numbers."""
-        bid, target, site = self._raw_bid(task, s, active)
-        return round(bid * 100.0) / 100.0, target, site
-
-    def _raw_bid(self, task: _Task, s: DroneState, active) -> tuple[float, tuple, str | None]:
-        if task.kind == VERIFY:  # the nearest drone wins, whatever it is doing now
-            dist = math.hypot(task.x - s.x, task.y - s.y)
-            return max(0.01, NEAREST_BID - dist / 10.0), (task.x, task.y), None
-        if s.perched_on is not None and self._hears(s, task):
-            return 0.0, (0, 0), None  # already listening to it
-        taken = [(c.x, c.y) for (o, _), c in active.items() if o != self.me]
-        site, score = self._best_listening_roof(s, task, taken)
-        if site is None:
-            return 0.0, (0, 0), None
-        return 10.0 * score, (site.x, site.y), site.id
-
-    def _hears(self, s: DroneState, task: _Task) -> bool:
-        return math.hypot(task.x - s.x, task.y - s.y) <= 250.0
-
-    def _best_listening_roof(self, s, task: _Task, taken) -> tuple:
-        listeners = self._listeners(task)
-        best, best_score = None, 0.0
-        if len(self._p_hear) > 4096:
-            self._p_hear.clear()
-        for site in self._sites.values():
-            d = math.hypot(site.x - task.x, site.y - task.y)
-            if d > ROOF_SEARCH_RADIUS:
-                continue
-            if any(math.hypot(site.x - x, site.y - y) < 20 for x, y in taken + listeners):
-                continue
-            key = (site.id, task.x, task.y)  # a Track moves at most once per second
-            if key not in self._p_hear:
-                nb = self.city.obstacles_between((site.x, site.y), (task.x, task.y), site.z + 0.5,
-                                                 float(self.city.ground(task.x, task.y)) + 30.0)
-                lp = ac.received_level(INTRUDER_LW, TargetClass.DRONE, d, nb)
-                self._p_hear[key] = ac.detection_probability(lp - ASSUMED_BACKGROUND_DB,
-                                                             TargetClass.DRONE)
-            p_hear = self._p_hear[key]
-            ang = math.atan2(task.x - site.x, task.y - site.y)
-            q = min((abs(math.sin(ang - math.atan2(task.x - lx, task.y - ly)))
-                     for lx, ly in listeners), default=1.0)
-            travel = math.hypot(site.x - s.x, site.y - s.y)
-            score = q * p_hear - travel / 3000.0
-            if score > best_score:
-                best, best_score = site, score
-        return best, best_score
-
-    def _listeners(self, task: _Task) -> list[tuple[float, float]]:
-        """Positions of perched drones whose latest bearing points at this Suspicion."""
-        out = []
-        belief = self._belief
-        for o in belief.last_sound.values():
-            if o.mode != Mode.LISTEN or self._belief_t - o.t > 10.0:
-                continue
-            ang = math.degrees(math.atan2(task.x - o.x, task.y - o.y)) % 360.0
-            if abs((ang - o.bearing + 180) % 360 - 180) <= max(15.0, 2 * o.bearing_sigma):
-                out.append((o.x, o.y))
-        return out
+    def _bid(self, task: _Task, s: DroneState) -> float:
+        """The nearest drone bids highest, whatever it is doing now; rounded as the Claim
+        carries it, so every drone compares the same numbers."""
+        dist = math.hypot(task.x - s.x, task.y - s.y)
+        return round(max(0.01, NEAREST_BID - dist / 10.0) * 100.0) / 100.0
 
     # -- holding a task -------------------------------------------------------------------
 
     def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
         current = tasks.get(task.tid) or self._drifted(task, tasks)
-        if task.kind == VERIFY:
-            self._verify_progress(t, s, tracks, current, d)
-            if self._task is None:
-                return
-        elif current is None and not self._suspicion_near(task, tracks):
-            self._release(t, d, "obsolete")  # Suspicion confirmed or gone: back to default
+        self._verify_progress(t, s, tracks, current, d)
+        if self._task is None:
             return
         if current is not None:
             task.x, task.y, task.track = current.x, current.y, current.track
-            if task.kind == VERIFY:
-                task.target = (current.x, current.y)
-        self._my_bid = self._bid(task, s, active)[0]  # it gets nearer as it flies
+            task.target = (current.x, current.y)
+        self._my_bid = self._bid(task, s)  # it gets nearer as it flies
         rival = self._rival(task, active)
         if rival is not None and rival > (self._my_bid, -self.me):
             self._task = None  # a nearer drone has it: let my lease lapse
@@ -287,12 +219,6 @@ class Policy:
             d.events.append(self._event(t, "dispatch"))
         if t - self._last_claim >= RENEW:
             self._send_claim(t, d, LEASE)
-
-    @staticmethod
-    def _suspicion_near(task: _Task, tracks) -> bool:
-        return any(tr.cls == TargetClass.DRONE and tr.status == TrackStatus.SUSPECTED
-                   and math.hypot(tr.x - task.x, tr.y - task.y) <= SAME_TASK_RADIUS
-                   for tr in tracks)
 
     def _drifted(self, task: _Task, tasks) -> _Task | None:
         same = [x for x in tasks.values() if task_kind(x.tid) == task.kind
@@ -339,11 +265,9 @@ class Policy:
     # -- commands -------------------------------------------------------------------------
 
     def _task_command(self, s: DroneState) -> Command:
-        task = self._task
-        if task.kind == VERIFY:
-            near = math.hypot(task.target[0] - s.x, task.target[1] - s.y) <= 150.0
-            return Command(Mode.VERIFY, goal=task.target, camera_on=near, look_at=task.target)
-        return Command(Mode.LISTEN, perch_site=task.perch_site)
+        target = self._task.target
+        near = math.hypot(target[0] - s.x, target[1] - s.y) <= 150.0
+        return Command(Mode.VERIFY, goal=target, camera_on=near, look_at=target)
 
     def _default_command(self, t, s: DroneState, active) -> Command:
         busy = {o for (o, _tid) in active}  # drones holding a Claim have left their Sector
@@ -377,9 +301,6 @@ class Policy:
     def _best_roof_near(self, p) -> object | None:
         return min(self._sites.values(), key=lambda r: math.hypot(r.x - p[0], r.y - p[1]),
                    default=None)
-
-    _belief = None  # read-only view for _listeners, set at the start of decide()
-    _belief_t = 0.0
 
 
 def decode_task(tid: int, bounds) -> tuple[str, float, float]:

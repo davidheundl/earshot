@@ -90,7 +90,7 @@ A raw Observation; fused additively, exactly once per (origin, seq).
 _Avoid_: measurement (when meaning the radio message)
 
 **Suspicion**:
-A region of the Probability Map worth acting on; broadcast as a Track.
+A region of the Probability Map worth acting on; broadcast as a Track. Overlapping Suspicions count as one danger, at their likelihood-weighted mean.
 
 **Track**:
 A fused Suspicion with location, uncertainty ellipse, class and status. State, not Evidence: a newer Track replaces the older one.

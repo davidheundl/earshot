@@ -23,9 +23,9 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 
 Built to rehearse and measure. If any of it is used on the day, it goes on the declaration slide as pre-built; otherwise it is rebuilt on the day from `main`.
 
-- Probability Map: bounded log-likelihood evidence per drone and sensor, effective-sample cap, rail/road priors (explaining away), camera confirmation and dismissal, track extraction with uncertainty ellipses.
+- Probability Map: bounded log-likelihood evidence per drone and sensor, effective-sample cap, rail/road priors (explaining away), camera confirmation and dismissal, track extraction with uncertainty ellipses, overlapping Suspicions merged at their likelihood-weighted mean.
 - Faulty Sensor detection against what the other drones agree on.
-- Decisions: listen tasks with roof choice by crossing angle, verify tasks with value vs. gap cost, Claim auction with bids, leases and settle window, Voronoi sectors with gap filling, verification preempting listening.
+- Decisions: one Verifier per danger, the nearest drone (Claim auction by place with distance bids, leases and settle window), everyone else holding their post, Voronoi sectors with gap filling.
 - Radio protocol: priority queue, contention-based relaying, Digest/Request healing, track suppression.
 - Evaluation: section 17 metrics, random scenarios, baselines "nearest drone always flies" and "no perching".
 - Dashboard: probability-map heatmap, Suspicions, tasks, sectors, decision log, camera panel.
