@@ -172,8 +172,12 @@ def _reach(tr: TrackEst, theta: float) -> float:
 
 
 def _overlap(p: TrackEst, q: TrackEst) -> bool:
+    d = math.hypot(q.x - p.x, q.y - p.y)
+    # an ellipse reaches no further than its longer semi-axis: far pairs skip the trig
+    if d > 1.001 * (max(p.semi_major, p.semi_minor, 1.0) + max(q.semi_major, q.semi_minor, 1.0)):
+        return False
     theta = math.atan2(q.y - p.y, q.x - p.x)
-    return math.hypot(q.x - p.x, q.y - p.y) <= _reach(p, theta) + _reach(q, theta)
+    return d <= _reach(p, theta) + _reach(q, theta)
 
 
 def _merged(group: list[TrackEst], bounds) -> TrackEst:
@@ -218,6 +222,7 @@ class Belief:
         self._fault_stats: dict[int, list[int]] = {}  # origin -> [checked, unconfirmed]
         self._post: tuple[tuple, np.ndarray] | None = None  # (stamp, posterior) cache
         self.n_evidence = 0
+        self._summary: tuple[tuple, dict] | None = None
 
     # -- priors ---------------------------------------------------------------------------
 
@@ -553,10 +558,17 @@ class Belief:
         }
 
     def summary(self) -> dict:
-        """Small JSON for the dashboard, incl. readings fused per drone in the last 30 s."""
+        """Small JSON for the dashboard, incl. readings fused per drone in the last 30 s.
+        Cached until time, Evidence or the faulty set change (agents ask every tick)."""
+        key = (self._t, len(self._fused), self.n_evidence, tuple(sorted(self.faulty)))
+        if self._summary is not None and self._summary[0] == key:
+            return self._summary[1]
         self._fused = [f for f in self._fused if self._t - f[0] <= 30.0]
         fused: dict[int, dict[str, int]] = {}
         for _, o, fam in self._fused:
             fused.setdefault(o, {}).setdefault(fam, 0)
             fused[o][fam] += 1
-        return {"n_evidence": self.n_evidence, "faulty": sorted(self.faulty), "fused": fused}
+        out = {"n_evidence": self.n_evidence, "faulty": sorted(self.faulty), "fused": fused}
+        key = (self._t, len(self._fused), self.n_evidence, tuple(sorted(self.faulty)))
+        self._summary = (key, out)
+        return out

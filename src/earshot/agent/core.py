@@ -72,6 +72,8 @@ class Agent:
         self._last_tracks = -1e9
         self._sent_tracks: dict[int, tuple[float, float, int, float]] = {}  # id -> x, y, status, t
         self._heatmap: dict | None = None
+        self._tracks_json: list[dict] = []
+        self._merged: tuple[list[TrackEst], list[Track], list[TrackEst]] | None = None
         self._task: dict | None = None
 
     def _next_header(self, hops: int) -> Header:
@@ -113,6 +115,14 @@ class Agent:
                 fault_events.append({"t": round(t, 2), "kind": "fault_flagged", "drone": self.me,
                                      "suspect": o})
             self._tracks = self.belief.tracks(t)
+            self._tracks_json = [
+                {"id": tr.track_id, "x": round(tr.x, 1), "y": round(tr.y, 1),
+                 "a": round(tr.semi_major), "b": round(tr.semi_minor), "ang": round(tr.angle),
+                 "cls": tr.cls.name, "conf": round(tr.confidence, 2), "status": tr.status.name,
+                 "origins": tr.origins, "strength": round(tr.strength, 1),
+                 "support": [list(e) for e in tr.support]}
+                for tr in self._tracks
+            ]
             self._heatmap = self.belief.heatmap()
             self._broadcast_tracks(t, outbox)
 
@@ -144,14 +154,7 @@ class Agent:
             "bad": self.store.stats.bad,
             "sent": len(outbox),
             "belief": self.belief.summary(),
-            "tracks": [
-                {"id": tr.track_id, "x": round(tr.x, 1), "y": round(tr.y, 1),
-                 "a": round(tr.semi_major), "b": round(tr.semi_minor), "ang": round(tr.angle),
-                 "cls": tr.cls.name, "conf": round(tr.confidence, 2), "status": tr.status.name,
-                 "origins": tr.origins, "strength": round(tr.strength, 1),
-                 "support": [list(e) for e in tr.support]}
-                for tr in self._tracks
-            ],
+            "tracks": self._tracks_json,
             "heatmap": self._heatmap,
         }
         return StepOut(decision.command, outbox, telemetry, decision.events + fault_events)
@@ -192,9 +195,14 @@ class Agent:
     def _all_tracks(self, t: float) -> list[TrackEst]:
         """Own Tracks plus received ones; overlapping drone Suspicions merge into one
         (belief.merge_overlapping). Other received Tracks count only where this drone's own
-        map shows nothing."""
+        map shows nothing. Cached: the inputs change about once a second, not every tick."""
+        rx = self.belief.received_tracks(t)
+        if self._merged is not None and self._merged[0] is self._tracks \
+                and len(self._merged[1]) == len(rx) \
+                and all(a is b for a, b in zip(self._merged[1], rx, strict=True)):
+            return self._merged[2]
         out = list(self._tracks)
-        for tr in self.belief.received_tracks(t):
+        for tr in rx:
             status = TrackStatus.SUSPECTED if tr.status == TrackStatus.VERIFYING else tr.status
             est = TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
                            tr.cls, tr.confidence, status, origins=2, strength=tr.strength)
@@ -202,7 +210,9 @@ class Agent:
                                            for o in out):
                 continue
             out.append(est)
-        return merge_overlapping(out, self.city.bounds)
+        merged = merge_overlapping(out, self.city.bounds)
+        self._merged = (self._tracks, rx, merged)
+        return merged
 
     # -- radio ----------------------------------------------------------------------------
 
