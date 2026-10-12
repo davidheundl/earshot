@@ -33,6 +33,7 @@ from earshot.messages import (
 from earshot.state import Command, Sensed, SwarmConfig
 
 OBS_MIN_INTERVAL = 1.0  # s, per sensor (concept 8.2: <= 1/s while listening)
+OBS_SLACK = 0.15  # s; 1 s windows on a 0.1 s float clock arrive 0.9-1.1 s apart, never drop one
 DIGEST_INTERVAL = 10.0
 TRACK_INTERVAL = 1.0  # s between track extractions
 TRACK_RESEND = 10.0  # unchanged drone Tracks are re-broadcast this often
@@ -93,7 +94,7 @@ class Agent:
         # 2. own sensors -> Observations (Evidence)
         for r in sensed.readings:
             last = self._last_obs.get(r.sensor, -1e9)
-            if last != t and t - last < OBS_MIN_INTERVAL:
+            if last != t and t - last < OBS_MIN_INTERVAL - OBS_SLACK:
                 continue  # same-tick readings are different sources; across ticks: <= 1 Hz
             self._last_obs[r.sensor] = t
             hops = TRACK_HOPS if self.scheme != "ours" else OBS_HOPS  # baselines flood Evidence
