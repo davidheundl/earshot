@@ -36,7 +36,7 @@ def make_backend(name: str, city: City, scenario: Scenario):
     if name == "webots":
         from earshot.backend.webots import WebotsBackend
 
-        return WebotsBackend(city, scenario), False  # Webots paces itself
+        return WebotsBackend(city, scenario), False  # the backend paces Webots' steps
     raise ValueError(name)
 
 

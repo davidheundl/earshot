@@ -307,9 +307,10 @@ def create_app(scenario_path: str) -> FastAPI:
 
     @app.post("/view")
     async def view(request: Request):
-        """{"views": [[drone, "pilot" | "chase"], ...]} for the four view cameras."""
+        """{"views": [[drone, "pilot" | "chase"], ...]} for the four view cameras, or
+        {"views": null}: the screen still shows them (keepalive), assignment unchanged."""
         body = await request.json()
-        to_world.send(pack({"op": "view", "views": body["views"]}))
+        to_world.send(pack({"op": "view", "views": body.get("views")}))
         return {"ok": True}
 
     @app.get("/classic")

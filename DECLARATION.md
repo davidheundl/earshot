@@ -10,9 +10,11 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Process layout: world, radio, one process per drone, dashboard; ZeroMQ wiring.
 - Lockstep fast-mode runner with fixed seeds.
 - 2D twin backend (kinematic drones, perching on flat roofs, battery drain).
-- Webots bridge: puppeted drones, a single camera rig with segmentation, world generator from City JSON.
+- Webots bridge: puppeted drones, a single camera rig with recognition, world generator from City JSON.
+- Webots performance: backend paces Webots (fast mode) to the wall clock, Verifier camera rendered once per tick, drone view cameras only while a screen shows them, tree meshes tiled for culling, `--no-webots-view`.
 - Placeholder synthetic city and a demo scenario.
 - Dashboard skeleton (map, drones, modes, radio links, ground truth).
+- Game screen motion: drones glide between states on the map and flight display (60 fps), static map layer cached.
 - Message store with duplicate filter and plain hop-limited flooding (baseline).
 - Sensor models: sound propagation (spherical spreading, per-class air absorption and building loss), ego-noise by motor speed with a filter gain, masking, SNR-based detection, bearing error and outliers, placeholder classifier confusion (fan mistaken for drone); passive RF energy per band (2.4 / 5.8 GHz, 915 MHz) with log-distance path loss and shadowing; camera stand-in with an error rate. Calibrated to the concept's range tables.
 - Detection log with ground-truth source per measurement (for the evaluation metrics).

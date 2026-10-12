@@ -213,7 +213,8 @@
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const cssCache = new Map();  // the colours never change at runtime; getComputedStyle is slow at 60 fps
+const css = n => { let v = cssCache.get(n); if (v === undefined) { v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); cssCache.set(n, v); } return v; };
 const CLS = ["DRONE", "VEHICLE", "TRAIN", "NOTHING"];
 const CLS_NAME = { DRONE: "drone", VEHICLE: "vehicle", TRAIN: "train", NOTHING: "nothing" };
 const CLS_COL = { DRONE: "--warn", VEHICLE: "--caution", TRAIN: "--train", NOTHING: "--nothing" };
@@ -236,6 +237,31 @@ const seen = new Map(); // reading key -> t, so readings replayed after a reconn
 const rkey = r => `${r.t}|${r.drone}|${r.sensor}|${r.bearing}|${r.level}`;
 let wsOpen = false, pumpUp = true, lastData = 0, lastT = -Infinity;
 
+/* ---------- motion: drones glide between states ---------- */
+// States arrive at 10 Hz (slower when the sim lags). Each one starts a glide from where a drone
+// is drawn now to where the state puts it, lasting the measured time between states.
+const glide = { from: {}, to: {}, at: 0, period: 100 };
+function poseAt(id, now) {
+  const a = glide.from[id], b = glide.to[id]; if (!b) return null;
+  if (!a || b.perched) return b;
+  const k = Math.min(1.1, Math.max(0, (now - glide.at) / glide.period));  // a little past it while the next state is late
+  const dh = ((b.heading - a.heading + 540) % 360) - 180;  // the short way round
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, heading: (a.heading + dh * k + 360) % 360 };
+}
+function startGlide(ds) {
+  const now = performance.now(), from = {}, to = {};
+  if (glide.at) glide.period = Math.min(600, Math.max(40, 0.8 * glide.period + 0.2 * (now - glide.at)));
+  for (const d of ds) {
+    to[d.id] = { x: d.x, y: d.y, heading: d.heading, perched: !!d.perched_on };
+    const p = poseAt(d.id, now);
+    from[d.id] = p && Math.hypot(p.x - d.x, p.y - d.y) < 300 ? p : to[d.id];  // jumps (a new run) snap
+  }
+  Object.assign(glide, { from, to, at: now });
+}
+function shownDrones(now) {
+  return last.state.drones.map(d => { const p = poseAt(d.id, now); return p ? { ...d, x: p.x, y: p.y, heading: p.heading } : d; });
+}
+
 /* ---------- data ---------- */
 function linkStatus() {
   const fresh = Date.now() - lastData < 2500;
@@ -248,7 +274,7 @@ function newRun() {
   // the run restarted with the tab open: forget everything of the old run
   for (const k of [hist, spectro, spectroKey, heat]) for (const d in k) delete k[d];
   stream.length = 0; seen.clear(); $("stream").textContent = ""; heatSrc = null;
-  lastConfirmed = 0; views = null;
+  lastConfirmed = 0; views = null; Object.assign(glide, { from: {}, to: {}, at: 0, period: 100 });
   loadStatic(true);
 }
 function connect() {
@@ -261,6 +287,7 @@ function connect() {
     const t = msg.state.t;
     if (t < lastT - 1) newRun();
     lastT = t; lastData = Date.now(); pumpUp = true; linkStatus();
+    startGlide(msg.state.drones);
     for (const d of msg.state.drones) {
       const tm = d.telemetry ||= {};
       if ("heatmap" in tm) heat[d.id] = tm.heatmap; else tm.heatmap = heat[d.id];
@@ -310,27 +337,33 @@ function chooseViews() {
   const rank = d => (d.mode === "VERIFY" ? 0 : d.telemetry?.task?.settled ? 1 : 2) * 100 + Math.abs(d.id - selected);
   const tiles = others.sort((a, b) => rank(a) - rank(b)).slice(0, 3).map(d => [d.id, "pilot"]);
   const next = [[selected, mainMode], ...tiles];
-  if (JSON.stringify(next) !== JSON.stringify(views)) { views = next; post("/view", { views }); }
+  if (evidence || document.hidden) return;
+  // a new assignment only when it changed (two open screens must not keep taking the cameras
+  // from each other); otherwise a keepalive: the world renders the cameras only while asked
+  const changed = JSON.stringify(next) !== JSON.stringify(views);
+  views = next;
+  post("/view", { views: changed ? views : null }).catch(() => {});
 }
 setInterval(chooseViews, 2000);
 function select(id) {
   if (!droneById(id)) return;
   selected = id; views = null; chooseViews(); schedule();
-}
 
-/* ---------- render loop (at most ~12 Hz) ---------- */
-let pending = false, lastDraw = 0;
-function schedule() { if (!pending) { pending = true; requestAnimationFrame(render); } }
+/* ---------- render loop: map and flight display every frame, the panels on new data ---------- */
+let pending = false, dirty = true, lastPanels = 0;
+function schedule() { dirty = true; if (!pending) { pending = true; requestAnimationFrame(render); } }
 function render(ts) {
   pending = false;
-  if (ts - lastDraw < 80) { schedule(); return; }
-  lastDraw = ts;
   if (!last || !city) return;
-  $("clock").textContent = fmtTime(last.state.t);
-  for (const f of [drawMap, drawPFD, drawSwarm, drawEar, drawTicker, checkAlerts, ...(evidence ? [drawEvidence] : [])]) {
-    try { f(); } catch (err) { console.error(err); }  // one broken panel must not stop the others
+  const panels = dirty && ts - lastPanels >= 80;  // at most ~12 Hz, as before
+  if (panels) { dirty = false; lastPanels = ts; $("clock").textContent = fmtTime(last.state.t); }
+  for (const f of [drawMap, ...(evidence ? [] : [drawPFD]),
+    ...(panels ? [drawSwarm, drawEar, drawTicker, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
+    try { f(ts); } catch (err) { console.error(err); }  // one broken panel must not stop the others
   }
+  if (!document.hidden) { pending = true; requestAnimationFrame(render); }
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { chooseViews(); schedule(); } });
 function each(list, f) { for (const x of list || []) try { f(x); } catch (err) { console.error(err); } }
 function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -349,18 +382,28 @@ function mapView(w, h) {
   return { s, P: (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s], inv: (px, py) => [x0 + (px - ox) / s, y1 - (py - oy) / s] };
 }
 const heatCanvas = document.createElement("canvas");
-function drawMap() {
-  const [w, h, ctx] = fitCanvas(map), { s, P } = mapView(w, h), st = last.state;
+let mapStatic = null;  // basemap and buildings, drawn again only when the size or city changes
+function mapBase(w, h, P) {
+  const dpr = devicePixelRatio || 1, key = `${w}x${h}@${dpr}`;
+  if (mapStatic && mapStatic.key === key && mapStatic.city === city && mapStatic.base === base) return mapStatic.canvas;
+  const c = document.createElement("canvas"); c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr);
+  const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, w, h);
   const [x0, y0, x1, y1] = city.bounds, [ax, ay] = P(x0, y1), [bx, by] = P(x1, y0);
   if (base) { ctx.globalAlpha = 0.9; ctx.drawImage(base, ax, ay, bx - ax, by - ay); ctx.globalAlpha = 1; }
   else { ctx.fillStyle = css("--panel"); ctx.fillRect(ax, ay, bx - ax, by - ay); }
   ctx.fillStyle = "rgba(232,238,244,.18)";
   for (const b of city.buildings) { line(ctx, P, b.footprint); ctx.fill(); }
+  mapStatic = { key, city, base, canvas: c };
+  return c;
+}
+function drawMap(now) {
+  const [w, h, ctx] = fitCanvas(map), { s, P } = mapView(w, h), st = last.state, ds = shownDrones(now);
+  ctx.drawImage(mapBase(w, h, P), 0, 0, w, h);
   const me = droneById(selected);
   if (showHeat && me?.telemetry?.heatmap) drawHeat(ctx, P, me.telemetry.heatmap);
   for (const j of st.jamming || []) { if (!(j.r > 0)) continue; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,90,82,.14)"; ctx.fill(); ctx.strokeStyle = "rgba(255,90,82,.6)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
-  const byId = Object.fromEntries(st.drones.map(d => [d.id, d]));
+  const byId = Object.fromEntries(ds.map(d => [d.id, d]));
   ctx.strokeStyle = "rgba(60,203,234,.18)"; ctx.lineWidth = 1;
   for (const [a, b] of last.radio?.links || []) if (byId[a] && byId[b]) { line(ctx, P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); }
   // recent sound bearings of every drone: thin rays, the selected drone's brighter
@@ -374,7 +417,7 @@ function drawMap() {
   }
   each(me?.telemetry?.tracks, tr => drawTrack(ctx, P, s, tr));
   // tasks: commanded lines in magenta
-  for (const d of st.drones) { const task = d.telemetry?.task; if (!task) continue;
+  for (const d of ds) { const task = d.telemetry?.task; if (!task) continue;
     const [a, b] = P(d.x, d.y), [c, e] = P(task.x, task.y);
     ctx.strokeStyle = css("--task"); ctx.lineWidth = 1.5; ctx.setLineDash(task.settled ? [] : [3, 3]);
     ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); }
@@ -382,7 +425,7 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke(); }
   // drones: triangles pointing along the heading; camera wedges for the ones on screen
   const viewed = new Set((views || []).map(v => v[0]));
-  each(st.drones, d => {
+  each(ds, d => {
     const [a, b] = P(d.x, d.y), th = d.heading * Math.PI / 180;
     if (viewed.has(d.id)) { ctx.fillStyle = d.id === selected ? "rgba(60,203,234,.22)" : "rgba(232,238,244,.10)";
       ctx.beginPath(); ctx.moveTo(a, b); ctx.arc(a, b, 26, th - Math.PI / 2 - 0.5, th - Math.PI / 2 + 0.5); ctx.closePath(); ctx.fill(); }
@@ -423,9 +466,9 @@ function drawTrack(ctx, P, s, tr) {
 
 /* ---------- main view overlay (flight-display style) ---------- */
 const pfd = $("pfd");
-function drawPFD() {
+function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
-  const d = droneById(selected); if (!d) return;
+  const d = shownDrones(now).find(x => x.id === selected); if (!d) return;
   const f = frames[0];
   if (!f) $("nocam").hidden = false;
   const heading = d.heading, st = last.state;
@@ -640,7 +683,7 @@ map.addEventListener("click", e => {
   if (best) select(best.id);
 });
 document.querySelectorAll("#tiles .view").forEach(v => v.onclick = () => { const f = frames[+v.dataset.k]; if (f) select(f.drone); });
-function setEvidence(on) { evidence = on; document.body.classList.toggle("evidence", on); $("btn-live").setAttribute("aria-pressed", !on); $("btn-evidence").setAttribute("aria-pressed", on); schedule(); }
+function setEvidence(on) { evidence = on; document.body.classList.toggle("evidence", on); $("btn-live").setAttribute("aria-pressed", !on); $("btn-evidence").setAttribute("aria-pressed", on); if (!on) chooseViews(); schedule(); }
 $("btn-live").onclick = () => setEvidence(false); $("btn-evidence").onclick = () => setEvidence(true);
 $("btn-help").onclick = () => $("help").classList.toggle("show");
 addEventListener("keydown", e => {

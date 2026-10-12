@@ -146,8 +146,9 @@ def cmd_live(a) -> None:
                 sys.exit(f"An earlier Earshot Webots is still open on port {config.WEBOTS_PORT} "
                          f"(pid {', '.join(stale)}). Close its window, or run: kill {' '.join(stale)}")
             procs.append(subprocess.Popen(
-                [f"{WEBOTS_HOME}/Contents/MacOS/webots", "--mode=realtime", "--batch",
+                [f"{WEBOTS_HOME}/Contents/MacOS/webots", "--mode=" + ("fast" if a.no_webots_view else "realtime"), "--batch",
                  f"--port={config.WEBOTS_PORT}",
+                 *(["--no-rendering"] if a.no_webots_view else []),
                  "--stdout", "--stderr", str(world_file)]
             ))
             time.sleep(3)
@@ -258,6 +259,8 @@ def main(argv=None) -> None:
     lv.add_argument("--array", action="append", metavar="ID=DEVICE[@ROT]",
                     help="drone ID hears through a real microphone array (see `earshot arrays`)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
+    lv.add_argument("--no-webots-view", action="store_true",
+                    help="don't draw Webots' own 3D window (the drone cameras still render)")
     lv.set_defaults(fn=cmd_live)
 
     ev = sub.add_parser("eval", help="metrics over seeded runs, policies side by side")

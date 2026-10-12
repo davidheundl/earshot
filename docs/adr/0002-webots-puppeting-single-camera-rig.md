@@ -6,3 +6,7 @@ Drones in Webots are plain Pose nodes without physics or controllers. One Superv
 
 - Physics-flown Mavic2Pro per drone with motor PID: realistic but six extern controllers, tuning, and much more CPU. Rejected for a one-day build.
 - One extern controller per drone to toggle its own camera: works, but N processes talking to Webots for one image.
+
+## Update 2026-10-11
+
+Segmentation is no longer enabled: nothing read it, and it cost a render pass on every Verifier frame. The Verifier camera renders once per 0.1 s tick, not every 20 ms step.

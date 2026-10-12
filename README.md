@@ -47,6 +47,12 @@ Live with Webots (opens its own Webots instance on port 1240):
 uv run earshot live --backend webots
 ```
 
+When the dashboard is the show, skip Webots' own 3D window (the drone cameras still render); on an M3 this keeps the valley at real time:
+
+```bash
+uv run earshot live --backend webots --no-webots-view
+```
+
 Evaluation over seeded runs, policies side by side (concept section 17). `--scenario random` generates a new world per seed; `--scheme ours flood unicast3` and `--bw 125` compare radio set-ups:
 
 ```bash

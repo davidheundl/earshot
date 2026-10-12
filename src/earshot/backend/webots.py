@@ -6,6 +6,11 @@ Supervisor cannot read devices on other robots, so the RIG itself carries the on
 flies along with whichever drone has camera_on (the Verifier). Sources are puppeted the same
 way (DEF SRC_<id>), parked below ground while inactive.
 
+Pacing: this adapter sleeps each basic step to its wall-clock deadline. With Webots in fast
+mode (`earshot live --no-webots-view`) our own per-tick work (sensors, publishing, JPEG) then
+fits into the slack; in realtime mode Webots spends the full step itself, our work comes on
+top, and the pacing sleeps no longer. The 3D window keeps realtime mode, so it animates evenly.
+
 Must run inside a Webots extern-controller environment (see `earshot live --backend webots`).
 Frames: City x = east, y = north, metres  ==  Webots ENU world (z up).
 """
@@ -13,6 +18,7 @@ Frames: City x = east, y = north, metres  ==  Webots ENU world (z up).
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Mapping
 
 from earshot.backend.twin2d import Twin2D
@@ -26,6 +32,7 @@ SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 0.5, "TRAIN": 0.45, "NOTHING": 0.7}
 TRAIN_WAGONS = 9  # locomotive + 8 container wagons, nodes SRC_<id>_w<k>
 WAGON_PITCH = 21.0  # m between wagon centres
 LIVE_SLOTS = 2  # spare SRC nodes per class for sources added by hotkey
+CATCH_UP_S = 0.25  # further behind the wall clock than this: start over instead of sprinting
 
 
 def live_slot(cls_name: str, k: int) -> str:
@@ -67,6 +74,8 @@ def look_rotation(heading_deg: float, pitch_down_deg: float) -> list[float]:
 
 N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
 VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
+VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
+VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
 PILOT = {"ahead": 1.8, "up": -0.2, "pitch": 16.0}  # just outside the marker ring
 CHASE = {"back": 14.0, "up": 6.0, "pitch": 22.0}
 CHASE_PERCHED = {"back": 32.0, "up": 20.0, "pitch": 30.0}  # see the roof and what it listens to
@@ -101,9 +110,11 @@ class WebotsBackend:
             node = self._node(f"CAM_{k}")
             if cam is None or node is None:
                 break  # an older world without view cameras
-            cam.enable(VIEW_PERIOD_MS[k])
-            self._view_cams.append((cam, node))
+            self._view_cams.append((cam, node))  # enabled while a screen shows them
+        self._views_asked: float | None = None  # wall clock of the last set_views
+        self._views_on = False
         self._view_yaw: dict[int, float] = {}
+        self._due: float | None = None  # wall-clock deadline of the next basic step
         self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
         self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
@@ -115,7 +126,10 @@ class WebotsBackend:
 
     def set_views(self, views: list) -> None:
         """[[drone_id, "pilot" | "chase"], ...] for CAM_0 (main) .. CAM_3. Malformed entries
-        are ignored."""
+        are ignored. Every call is also a screen's keepalive (None: keepalive only); without
+        one for VIEW_KEEPALIVE_S (no game screen open, or it shows the evidence view) the
+        view cameras stop rendering."""
+        self._views_asked = time.monotonic()
         if not isinstance(views, list | tuple):
             return
         for k, v in enumerate(views[: len(self._view_cams)]):
@@ -133,7 +147,7 @@ class WebotsBackend:
 
         out = {}
         for k in which:
-            if k >= len(self._view_cams):
+            if not self._views_on or k >= len(self._view_cams):
                 continue
             cam, _ = self._view_cams[k]
             raw = cam.getImage()
@@ -148,6 +162,17 @@ class WebotsBackend:
         return out
 
     def _place_views(self, states: dict[int, DroneState]) -> None:
+        on = (self._views_asked is not None
+              and time.monotonic() - self._views_asked < VIEW_KEEPALIVE_S)
+        if on != self._views_on:
+            self._views_on = on
+            for k, (cam, _) in enumerate(self._view_cams):
+                if on:
+                    cam.enable(VIEW_PERIOD_MS[k])
+                else:
+                    cam.disable()
+        if not on:
+            return
         for k, (cam, node) in enumerate(self._view_cams):
             did, mode = self.views[k]
             s = states.get(did)
@@ -179,6 +204,7 @@ class WebotsBackend:
             self._push(states)
             if self.sup.step(self.basic_ms) == -1:
                 raise SystemExit("Webots quit")
+            self._pace()
         return states
 
     def camera_frame(self, drone_id: int) -> object | None:
@@ -202,6 +228,15 @@ class WebotsBackend:
         pass
 
     # -- internals -----------------------------------------------------------------------
+
+    def _pace(self) -> None:
+        """Sleep until this basic step's wall-clock deadline (real time). A Webots already in
+        realtime mode has used the time up, so this then returns at once."""
+        now = time.monotonic()
+        if self._due is None or now - self._due > CATCH_UP_S:
+            self._due = now
+        self._due += self.basic_ms / 1000
+        time.sleep(max(0.0, self._due - time.monotonic()))
 
     def _node(self, def_name: str):
         """(translation, rotation) fields of a DEF node, cached; None if the world lacks it."""
@@ -262,10 +297,9 @@ class WebotsBackend:
                 if self.camera.hasRecognition():
                     self.camera.recognitionDisable()
             elif self._verifier is None:
-                self.camera.enable(self.basic_ms)
+                self.camera.enable(VERIFY_PERIOD_MS)
                 if self.camera.hasRecognition():
-                    self.camera.recognitionEnable(self.basic_ms)
-                    self.camera.enableRecognitionSegmentation()
+                    self.camera.recognitionEnable(VERIFY_PERIOD_MS)
             self._verifier = verifier
         if self._camv is not None:
             if verifier is None:

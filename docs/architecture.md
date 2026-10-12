@@ -78,3 +78,5 @@ Live Events are applied at the next world tick, tagged `live`, and recorded to `
 - Every context sets `LINGER 0`, or processes hang on exit waiting for unsent messages.
 - Webots needs `WEBOTS_HOME`, `PYTHONPATH` and `DYLD_LIBRARY_PATH` (`cli.webots_env()`); our instance runs on port 1240 so an already open Webots does not grab the controller.
 - Regenerate the Webots world after changing the City or scenario sources: `earshot live --backend webots` does this automatically.
+- `WebotsBackend` sleeps each basic step to its wall-clock deadline. With `--no-webots-view`, `earshot live` starts Webots in fast mode, so our per-tick work fits into that slack (1.0x); with the 3D window it stays in realtime mode, where our work comes on top of every step.
+- Each Webots camera renders the whole scene. The view cameras run only while a game screen sends its `/view` keepalive (every 2 s, not from the evidence screen or a hidden tab); `--no-webots-view` skips Webots' own 3D window, the largest remaining cost.

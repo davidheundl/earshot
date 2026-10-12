@@ -37,7 +37,7 @@ from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
-BUILDER_VERSION = "3"
+BUILDER_VERSION = "4"
 PROTO = "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects"
 EXTERNPROTOS = [
     "objects/backgrounds/protos/TexturedBackground.proto",
@@ -49,6 +49,7 @@ EXTERNPROTOS = [
 ]
 LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial"]
 TEXTURE_PX = 2048
+TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
 OWN_RGB, INTRUDER_RGB = (0.2, 0.6, 1.0), (1.0, 0.15, 0.15)
 rng = np.random.default_rng(5)
 
@@ -220,17 +221,18 @@ def blob(x, y, zc, rx, rz):
     return v * [rx, rx, rz] + [x, y, zc], f
 
 
-def trunk(x, y, z0, z1, r):
-    a = np.linspace(0, 2 * np.pi, 4, endpoint=False)
-    lo = np.stack([x + r * np.cos(a), y + r * np.sin(a), np.full(4, z0)], 1)
+def trunk(x, y, z0, z1, r, k=3):
+    a = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    lo = np.stack([x + r * np.cos(a), y + r * np.sin(a), np.full(k, z0)], 1)
     hi = lo.copy()
     hi[:, 2] = z1
-    faces = [[i, (i + 1) % 4, 4 + i] for i in range(4)] + [[(i + 1) % 4, 4 + (i + 1) % 4, 4 + i] for i in range(4)]
+    faces = [[i, (i + 1) % k, k + i] for i in range(k)] + [[(i + 1) % k, k + (i + 1) % k, k + i] for i in range(k)]
     return np.vstack([lo, hi]), np.array(faces)
 
 
-def trees(lu: np.ndarray, city: City, assets: Path) -> int:
-    """Forests and scattered trees on the ground, as merged meshes by species and shade."""
+def trees(lu: np.ndarray, city: City, assets: Path) -> list[tuple[str, str]]:
+    """Forests and scattered trees on the ground, merged by species and shade within each
+    TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file)."""
     x0, y0, x1, y1 = city.bounds
     n = lu.shape[0]
     spacing = 9.5
@@ -254,23 +256,30 @@ def trees(lu: np.ndarray, city: City, assets: Path) -> int:
         xs, ys = xs[~inside], ys[~inside]
     zs = np.atleast_1d(city.ground(xs, ys)) if len(xs) else np.array([])
     zlo, zhi = (float(zs.min()), float(zs.max())) if len(zs) else (0.0, 1.0)
-    meshes = {k: Obj() for k in ("conifer_dark", "conifer", "broadleaf", "broadleaf_light", "trunk")}
+    meshes: dict[tuple[str, int, int], Obj] = {}
     for x, y, z in zip(xs, ys, zs, strict=True):
+        tile = (int((x - x0) // TREE_TILE), int((y - y0) // TREE_TILE))
+        mesh = lambda name, tile=tile: meshes.setdefault((name, *tile), Obj())
         conifer = rng.random() < 0.35 + 0.45 * (z - zlo) / max(zhi - zlo, 1.0)
         h = rng.uniform(11, 22)
         if conifer:
             name = "conifer_dark" if rng.random() < 0.5 else "conifer"
             r = h * rng.uniform(0.18, 0.24)
-            meshes[name].add(*cone(x, y, z + 0.15 * h, z + 0.62 * h, r * 1.15))
-            meshes[name].add(*cone(x, y, z + 0.45 * h, z + h, r * 0.8))
-            meshes["trunk"].add(*trunk(x, y, z - 0.5, z + 0.2 * h, 0.25))
+            mesh(name).add(*cone(x, y, z + 0.15 * h, z + 0.62 * h, r * 1.15))
+            mesh(name).add(*cone(x, y, z + 0.45 * h, z + h, r * 0.8))
+            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.2 * h, 0.25))
         else:
             name = "broadleaf" if rng.random() < 0.55 else "broadleaf_light"
-            meshes[name].add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.26, 0.34), h * 0.3))
-            meshes["trunk"].add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.3))
-    for name, mesh in meshes.items():
-        mesh.write(assets / f"trees_{name}.obj")
-    return len(xs)
+            mesh(name).add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.26, 0.34), h * 0.3))
+            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.3))
+    for old in assets.glob("trees_*.obj"):  # earlier builds, other tilings
+        old.unlink()
+    out = []
+    for (name, i, j), m in sorted(meshes.items()):
+        path = assets / f"trees_{name}_{i}_{j}.obj"
+        m.write(path)
+        out.append((name, path.name))
+    return out
 
 
 def rail_meshes(city: City, assets: Path) -> None:
@@ -426,7 +435,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     x0, y0, x1, y1 = city.bounds
     lu = landuse(raw, city_file.parent, city)
     paint_ground(lu, x1 - x0).save(assets / "ground.png")
-    n_trees = trees(lu, city, assets)
+    tree_tiles = trees(lu, city, assets)
     rail_meshes(city, assets)
     rel = assets.name
 
@@ -462,10 +471,14 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         parts.append(f"Pose {{ translation {w['x']} {w['y']} {w['z']} children [ Shape {{ appearance "
                      f"{pbr((0.12, 0.25, 0.33), 0.05, transparency=0.1)} geometry Cylinder {{ radius {w['r'] + 30} "
                      f"height 0.1 subdivision 64 }} castShadows FALSE }} ] }}")
-    for name, rgb in [("conifer_dark", (0.10, 0.22, 0.12)), ("conifer", (0.14, 0.29, 0.14)),
-                      ("broadleaf", (0.20, 0.36, 0.13)), ("broadleaf_light", (0.30, 0.42, 0.16)),
-                      ("trunk", (0.30, 0.22, 0.15))]:
-        parts.append(mesh_shape(f"{rel}/trees_{name}.obj", rgb))
+    tree_rgb = {"conifer_dark": (0.10, 0.22, 0.12), "conifer": (0.14, 0.29, 0.14),
+                "broadleaf": (0.20, 0.36, 0.13), "broadleaf_light": (0.30, 0.42, 0.16),
+                "trunk": (0.30, 0.22, 0.15)}
+    defined = set()  # one appearance per species, shared by its tiles
+    for name, file in tree_tiles:
+        look = f"USE TREE_{name}" if name in defined else f"DEF TREE_{name} {pbr(tree_rgb[name])}"
+        defined.add(name)
+        parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{file}" }} castShadows FALSE }}')
     if city.rails:
         parts += [mesh_shape(f"{rel}/rail_ballast.obj", (0.42, 0.38, 0.34), 1.0),
                   mesh_shape(f"{rel}/rail_sleepers.obj", (0.28, 0.2, 0.14), 1.0),
@@ -499,7 +512,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     )
     out.write_text("\n".join(parts) + "\n")
     stamp.write_text(key)
-    print(f"{out}: {len(raw['buildings'])} buildings, {len(city.roads)} roads, {n_trees} trees, "
+    print(f"{out}: {len(raw['buildings'])} buildings, {len(city.roads)} roads, {len(tree_tiles)} tree meshes, "
           f"{len(sc.drones)} drones, {len(sc.sources)} sources (assets in {assets.name}/)")
     return out
 

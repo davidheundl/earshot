@@ -117,6 +117,19 @@ def test_malformed_view_requests_are_ignored():
     assert b.views == [[1, "pilot"], [0, "pilot"]]
 
 
+def test_view_keepalive_keeps_the_assignment():
+    """A screen's keepalive (views None) keeps the cameras on without taking them over, so
+    two open screens do not keep switching each other's views."""
+    b = object.__new__(WebotsBackend)
+    b._drones = {0: None, 1: None}
+    b._view_cams = [None, None]
+    b.views = [[1, "chase"], [0, "pilot"]]
+    b._views_asked = None
+    b.set_views(None)
+    assert b._views_asked is not None
+    assert b.views == [[1, "chase"], [0, "pilot"]]
+
+
 def _tick(t, readings):
     st = DroneState(1, t, 0.0, 0.0, 40.0, 0.0, Mode.LISTEN, None, 1.0, 0.0, False)
     return Sensed(st, [SensorReading(Sensor.SOUND, b, 5.0, (1.0, 0.0, 0.0, 0.0), 50.0)
