@@ -846,6 +846,11 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
     cls = lu[np.ix_(rows, cols)]
     road = cls == LANDUSE.index("road")
     field = np.isin(cls, [LANDUSE.index(c) for c in PAVED if c != "road"])
+    # pavement the land use misses (an apron OSM has no outline for): grey, not green
+    grey = (a.max(axis=2) - a.min(axis=2) < 18) & (a.mean(axis=2) > 150)  # bright concrete only
+    ppm_ = W / (tx1 - tx0)
+    beside = _grow(np.isin(cls, [LANDUSE.index(c) for c in ("apron", "taxiway")]), int(60 * ppm_))
+    field |= grey & beside & np.isin(cls, [LANDUSE.index("meadow"), LANDUSE.index("urban")])
     if not (road.any() or field.any()):
         return
     lum = a.mean(axis=2)
@@ -858,7 +863,7 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
     on_field = field & (d > 20)
     bright = _touching(on_field, _open(on_field, big))  # bodies and what is joined to them
     bright |= _open(road & ((d > 30) | (d < -40)), small)
-    bright |= _open(field & ((d > 22) | ((d < -28) & ~near_bld)), small)  # carts, tugs, vans
+    bright |= _open(field & ((d > 13) | ((d < -20) & ~near_bld)), small)  # carts, tugs, vans, pale or dark
     bright = _grow(bright, int(1.5 * ppm))
     dark = _open(field & (d < -20) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
     m = _grow(bright | dark, max(1, int(1.0 * ppm))) & paved
