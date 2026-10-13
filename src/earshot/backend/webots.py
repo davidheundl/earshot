@@ -115,6 +115,7 @@ class WebotsBackend:
         self._views_asked: float | None = None  # wall clock of the last set_views
         self._views_on = False
         self._view_yaw: dict[int, float] = {}
+        self._view_pitch: dict[int, float] = {}  # degrees down, so a HUD can draw the horizon
         self._due: float | None = None  # wall-clock deadline of the next basic step
         self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
         self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
@@ -159,6 +160,7 @@ class WebotsBackend:
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=quality)
             out[k] = {"drone": self.views[k][0], "mode": self.views[k][1], "w": w, "h": h,
+                      "fov": cam.getFov(), "pitch": self._view_pitch.get(k, 0.0),  # for the HUD
                       "jpeg": buf.getvalue()}
         return out
 
@@ -187,11 +189,13 @@ class WebotsBackend:
             fx, fy = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
             if mode == "pilot":
                 pos = [s.x + PILOT["ahead"] * fx, s.y + PILOT["ahead"] * fy, s.z + PILOT["up"]]
-                rot = look_rotation(yaw, PILOT["pitch"])
+                pitch = PILOT["pitch"]
             else:
                 c = CHASE_PERCHED if s.perched_on else CHASE
                 pos = [s.x - c["back"] * fx, s.y - c["back"] * fy, s.z + c["up"]]
-                rot = look_rotation(yaw, c["pitch"])
+                pitch = c["pitch"]
+            rot = look_rotation(yaw, pitch)
+            self._view_pitch[k] = pitch
             node[0].setSFVec3f(pos)
             node[1].setSFRotation(rot)
 

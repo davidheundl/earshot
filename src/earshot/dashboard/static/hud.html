@@ -272,6 +272,18 @@ function startGlide(ds) {
   }
   Object.assign(glide, { from, to, at: now });
 }
+// ground speed, vertical speed and track over ground, from consecutive states (smoothed)
+const kin = {};
+function trackKinematics(st) {
+  for (const d of st.drones) {
+    const k = kin[d.id], z = d.agl ?? d.z;
+    if (k && st.t > k.t && st.t - k.t < 2) {
+      const dt = st.t - k.t, vx = (d.x - k.x) / dt, vy = (d.y - k.y) / dt, vz = (z - k.z) / dt, a = 0.3;
+      k.vx += a * (vx - k.vx); k.vy += a * (vy - k.vy); k.vs += a * (vz - k.vs);
+      Object.assign(k, { t: st.t, x: d.x, y: d.y, z });
+    } else kin[d.id] = { t: st.t, x: d.x, y: d.y, z, vx: 0, vy: 0, vs: 0 };
+  }
+}
 function shownDrones(now) {
   return last.state.drones.map(d => { const p = poseAt(d.id, now); return p ? { ...d, x: p.x, y: p.y, heading: p.heading } : d; });
 }
@@ -302,6 +314,7 @@ function connect() {
     if (t < lastT - 1) newRun();
     lastT = t; lastData = Date.now(); pumpUp = true; linkStatus();
     startGlide(msg.state.drones);
+    trackKinematics(msg.state);
     for (const d of msg.state.drones) {
       const tm = d.telemetry ||= {};
       if ("heatmap" in tm) heat[d.id] = tm.heatmap; else tm.heatmap = heat[d.id];
@@ -506,57 +519,174 @@ function drawTrack(ctx, P, s, tr) {
   if (tr.cls === "DRONE" || tr.status === "CONFIRMED") { ctx.fillStyle = col; ctx.font = "11px B612, sans-serif"; ctx.fillText(`${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}`, a + 8, b + 14); }
 }
 
-/* ---------- main view overlay (flight-display style) ---------- */
+/* ---------- main view overlay (head-up display) ---------- */
+// Symbology in --text with a soft glow; colour only where it means something (threats, tasks).
 const pfd = $("pfd");
+function hudText(ctx, txt, x, y, align = "left", font = "12px B612 Mono, monospace") {
+  ctx.font = font; ctx.textAlign = align; ctx.fillText(txt, x, y);
+}
+function tape(ctx, x, cy, hgt, value, step, labelEvery, side, fmt) {
+  // a vertical ladder centred on `value`; side -1: ticks point right (left tape), +1: left
+  const px = hgt / (step * 10);  // ten steps visible
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 60, cy - hgt / 2, 120, hgt); ctx.clip();
+  ctx.fillStyle = "rgba(8,14,22,.55)"; ctx.fillRect(side < 0 ? x - 52 : x, cy - hgt / 2, 52, hgt);
+  ctx.fillStyle = css("--text");
+  for (let v = Math.floor((value - step * 6) / step) * step; v <= value + step * 6; v += step) {
+    const y = cy - (v - value) * px, major = Math.round(v / step) % labelEvery === 0;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - side * (major ? 12 : 6), y); ctx.stroke();
+    if (major) hudText(ctx, fmt(v), x - side * 16, y + 4, side < 0 ? "right" : "left", "11px B612 Mono, monospace");
+  }
+  ctx.restore();
+  // current value box with a pointer
+  const bw = 58, bh = 24, bx = side < 0 ? x - bw - 8 : x + 8;
+  ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.strokeStyle = css("--text");
+  ctx.beginPath(); ctx.rect(bx, cy - bh / 2, bw, bh); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(side < 0 ? x - 8 : x + 8, cy - 6); ctx.lineTo(x, cy); ctx.lineTo(side < 0 ? x - 8 : x + 8, cy + 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = css("--text"); hudText(ctx, fmt(value, true), bx + bw / 2, cy + 5, "center", "700 14px B612 Mono, monospace");
+}
 function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
   const d = shownDrones(now).find(x => x.id === selected); if (!d) return;
   const f = frames[0];
   if (!f) $("nocam").hidden = false;
-  const heading = d.heading, st = last.state;
-  // heading tape across the top: ±60 deg
-  const cx = w / 2, tapeW = Math.min(w * 0.6, 640), span = 120, px = tapeW / span, y = 26;
-  ctx.fillStyle = "rgba(20,32,48,.62)"; ctx.fillRect(cx - tapeW / 2, 8, tapeW, 34);
-  ctx.strokeStyle = css("--text"); ctx.fillStyle = css("--text"); ctx.font = "11px B612 Mono, monospace"; ctx.textAlign = "center"; ctx.lineWidth = 1;
-  const rel = b => ((b - heading + 540) % 360) - 180;
-  for (let deg = Math.ceil((heading - span / 2) / 10) * 10; deg <= heading + span / 2; deg += 10) {
-    const x = cx + rel(deg) * px, major = deg % 30 === 0;
-    ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, major ? 18 : 13); ctx.stroke();
-    if (major) { const lab = ((deg % 360) + 360) % 360; ctx.fillText({ 0: "N", 90: "E", 180: "S", 270: "W" }[lab] ?? String(lab).padStart(3, "0"), x, 32); }
+  const heading = d.heading, st = last.state, k = kin[d.id] || { vx: 0, vy: 0, vs: 0 };
+  const gs = Math.hypot(k.vx, k.vy), agl = d.agl ?? d.z, cx = w / 2, cy = h / 2;
+  const txt = css("--text");
+  // dark bands top and bottom so the symbology reads over a bright apron
+  for (const [y0, y1] of [[0, 96], [h, h - 96]]) {
+    const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, "rgba(8,14,22,.72)"); g.addColorStop(1, "rgba(8,14,22,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y0, y1), w, 96);
   }
-  ctx.fillStyle = css("--select"); ctx.beginPath(); ctx.moveTo(cx, 42); ctx.lineTo(cx - 6, 50); ctx.lineTo(cx + 6, 50); ctx.closePath(); ctx.fill();
-  ctx.fillText(String(Math.round(heading)).padStart(3, "0"), cx, 64);
-  // what this drone heard in the last 4 s: amber ticks on the tape; suspicions: diamonds
+  ctx.save();
+  ctx.strokeStyle = txt; ctx.fillStyle = txt; ctx.lineWidth = 1.25;
+  ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 4;
+
+  // camera geometry: the image covers the view, so one image pixel is `scale` screen pixels
+  const fw = f?.w || 960, fh = f?.h || 540, scale = Math.max(w / fw, h / fh);
+  const focal = (fw / 2) / Math.tan((f?.fov || 1.15) / 2) * scale;
+  const pitch = f?.pitch ?? (mainMode === "pilot" ? 10 : 12);
+  const yAt = deg => cy - focal * Math.tan((deg + pitch) * Math.PI / 180);  // elevation -> screen y
+  const rel = b => ((b - heading + 540) % 360) - 180;
+
+  // horizon and pitch ladder (the camera is level in roll, tilted down by `pitch`)
+  ctx.save(); ctx.beginPath(); ctx.rect(cx - w * 0.3, 80, w * 0.6, h - 170); ctx.clip();
+  const hy = yAt(0);
+  ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(cx - w * 0.3, hy); ctx.lineTo(cx - 70, hy); ctx.moveTo(cx + 70, hy); ctx.lineTo(cx + w * 0.3, hy); ctx.stroke();
+  for (const e of [-30, -20, -10, -5, 5, 10]) {
+    const y = yAt(e), half = Math.abs(e) % 10 ? 22 : 40;
+    ctx.setLineDash(e < 0 ? [6, 4] : []); ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(cx - half - 30, y); ctx.lineTo(cx - 30, y); ctx.moveTo(cx + 30, y); ctx.lineTo(cx + half + 30, y); ctx.stroke();
+    ctx.setLineDash([]);
+    if (!(Math.abs(e) % 10)) { hudText(ctx, String(Math.abs(e)), cx - half - 36, y + 4, "right", "10px B612 Mono, monospace"); hudText(ctx, String(Math.abs(e)), cx + half + 36, y + 4, "left", "10px B612 Mono, monospace"); }
+  }
+  ctx.restore(); ctx.globalAlpha = 1;
+
+  // flight path marker: where the drone is going, from its velocity over ground
+  if (gs > 0.4 && !d.perched_on) {
+    const trk = Math.atan2(k.vx, k.vy) * 180 / Math.PI, gamma = Math.atan2(k.vs, gs) * 180 / Math.PI;
+    const x = cx + focal * Math.tan(Math.max(-40, Math.min(40, rel(trk))) * Math.PI / 180), y = yAt(gamma);
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI);
+    ctx.moveTo(x - 7, y); ctx.lineTo(x - 19, y); ctx.moveTo(x + 7, y); ctx.lineTo(x + 19, y); ctx.moveTo(x, y - 7); ctx.lineTo(x, y - 14); ctx.stroke();
+  }
+  // boresight
+  ctx.beginPath(); ctx.moveTo(cx - 26, cy); ctx.lineTo(cx - 9, cy); ctx.lineTo(cx - 5, cy + 5); ctx.moveTo(cx + 26, cy); ctx.lineTo(cx + 9, cy); ctx.lineTo(cx + 5, cy + 5); ctx.stroke();
+  ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+
+  // corner brackets
+  const m = 14, L = 26;
+  ctx.globalAlpha = 0.8; ctx.lineWidth = 2;
+  for (const [x, y, sx, sy] of [[m, m, 1, 1], [w - m, m, -1, 1], [m, h - m, 1, -1], [w - m, h - m, -1, -1]]) {
+    ctx.beginPath(); ctx.moveTo(x, y + sy * L); ctx.lineTo(x, y); ctx.lineTo(x + sx * L, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1; ctx.lineWidth = 1.25;
+
+  // heading tape across the top: ±60 deg
+  const tapeW = Math.min(w * 0.55, 600), span = 120, px = tapeW / span, ty = 18;
+  ctx.fillStyle = "rgba(8,14,22,.55)"; ctx.fillRect(cx - tapeW / 2, ty, tapeW, 30); ctx.fillStyle = txt;
+  for (let deg = Math.ceil((heading - span / 2) / 5) * 5; deg <= heading + span / 2; deg += 5) {
+    const x = cx + rel(deg) * px, major = deg % 30 === 0, mid = deg % 10 === 0;
+    ctx.beginPath(); ctx.moveTo(x, ty + 30); ctx.lineTo(x, ty + 30 - (major ? 12 : mid ? 8 : 4)); ctx.stroke();
+    if (major) { const lab = ((deg % 360) + 360) % 360; hudText(ctx, { 0: "N", 90: "E", 180: "S", 270: "W" }[lab] ?? String(lab / 10).padStart(2, "0"), x, ty + 14, "center", "11px B612 Mono, monospace"); }
+  }
+  ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.fillRect(cx - 24, ty + 32, 48, 20); ctx.strokeRect(cx - 24, ty + 32, 48, 20);
+  ctx.fillStyle = txt; hudText(ctx, String(Math.round(heading) % 360).padStart(3, "0") + "°", cx, ty + 47, "center", "700 13px B612 Mono, monospace");
+  // what this drone heard in the last 4 s: coloured ticks on the tape; Suspicions: diamonds with range
   for (const r of hist[selected] || []) {
     if (r.sensor !== "SOUND" || st.t - r.t > 4) continue;
     const dx = rel(r.bearing); if (Math.abs(dx) > span / 2) continue;
-    const x = cx + dx * px; ctx.fillStyle = css(CLS_COL[CLS[argmax(r.probs)]]); ctx.globalAlpha = 1 - (st.t - r.t) / 4;
-    ctx.fillRect(x - 2, 8, 4, 34); ctx.globalAlpha = 1;
+    ctx.fillStyle = css(CLS_COL[CLS[argmax(r.probs)]]); ctx.globalAlpha = 1 - (st.t - r.t) / 4;
+    ctx.fillRect(cx + dx * px - 2, ty, 4, 30); ctx.globalAlpha = 1;
   }
+  let threat = null;
   for (const tr of d.telemetry?.tracks || []) {
     if (tr.cls !== "DRONE") continue;
-    const b = Math.atan2(tr.x - d.x, tr.y - d.y) * 180 / Math.PI, dx = rel(b); if (Math.abs(dx) > span / 2) continue;
-    const x = cx + dx * px, col = tr.status === "CONFIRMED" ? css("--warn") : css("--caution");
-    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, 44); ctx.lineTo(x + 6, 50); ctx.lineTo(x, 56); ctx.lineTo(x - 6, 50); ctx.closePath(); ctx.fill();
-    ctx.fillText(`${Math.round(Math.hypot(tr.x - d.x, tr.y - d.y))} m`, x, 70);
+    const b = Math.atan2(tr.x - d.x, tr.y - d.y) * 180 / Math.PI, dx = rel(b), dist = Math.hypot(tr.x - d.x, tr.y - d.y);
+    if (!threat || dist < threat.dist) threat = { b, dist, status: tr.status };
+    const col = tr.status === "CONFIRMED" ? css("--warn") : css("--caution");
+    ctx.fillStyle = col; ctx.strokeStyle = col;
+    if (Math.abs(dx) <= span / 2) {
+      const x = cx + dx * px;
+      ctx.beginPath(); ctx.moveTo(x, ty + 56); ctx.lineTo(x + 6, ty + 62); ctx.lineTo(x, ty + 68); ctx.lineTo(x - 6, ty + 62); ctx.closePath(); ctx.fill();
+      hudText(ctx, `${Math.round(dist)} m`, x, ty + 82, "center", "11px B612 Mono, monospace");
+    }
+    // in the camera's field of view: a target bracket at its bearing, at intruder flight
+    // height (the sim flies drone Sources 30 m above ground: SOURCE_Z in backend/webots.py)
+    const half = Math.atan(w / 2 / focal) * 180 / Math.PI;
+    if (Math.abs(dx) < half - 2) {
+      const x = cx + focal * Math.tan(dx * Math.PI / 180), y = yAt(Math.atan2(30 - agl, dist) * 180 / Math.PI), s = 16;
+      ctx.lineWidth = 2;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.beginPath(); ctx.moveTo(x + sx * s, y + sy * (s - 7)); ctx.lineTo(x + sx * s, y + sy * s); ctx.lineTo(x + sx * (s - 7), y + sy * s); ctx.stroke(); }
+      ctx.lineWidth = 1.25;
+    }
+    ctx.strokeStyle = txt;
   }
-  // left: identity and mode; right: height and battery
-  ctx.textAlign = "left"; ctx.font = "700 15px B612, sans-serif"; ctx.fillStyle = css("--text");
-  ctx.fillText(`Drone ${d.id}`, 14, 24);
-  ctx.font = "12px B612, sans-serif"; ctx.fillStyle = css(MODE_COL[d.mode] || "--own");
-  ctx.fillText(`${MODE_NAME[d.mode] || d.mode}${d.perched_on ? ", perched" : ""}`, 14, 42);
-  ctx.fillStyle = css("--muted"); ctx.fillText(`${f ? (f.mode === "pilot" ? "Pilot" : "Chase") : (mainMode === "pilot" ? "Pilot" : "Chase")} view, c to switch`, 14, 60);
+
+  // speed tape (left, m/s over ground) and height tape (right, m above ground)
+  const tapeH = Math.min(h * 0.5, 300);
+  ctx.fillStyle = txt; ctx.strokeStyle = txt;
+  tape(ctx, 96, cy, tapeH, gs, 1, 5, -1, (v, cur) => cur ? v.toFixed(1) : String(Math.round(v)));
+  hudText(ctx, "GS m/s", 96 - 37, cy - tapeH / 2 - 8, "center", "11px B612, sans-serif");
+  hudText(ctx, `${Math.round(gs * 3.6)} km/h`, 96 - 37, cy + tapeH / 2 + 16, "center");
+  tape(ctx, w - 96, cy, tapeH, agl, 2, 5, 1, (v, cur) => cur ? String(Math.round(v)) : String(Math.round(v)));
+  hudText(ctx, "AGL m", w - 96 + 37, cy - tapeH / 2 - 8, "center", "11px B612, sans-serif");
+  // vertical speed: an arrow beside the height tape
+  const vs = k.vs, vsy = Math.max(-1, Math.min(1, vs / 4)) * tapeH / 2;
+  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(w - 30, cy); ctx.lineTo(w - 30, cy - vsy); ctx.stroke(); ctx.lineWidth = 1.25;
+  hudText(ctx, `VS ${vs >= 0 ? "+" : ""}${vs.toFixed(1)}`, w - 96 + 37, cy + tapeH / 2 + 16, "center");
+
+  // identity and mode (top left), link and battery (top right)
+  ctx.fillStyle = txt; hudText(ctx, `DRONE ${d.id}`, 30, 40, "left", "700 15px B612, sans-serif");
+  ctx.fillStyle = css(MODE_COL[d.mode] || "--own");
+  hudText(ctx, `${(MODE_NAME[d.mode] || d.mode).toUpperCase()}${d.perched_on ? " · PERCHED" : ""}`, 30, 58, "left", "12px B612, sans-serif");
   const task = d.telemetry?.task;
-  if (task) { ctx.fillStyle = css("--task"); ctx.fillText(`${task.kind === "verify" ? "Verifying" : "Listening for"} a suspicion ${task.settled ? "" : "(claiming)"}`, 14, 78); }
-  ctx.textAlign = "right"; ctx.font = "13px B612 Mono, monospace"; ctx.fillStyle = css("--text");
-  ctx.fillText(`${Math.round(d.agl ?? d.z)} m above ground`, w - 14, 24);
-  ctx.fillText(`${Math.round(d.battery * 100)} % battery`, w - 14, 42);
-  ctx.fillStyle = css("--muted"); ctx.font = "12px B612, sans-serif";
-  ctx.fillText(`${d.telemetry?.accepted ?? 0} messages received`, w - 14, 60);
-  // centre reference
-  ctx.strokeStyle = "rgba(232,238,244,.7)"; ctx.lineWidth = 1.5; const my = h / 2;
-  ctx.beginPath(); ctx.moveTo(cx - 34, my); ctx.lineTo(cx - 12, my); ctx.moveTo(cx + 12, my); ctx.lineTo(cx + 34, my); ctx.moveTo(cx, my - 6); ctx.lineTo(cx, my + 6); ctx.stroke();
-  ctx.textAlign = "left";
+  if (task) { ctx.fillStyle = css("--task"); hudText(ctx, `${task.kind === "verify" ? "VERIFYING" : "LISTENING FOR"} A SUSPICION${task.settled ? "" : " (CLAIMING)"}`, 30, 76, "left", "12px B612, sans-serif"); }
+  ctx.fillStyle = css("--muted"); hudText(ctx, `${f ? (f.mode === "pilot" ? "PILOT" : "CHASE") : (mainMode === "pilot" ? "PILOT" : "CHASE")} VIEW · C TO SWITCH`, 30, h - 30, "left", "11px B612, sans-serif");
+  // battery gauge
+  const bat = d.battery, bx = w - 130, by = 30;
+  ctx.strokeStyle = txt; ctx.strokeRect(bx, by, 64, 14); ctx.fillRect(bx + 64, by + 4, 3, 6);
+  ctx.fillStyle = bat < 0.25 ? css("--warn") : bat < 0.5 ? css("--caution") : css("--own"); ctx.fillRect(bx + 2, by + 2, 60 * bat, 10);
+  ctx.fillStyle = txt; hudText(ctx, `${Math.round(bat * 100)}%`, bx - 8, by + 12, "right");
+  hudText(ctx, `LINK ${d.telemetry?.accepted ?? 0}`, w - 30, by + 34, "right", "11px B612 Mono, monospace");
+
+  // bottom: position and time, a blinking REC while the camera streams
+  const o = city?.origin;
+  if (o?.lat) {
+    const lat = o.lat + d.y / 111320, lon = o.lon + d.x / (111320 * Math.cos(o.lat * Math.PI / 180));
+    ctx.fillStyle = css("--muted"); hudText(ctx, `${lat.toFixed(5)}N ${lon.toFixed(5)}E`, cx, h - 30, "center", "11px B612 Mono, monospace");
+  }
+  if (f && Math.floor(now / 600) % 2) { ctx.fillStyle = css("--warn"); ctx.beginPath(); ctx.arc(w - 112, h - 34, 4, 0, 2 * Math.PI); ctx.fill(); }
+  ctx.fillStyle = txt; hudText(ctx, `REC ${fmtTime(st.t)}`, w - 30, h - 30, "right", "11px B612 Mono, monospace");
+
+  // nearest drone Suspicion: bearing and range, in its status colour
+  if (threat) {
+    const col = threat.status === "CONFIRMED" ? css("--warn") : css("--caution");
+    const label = `${threat.status === "CONFIRMED" ? "INTRUDER" : "SUSPECTED DRONE"}  ${String(Math.round((threat.b + 360) % 360)).padStart(3, "0")}°  ${Math.round(threat.dist)} M`;
+    ctx.font = "700 13px B612, sans-serif"; const tw = ctx.measureText(label).width + 24;
+    ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.fillRect(cx - tw / 2, h - 74, tw, 26);
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.strokeRect(cx - tw / 2, h - 74, tw, 26);
+    ctx.fillStyle = col; hudText(ctx, label, cx, h - 56, "center", "700 13px B612, sans-serif");
+  }
+  ctx.restore(); ctx.textAlign = "left";
 }
 const argmax = a => a.reduce((bi, v, i) => v > a[bi] ? i : bi, 0);
 
