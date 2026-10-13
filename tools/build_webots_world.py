@@ -821,13 +821,32 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
     ppm = W / (tx1 - tx0)  # px per metre
     big = max(3, int(2.5 * ppm) | 1)  # aircraft, buses: wider than any paint line
     small = max(3, int(1.4 * ppm) | 1)  # cars on the roads
-    bright = _open(field & (d > 20), big) | _open(road & ((d > 30) | (d < -40)), small)
+    on_field = field & (d > 20)
+    bright = _touching(on_field, _open(on_field, big))  # bodies and what is joined to them
+    bright |= _open(road & ((d > 30) | (d < -40)), small)
     bright = _grow(bright, int(1.5 * ppm))
-    dark = _open(field & (d < -30) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
+    dark = _open(field & (d < -20) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
     m = _grow(bright | dark, max(1, int(1.0 * ppm))) & paved
     if m.any():
-        fill = _local_mean(a, paved & ~m)  # the pavement around, without what is taken out
+        fill = _local_mean(a, paved & ~m & (d > -30))  # the sunlit pavement around, without the blobs
         a[m] = fill[m] + np.random.default_rng(5).normal(0, 2.0, (m.sum(), 1))
+
+
+def _touching(mask: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """The parts of `mask` connected (4-neighbour) to any pixel of `seed`."""
+    reach = mask & seed
+    if not reach.any():
+        return reach
+    while True:  # grow inside the mask until nothing changes
+        grown = reach.copy()
+        grown[1:] |= reach[:-1]
+        grown[:-1] |= reach[1:]
+        grown[:, 1:] |= reach[:, :-1]
+        grown[:, :-1] |= reach[:, 1:]
+        grown &= mask
+        if (grown == reach).all():
+            return reach
+        reach = grown
 
 
 def near_buildings(img_size, bounds, buildings, metres=25.0) -> np.ndarray:
@@ -858,6 +877,7 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=Non
     a = np.asarray(img.convert("RGB")).astype(np.float32)
     nrng = np.random.default_rng(7)
     near_bld = near_buildings(img.size, bounds, buildings)
+    on_wall = near_buildings(img.size, bounds, buildings, metres=2.5)
     if lu is not None:
         clean_surface(a, bounds, lu, city_bounds, near_bld)
 
@@ -890,14 +910,17 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=Non
             continue
         lum = sub.mean(axis=2)
         base = np.median(lum[m])
-        out = np.zeros(lum.shape, np.uint8)
-        out[m & ((lum > base + 18) | ((lum < base - 30) & ~near_bld[sl]))] = 255
-        k = max(3, int(2.5 * s) | 1)  # opening: drop anything thinner than ~2.5 m
-        blob = Image.fromarray(out).filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k + 8))
-        bm = (np.asarray(blob) > 0) & m
+        dark = (lum < base - 18) & m
+        # a dark patch that reaches a wall is that building's shadow and stays; one standing
+        # free on the apron is an aircraft's
+        dark &= ~_touching(dark, on_wall[sl])
+        raw_ = m & ((lum > base + 14) | dark)
+        k = max(3, int(2.5 * s) | 1)  # opening: drop anything thinner than ~2.5 m (paint lines)
+        body = _open(raw_, k)
+        bm = _grow(_touching(raw_, body), 4) & m  # and everything joined to a body: wings, tails
         if not bm.any():
             continue
-        rest = m & ~bm
+        rest = m & ~bm & (lum >= base - 18)  # fill with sunlit concrete, not shadow
         fill = np.median(sub[rest if rest.any() else m], axis=0)
         sub[bm] = fill + nrng.normal(0, 2.5, (bm.sum(), 1))
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
