@@ -61,6 +61,19 @@ class Bridge:
         fx.finalize()
         self.server = fx.server()
         self.server.run(True, 1, False)  # loads the world; _pre lists its models
+        self._warm_up()
+
+    def _warm_up(self) -> None:
+        """Render every camera once: Gazebo starts its renderer on the first subscription,
+        which takes seconds, and a Verifier would see nothing meanwhile."""
+        self.sensors(set(TOPICS))
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            self.server.run(True, 5, False)
+            with self.lock:
+                if set(self.latest) == set(TOPICS):
+                    break
+        self.sensors(set())
 
     def _pre(self, info, ecm) -> None:
         self.sim_t = info.sim_time.total_seconds()

@@ -57,6 +57,9 @@ VIEW_FOV = 1.15  # rad, horizontal
 VERIFY_SIZE = (400, 240)
 VERIFY_FOV = 1.0
 RECOGNITION_RANGE = 100.0  # m; Webots' Recognition maxRange: the box camera's far clip
+# Hz. Gazebo's label render costs with the scene's triangles (13 ms in the synthetic city,
+# 92 ms at Munich), so the boxes refresh every other tick; the sensors read the newest
+VERIFY_RATE = 5
 CAMV_PITCH = 14.0  # degrees down from the Verifier's heading
 
 

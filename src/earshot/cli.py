@@ -127,6 +127,19 @@ def _resolve_events(arg: str) -> Path:
     return p
 
 
+def busy_ports(gazebo: bool = False) -> list[int]:
+    """The local ports a live run binds that something already listens on."""
+    eps = [config.WORLD_PUB, config.WORLD_PULL, config.RADIO_PULL, config.RADIO_PUB]
+    eps += [config.GAZEBO_BRIDGE] if gazebo else []
+    ports = [int(ep.rsplit(":", 1)[1]) for ep in eps] + [config.DASHBOARD_PORT]
+    out = []
+    for port in ports:
+        with socket.socket() as sk:
+            if sk.connect_ex((config.HOST, port)) == 0:
+                out.append(port)
+    return out
+
+
 def stale_webots() -> list[str]:
     """Webots instances an earlier Earshot run left on our port (never the user's own Webots,
     which has no --port flag). While one lives, a new instance silently moves to the next
@@ -230,6 +243,10 @@ def cmd_live(a) -> None:
 def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
     """Start Webots (optional), radio, agents, dashboard and world; return when the world
     ends. A crashed helper is reported, not fatal (the dashboard never stops a run)."""
+    taken = busy_ports(gazebo=a.backend == "gazebo")
+    if taken:  # another run: our agents would steer its world
+        sys.exit(f"Port(s) {', '.join(map(str, taken))} taken: another Earshot run (or a "
+                 "leftover one) is live. Stop it first, e.g. pkill -f 'earshot live'")
     if a.backend == "webots":
         world_file = Path(f"webots/worlds/{sc.name}.wbt")
         subprocess.run([py, "tools/build_webots_world.py", a.scenario, str(world_file)], check=True)

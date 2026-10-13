@@ -43,6 +43,7 @@ from earshot.backend.gazebo import (
     RECOGNITION_RANGE,
     TRAIN_WAGONS,
     VERIFY_FOV,
+    VERIFY_RATE,
     VERIFY_SIZE,
     VIEW_FOV,
     VIEW_SIZE,
@@ -51,7 +52,7 @@ from earshot.backend.gazebo import (
 from earshot.city import City
 from earshot.scenario import Scenario
 
-BUILDER_VERSION = "3"
+BUILDER_VERSION = "4"
 INTRUDER_RGB = wb.INTRUDER_RGB
 GRASS = (0.42, 0.55, 0.3)
 TREE_RGB = {"conifer_dark": (0.10, 0.22, 0.12), "conifer": (0.14, 0.29, 0.14),
@@ -323,7 +324,7 @@ def cameras() -> list[str]:
     """CAMV: the Verifier's box camera (what it recognises, out to RECOGNITION_RANGE) and a
     plain camera for the dashboard preview; CAM_0..3: the game screen's view cameras."""
     out = [model("CAMV", [], extra=(
-        camera("verify", "/earshot/verify/boxes", VERIFY_SIZE, VERIFY_FOV, 10, RECOGNITION_RANGE,
+        camera("verify", "/earshot/verify/boxes", VERIFY_SIZE, VERIFY_FOV, VERIFY_RATE, RECOGNITION_RANGE,
                "boundingbox_camera")
         + camera("preview", "/earshot/verify/image", VERIFY_SIZE, VERIFY_FOV, 2, 3000)))]
     for k in range(N_VIEWS):
