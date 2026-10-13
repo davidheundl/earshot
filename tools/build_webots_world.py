@@ -1165,7 +1165,8 @@ def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[l
         f = data[f"{mesh}_f"]
         out = assets / f"sur_{mesh}.obj"
         if kind == "walls":
-            facade_obj(block_walls(v, f) if gap >= SURROUND_BLOCKS_M else v[f], out, HOUSE_W, HOUSE_H)
+            tris = block_walls(v, f) if gap >= SURROUND_BLOCKS_M else v[f]
+            facade_obj(tris if len(tris) else v[f], out, HOUSE_W, HOUSE_H)  # only sheds: keep them LoD2
         else:
             lines_ = [f"v {x:.1f} {y:.1f} {z:.1f}" for x, y, z in v] + [f"f {a + 1} {b + 1} {c + 1}" for a, b, c in f]
             out.write_text("\n".join(lines_) + "\n")
