@@ -87,13 +87,17 @@ class BridgeLink:
         self.sock = self.ctx.socket(zmq.REQ)
         self.sock.connect(endpoint)
         self.timeout_ms = int(timeout_s * 1000)
+        self.waiting = False  # a request without its reply: REQ can send nothing more
 
     def call(self, msg: dict, timeout_s: float | None = None) -> dict:
         self.sock.send(self._pack(msg))
+        self.waiting = True
         wait = self.timeout_ms if timeout_s is None else int(timeout_s * 1000)
         if not self.sock.poll(wait):
             raise SystemExit(f"Gazebo bridge did not answer {msg.get('op')!r} within {wait} ms")
-        return self._unpack(self.sock.recv())
+        out = self._unpack(self.sock.recv())
+        self.waiting = False
+        return out
 
     def close(self) -> None:
         self.sock.close()
@@ -216,10 +220,13 @@ class GazeboBackend:
         return bgra.tobytes()
 
     def close(self) -> None:
-        try:
-            self.link.call({"op": "close"}, timeout_s=2.0)
-        except SystemExit:
-            pass
+        """Ask the bridge to exit, unless a stop signal cut a request off mid-reply (the
+        launcher then stops the bridge itself)."""
+        if not getattr(self.link, "waiting", False):
+            try:
+                self.link.call({"op": "close"}, timeout_s=2.0)
+            except SystemExit:
+                pass
         self.link.close()
 
     # -- internals -----------------------------------------------------------------------
