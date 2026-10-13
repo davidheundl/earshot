@@ -879,8 +879,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
     views = " ".join(
         f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
-        f'width {960 if k == 0 else 384} height {540 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
-        f'antiAliasing TRUE ambientOcclusionRadius 2 bloomThreshold 6 }} ] }}'
+        f'width {854 if k == 0 else 384} height {480 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
+        f'antiAliasing TRUE ambientOcclusionRadius {2 if k == 0 else 0} bloomThreshold 6 }} ] }}'
         for k in range(N_VIEWS))
     parts.append(
         'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
