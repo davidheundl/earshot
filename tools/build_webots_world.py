@@ -798,8 +798,8 @@ def _grow(mask: np.ndarray, px: int) -> np.ndarray:
     pad[:H, :W] = mask
     small = pad.reshape(h, f, w, f).any(axis=(1, 3))
     k = 2 * -(-px // f) + 1
-    small = np.asarray(Image.fromarray(small.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(k))) > 0
-    return np.repeat(np.repeat(small, f, axis=0), f, axis=1)[:H, :W]
+    small = Image.fromarray(small.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(k))
+    return np.asarray(small.resize((w * f, h * f), Image.BILINEAR))[:H, :W] >= 128  # round, not 10 m squares
 
 
 def _local_mean(a: np.ndarray, valid: np.ndarray, f: int = 24) -> np.ndarray:
@@ -831,7 +831,22 @@ def _fill_colour(a: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return out
 
 
-def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: np.ndarray) -> None:
+def runway_mask(img_size, bounds, runways, margin=25.0) -> np.ndarray:
+    """Pixels on a runway (and its shoulders): wide paint and tyre rubber, never vehicles."""
+    W, H = img_size
+    tx0, _, tx1, ty1 = bounds
+    s = W / (tx1 - tx0)
+    m = Image.new("L", (W, H), 0)
+    dr = ImageDraw.Draw(m)
+    for rw in runways:
+        g = shapely.LineString(rw["line"]).buffer(rw["width"] / 2 + margin, cap_style="flat")
+        for poly in getattr(g, "geoms", [g]):
+            dr.polygon([((x - tx0) * s, (ty1 - y) * s) for x, y in poly.exterior.coords], fill=255)
+    return np.asarray(m) > 0
+
+
+def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: np.ndarray,
+                  runway: np.ndarray | None = None) -> None:
     """Every vehicle the photo shows on paved ground (taxiing aircraft, buses, tugs, cars on
     the roads) and the shadows beside them: blobs much brighter or darker than the pavement
     around them, wider than paint lines, become that pavement. Building shadows stay. In place."""
@@ -851,6 +866,15 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
     ppm_ = W / (tx1 - tx0)
     beside = _grow(np.isin(cls, [LANDUSE.index(c) for c in ("apron", "taxiway")]), int(60 * ppm_))
     field |= grey & beside & np.isin(cls, [LANDUSE.index("meadow"), LANDUSE.index("urban")])
+    if runway is not None:
+        field &= ~runway
+    # the land use is coarse (4 m): only pixels that look like pavement or vehicles, never the
+    # green of trees and verges the raster lets into a road
+    unsat = a.max(axis=2) - a.min(axis=2) < 32
+    ppm0 = W / (tx1 - tx0)
+    road_raw = road.copy()
+    road &= unsat & ~_grow(~road, int(4 * ppm0))  # the core of a road: its raster edge spills over
+    field &= ~_grow(road_raw, int(3 * ppm0))  # and the airfield passes keep off that spill zone
     if not (road.any() or field.any()):
         return
     lum = a.mean(axis=2)
@@ -862,8 +886,14 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
     small = max(3, int(1.4 * ppm) | 1)  # cars on the roads
     on_field = field & (d > 20)
     bright = _touching(on_field, _open(on_field, big))  # bodies and what is joined to them
-    bright |= _open(road & ((d > 30) | (d < -40)), small)
-    bright |= _open(field & ((d > 13) | ((d < -20) & ~near_bld)), small)  # carts, tugs, vans, pale or dark
+    green = (a[..., 1] > a[..., 0] + 6) & (a[..., 1] > a[..., 2] + 4)  # trees, verges
+    shade = _grow(green, int(6 * ppm))  # a dark patch beside them is their shadow, not a car
+    road_ref = _fill_colour(a, road & (d > -25) & ~shade)  # sunlit road only: shade is not a reference
+    dr = np.nan_to_num(lum - road_ref.mean(axis=2))
+    bright |= _open(road & ((dr > 30) | ((dr < -40) & ~shade)), small)
+    bright |= _open(field & ((d > 13) | ((d < -20) & ~near_bld & ~shade)), small)  # carts, tugs, vans
+    sat = a.max(axis=2) - a.min(axis=2)
+    bright |= _open(field & (sat > 45) & ~green, small)  # coloured ones (paint lines are thinner)
     bright = _grow(bright, int(1.5 * ppm))
     dark = _open(field & (d < -20) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
     m = _grow(bright | dark, max(1, int(1.0 * ppm))) & paved
@@ -908,7 +938,7 @@ def near_buildings(img_size, bounds, buildings, metres=25.0) -> np.ndarray:
 
 
 def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=None,
-                city_bounds=None, buildings=()) -> Image.Image:
+                city_bounds=None, buildings=(), runways=()) -> Image.Image:
     """Take the flat objects out of an aerial photo tile where 3D ones stand now: on each
     stand, blobs much brighter (fuselages) or darker (their shadows) than the concrete become
     concrete (thin paint lines survive the opening); car parks become plain asphalt."""
@@ -920,7 +950,7 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=Non
     near_bld = near_buildings(img.size, bounds, buildings)
     on_wall = near_buildings(img.size, bounds, buildings, metres=2.5)
     if lu is not None:
-        clean_surface(a, bounds, lu, city_bounds, near_bld)
+        clean_surface(a, bounds, lu, city_bounds, near_bld, runway_mask(img.size, bounds, runways))
 
     def patch(poly):
         """(rows, cols) slice of the polygon's bounding box and its mask there, or None."""
@@ -939,6 +969,7 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=Non
             continue
         sl, m = p
         sub = a[sl]
+        m = m & (sub.max(axis=2) - sub.min(axis=2) < 32)  # the asphalt, not trees over the lot
         if m.sum() < 20:
             continue
         sub[m] = np.median(sub[m], axis=0) + nrng.normal(0, 3.0, (m.sum(), 1))
@@ -1324,7 +1355,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     props, lots = street_props(raw, city, city_file.parent, assets, stands)
     if photo:  # with the flat aircraft and cars taken out where 3D ones stand
         for t in photo:
-            clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots, lu, city.bounds, city.buildings).save(
+            clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots, lu, city.bounds, city.buildings,
+                        raw.get("runways", [])).save(
                 assets / Path(t["image"]).name, quality=88)
     else:
         paint_ground(lu, x1 - x0).save(assets / "ground.png")
