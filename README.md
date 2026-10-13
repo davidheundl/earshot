@@ -53,6 +53,14 @@ When the dashboard is the show, skip Webots' own 3D window (the drone cameras st
 uv run earshot live --backend webots --no-webots-view
 ```
 
+Live with Gazebo Sim instead (experiment, branch `gazebo`, ADR 0008). Install Gazebo Harmonic once: `brew tap osrf/simulation && brew install gz-harmonic`. The first run makes the bridge's venv in `gazebo/.venv`, then:
+
+```bash
+uv run earshot live --backend gazebo
+```
+
+`--no-gazebo-view` skips Gazebo's own window (the drone cameras still render). `uv run earshot doctor` checks the install.
+
 Munich Airport, 1:1 from open data (LoD2 buildings, OSM runways and rail, the aerial photo as ground). The valley stays as the backup map:
 
 ```bash

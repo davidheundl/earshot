@@ -17,3 +17,8 @@ webots/worlds/.*.wbproj
 webots/worlds/*_assets/
 webots/worlds/valley.wbt
 webots/worlds/muc.wbt
+
+# Gazebo: the bridge venv (earshot live --backend gazebo makes it) and generated worlds
+gazebo/.venv/
+gazebo/worlds/*.sdf
+gazebo/worlds/*_assets/
