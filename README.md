@@ -59,7 +59,7 @@ Munich Airport, 1:1 from open data (LoD2 buildings, OSM runways and rail, the ae
 uv run earshot live --scenario scenarios/muc.yaml --backend webots
 ```
 
-The airport files in `data/cities/` are committed. To rebuild them from the open data (needs internet once; downloads ~250 MB into `data/raw/muc/`):
+The airport files in `data/cities/` are committed. To rebuild them from the open data (needs internet once; downloads ~850 MB into `data/raw/muc/`, the surroundings included):
 
 ```bash
 uv run python tools/muc_fetch.py

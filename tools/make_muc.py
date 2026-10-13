@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from pyproj import Transformer
 from shapely import LineString, MultiPolygon, Polygon, box, make_valid
-from shapely.ops import linemerge, unary_union
+from shapely.ops import linemerge, polygonize, unary_union
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw" / "muc"
@@ -308,6 +308,153 @@ def stands(nodes, ways, bounds) -> list[dict]:
     return out
 
 
+# -- small 3D objects ------------------------------------------------------------------------
+
+
+def features(nodes, ways, rels, bounds) -> dict:
+    """OSM objects the Webots world builds as 3D instead of leaving them flat in the photo:
+    trees and tree rows, hedges, fences, walls, light and radio masts, power towers and lines,
+    surface car parks. Local metres, rounded to 0.1 m."""
+    x0, y0, x1, y1 = bounds
+
+    def inside(p):
+        return x0 < p[0] < x1 and y0 < p[1] < y1
+
+    def r(p):
+        return [round(p[0], 1), round(p[1], 1)]
+
+    out = {k: [] for k in ("trees", "tree_rows", "hedges", "fences", "walls", "masts",
+                           "power_towers", "power_lines", "parking", "woods")}
+    seen = set()
+    for f in sorted(glob.glob(str(RAW / "osm" / "*.osm"))):
+        for _, el in ET.iterparse(f):
+            if el.tag != "node":
+                if el.tag in ("way", "relation"):
+                    el.clear()
+                continue
+            nid = int(el.get("id"))
+            if nid in seen or nid not in nodes or not inside(nodes[nid]):
+                continue
+            t = {x.get("k"): x.get("v") for x in el.findall("tag")}
+            if not t:
+                continue
+            seen.add(nid)
+            p = r(nodes[nid])
+            if t.get("natural") == "tree":
+                out["trees"].append(p)
+            elif t.get("man_made") == "mast":
+                kind = "light" if t.get("tower:type") == "lighting" else "radio"
+                h = float(t["height"]) if t.get("height", "").replace(".", "").isdigit() else None
+                out["masts"].append([*p, kind, h or (25.0 if kind == "light" else 30.0)])
+            elif t.get("power") == "tower":
+                out["power_towers"].append(p)
+    for nd, t in ways.values():
+        pts = [nodes[n] for n in nd if n in nodes]
+        if len(pts) < 2 or not any(inside(q) for q in pts):
+            continue
+        line = [r(q) for q in pts]
+        if t.get("natural") == "tree_row":
+            out["tree_rows"].append(line)
+        elif t.get("barrier") in ("hedge", "fence", "wall"):
+            out[t["barrier"] + "s"].append(line)
+        elif t.get("power") == "line":
+            out["power_lines"].append(line)
+        elif nd[0] == nd[-1] and len(pts) >= 4 and (kind := area_kind(t)):
+            out[kind].append(line)
+    for members, t in rels.values():  # multipolygons: big car parks and most forests
+        kind = area_kind(t) if t.get("type") == "multipolygon" else None
+        if not kind:
+            continue
+        lines = [LineString([nodes[n] for n in ways[ref][0] if n in nodes]) for typ, ref, role in members
+                 if typ == "way" and role in ("outer", "") and ref in ways and len(ways[ref][0]) > 1]
+        for poly in polygonize(unary_union(lines)) if lines else []:
+            if any(inside(q) for q in poly.exterior.coords):
+                out[kind].append([r(q) for q in poly.exterior.coords])
+    return out
+
+
+def area_kind(t: dict) -> str | None:
+    if t.get("amenity") == "parking" and t.get("parking", "surface") == "surface":
+        return "parking"
+    if t.get("natural") == "wood" or t.get("landuse") == "forest":
+        return "woods"
+    return None
+
+
+SURROUND_M = 4000.0  # the land drawn around the City (tools/muc_fetch.py ring)
+
+
+def write_features(nodes, ways, rels) -> str:
+    """features() over the City and its surroundings, as a side file (it is big and only the
+    Webots builder reads it)."""
+    x0, y0, x1, y1 = BOUNDS
+    m = SURROUND_M
+    (OUT / "muc_features.json").write_text(json.dumps(
+        features(nodes, ways, rels, (x0 - m, y0 - m, x1 + m, y1 + m)), separators=(",", ":")))
+    return "muc_features.json"
+
+
+# -- the surroundings: land around the City, drawn only (no Perch Sites, no task cells) ------
+
+
+def surround() -> dict:
+    """The aerial photo (2 m/px) and LoD2 buildings for SURROUND_M around the City, in
+    data/cities/muc_surround/: 1 km photo tiles that never overlap the City's own, and per
+    1 km tile the walls and the pitched and flat roofs (one compressed .npz; the Webots
+    builder writes the meshes). Needs tools/muc_fetch.py ring."""
+    x0, y0, x1, y1 = BOUNDS
+    m = SURROUND_M
+    rx0, ry0, rx1, ry1 = x0 - m, y0 - m, x1 + m, y1 + m
+    out_dir = OUT / "muc_surround"
+    out_dir.mkdir(exist_ok=True)
+    for old in out_dir.glob("*"):
+        old.unlink()
+    chunks = {}
+    for f in sorted((RAW / "dop_ring").glob("*.jpg")):
+        e, n = (int(v) for v in f.stem.split("_"))
+        chunks[(e * 1000 - ORIGIN[0], n * 1000 - ORIGIN[1])] = f
+    tiles = []
+    for tx in np.arange(rx0, rx1, 1000.0):
+        for ty in np.arange(ry0, ry1, 1000.0):
+            if x0 <= tx < x1 and y0 <= ty < y1:
+                continue  # the City's own photo is here
+            key = next(((cx, cy) for cx, cy in chunks if cx <= tx < cx + 2000 and cy <= ty < cy + 2000), None)
+            if key is None:
+                continue
+            im = Image.open(chunks[key])
+            s = im.width / 2000.0
+            crop = im.crop((round((tx - key[0]) * s), round((key[1] + 2000 - ty - 1000) * s),
+                            round((tx + 1000 - key[0]) * s), round((key[1] + 2000 - ty) * s)))
+            name = f"photo_{round(tx)}_{round(ty)}.jpg"
+            crop.resize((512, 512), Image.LANCZOS).save(out_dir / name, quality=80, optimize=True)
+            tiles.append({"image": f"muc_surround/{name}", "bounds": [tx, ty, tx + 1000, ty + 1000]})
+    city_box = box(x0, y0, x1, y1)
+    blds = [bd for bd in load_lod2((rx0, ry0, rx1, ry1)) if not city_box.contains(bd["footprint"].centroid)]
+    groups: dict[tuple, list] = {}
+    for bd in blds:
+        c = bd["footprint"].centroid
+        key = (int((c.x - rx0) // 1000), int((c.y - ry0) // 1000))
+        roof = "roofs_flat" if bd["roof_type"] == LOD2_FLAT else "roofs_pitched"
+        for kind, polys in (("walls", bd["walls"]), (roof, bd["roofs"])):
+            g = groups.setdefault((*key, kind), [])
+            for poly in polys:
+                g.extend(triangles(poly))
+    arrays, meshes = {}, set()  # shared vertices in integer decimetres, compressed: ~10x smaller
+    for (i, j, kind), tris in sorted(groups.items()):
+        if not tris:
+            continue
+        q = np.round(np.asarray(tris).reshape(-1, 3) * 10).astype(np.int32)
+        verts, inv = np.unique(q, axis=0, return_inverse=True)
+        arrays[f"{kind}_{i}_{j}_v"] = verts
+        arrays[f"{kind}_{i}_{j}_f"] = inv.reshape(-1, 3).astype(np.int32)
+        meshes.add(f"{kind}_{i}_{j}")
+    np.savez_compressed(out_dir / "buildings.npz", **arrays)
+    files = sorted(meshes)
+    print(f"[muc] surround: {len(tiles)} photo tiles, {len(blds)} buildings in {len(files)} meshes")
+    return {"bounds": [rx0, ry0, rx1, ry1], "tiles": tiles, "buildings": "muc_surround/buildings.npz",
+            "meshes": files}
+
+
 # -- ground photo ------------------------------------------------------------------------------
 
 
@@ -388,11 +535,11 @@ def triangles(poly3d: np.ndarray) -> list[np.ndarray]:
     return out
 
 
-def write_obj(path: Path, tris: list[np.ndarray]) -> None:
+def write_obj(path: Path, tris: list[np.ndarray], nd: int = 2) -> None:
     lines_, k = [], 1
     for t in tris:
         for p in t:
-            lines_.append(f"v {p[0]:.2f} {p[1]:.2f} {p[2]:.2f}")
+            lines_.append(f"v {p[0]:.{nd}f} {p[1]:.{nd}f} {p[2]:.{nd}f}")
         lines_.append(f"f {k} {k + 1} {k + 2}")
         k += 3
     path.write_text("\n".join(lines_) + "\n")
@@ -499,6 +646,8 @@ def main() -> None:
         "runways": [{"ref": t.get("ref"), "width": wdt, "line": pts(g)}
                     for (g, t), (_, wdt) in zip(rw, runways, strict=True)],
         "stands": stands(nodes, ways, BOUNDS),
+        "features": write_features(nodes, ways, rels),
+        "surround": surround(),
         "attribution": ["(c) OpenStreetMap contributors, ODbL",
                         "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0"],
     }

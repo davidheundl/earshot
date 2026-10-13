@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import shapely
 from PIL import Image, ImageDraw, ImageFilter
 from shapely import Point, Polygon, STRtree
 
@@ -237,7 +238,8 @@ def trunk(x, y, z0, z1, r, k=3):
     return np.vstack([lo, hi]), np.array(faces)
 
 
-def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False) -> list[tuple[str, str]]:
+def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False,
+          extra=None, far=None) -> list[tuple[str, str]]:
     """Forests and scattered trees on the ground, merged by species and shade within each
     TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file).
     forest_only: no scattered trees (an aerial photo already shows where they stand)."""
@@ -256,6 +258,9 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False) -
         keep_p[LANDUSE.index(name)] = p if name == "forest" or not forest_only else 0.0
     keep = rng.random(cls.shape) < keep_p[cls]
     xs, ys = gx[keep], gy[keep]
+    if extra is not None and len(extra):  # single trees and tree rows mapped in OSM
+        ex = np.asarray(extra, float)
+        xs, ys = np.concatenate([xs, ex[:, 0]]), np.concatenate([ys, ex[:, 1]])
     if city.buildings and len(xs):  # no trees inside buildings
         tree = STRtree([b.footprint.buffer(2) for b in city.buildings])
         idx = tree.query([Point(x, y) for x, y in zip(xs, ys, strict=True)], predicate="intersects")
@@ -280,6 +285,12 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False) -
             name = "broadleaf" if rng.random() < 0.55 else "broadleaf_light"
             mesh(name).add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.26, 0.34), h * 0.3))
             mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.3))
+    for x, y in far or []:  # distant forest: one five-sided cone each, only the canopy line shows
+        z = float(city.ground(x, y))
+        tile = (int((x - x0) // (4 * TREE_TILE)) * 4, int((y - y0) // (4 * TREE_TILE)) * 4)
+        h = rng.uniform(13, 22)
+        name = "conifer_dark" if rng.random() < 0.5 else "broadleaf"
+        meshes.setdefault((name, *tile), Obj()).add(*cone(x, y, z, z + h, h * 0.28, 5))
     for old in assets.glob("trees_*.obj"):  # earlier builds, other tilings
         old.unlink()
     out = []
@@ -427,12 +438,14 @@ def airliner(kind: str) -> dict[str, list]:
     return parts
 
 
-def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> list[tuple[str, str]]:
+def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> tuple[list[tuple[str, str]], list[dict]]:
     """Park airliners nose-in on most OSM stands (the end of the lead-in line nearer a building
-    is the nose), merged per tile and material so cameras cull them. -> [(material, file)]."""
+    is the nose), merged per tile and material so cameras cull them. Returns the mesh files
+    [(material, file)] and every stand [{foot, nose, dir, kind, parked}] (the photo is cleaned
+    under each, jet bridges reach the parked ones)."""
     st = raw.get("stands") or []
     if not st:
-        return []
+        return [], []
     srng = np.random.default_rng(11)
     tree = STRtree([b.footprint for b in city.buildings])
     mids = np.array([np.mean(s["line"], axis=0) for s in st])
@@ -440,9 +453,9 @@ def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> list[tup
     objs: dict[tuple, Obj] = {}
     x0, y0 = city.bounds[:2]
     parked: list[Polygon] = []  # footprints so far: overlapping stands (MARS) hold one aircraft
+    stands = []
     for s, mid in zip(st, mids, strict=True):
-        if srng.random() > 0.78:
-            continue  # an empty stand
+        occupied = srng.random() <= 0.78
         a, b = np.array(s["line"][0], float), np.array(s["line"][1], float)
         da = tree.query_nearest(Point(*a), return_distance=True)[1][0]
         db = tree.query_nearest(Point(*b), return_distance=True)[1][0]
@@ -452,16 +465,23 @@ def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> list[tup
             continue
         d /= np.linalg.norm(d)
         gap = np.sort(np.linalg.norm(mids - mid, axis=1))[1] if len(mids) > 1 else 999
-        kind = "wide" if gap > 62 and srng.random() < 0.55 else "narrow"
-        L = AIRLINERS[kind][0]
+        if occupied:
+            kind = "wide" if gap > 62 and srng.random() < 0.55 else "narrow"
+        else:
+            kind = "wide" if gap > 62 else "narrow"
+        L, S = AIRLINERS[kind][:2]
         c = nose_pt - d * (L / 2 + 4.0)  # nose a few metres short of the stop bar
         yaw = math.atan2(d[1], d[0])
         R = np.array([[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]])
-        S = AIRLINERS[kind][1]
         foot = Polygon([c + R @ [sx * L / 2, sy * S / 2] for sx, sy in ((1, 0), (0, 1), (-1, 0), (0, -1))])
-        if any(foot.intersects(q) for q in parked):
+        info = {"foot": Polygon([c + R @ [sx * (L / 2 + 6), sy * (S / 2 + 6)]
+                                 for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1))]),
+                "nose": c + d * L / 2, "dir": d, "kind": kind, "parked": False}
+        stands.append(info)
+        if not occupied or any(foot.intersects(q) for q in parked):
             continue
         parked.append(foot)
+        info["parked"] = True
         z0 = float(city.ground(*c))
         livery = int(srng.integers(len(TAIL_RGB)))
         key_t = (int((c[0] - x0) // tile), int((c[1] - y0) // tile))
@@ -478,7 +498,244 @@ def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> list[tup
         fname = f"aircraft_{name}_{i}_{j}.obj"
         o.write(assets / fname)
         out.append((name, fname))
-    return out
+    return out, stands
+
+
+# -- small objects from OSM: what the photo shows flat, built as 3D ----------------------------
+
+PROP_LOOK = {  # material -> (rgb, roughness, extra PBRAppearance fields)
+    "car0": ((0.85, 0.85, 0.86), 0.35, ""), "car1": ((0.08, 0.08, 0.09), 0.3, ""),
+    "car2": ((0.45, 0.47, 0.5), 0.3, ""), "car3": ((0.55, 0.06, 0.06), 0.3, ""),
+    "car4": ((0.1, 0.2, 0.42), 0.3, ""), "car5": ((0.62, 0.64, 0.66), 0.3, ""),
+    "glass": ((0.06, 0.08, 0.1), 0.1, ""), "tyre": ((0.03, 0.03, 0.03), 0.9, ""),
+    "hedge": ((0.15, 0.26, 0.1), 0.95, ""), "wall": ((0.63, 0.61, 0.57), 0.9, ""),
+    "post": ((0.42, 0.44, 0.46), 0.5, " metalness 0.6"),
+    "fence": ((0.6, 0.62, 0.64), 0.5, " metalness 0.5 transparency 0.6"),
+    "mast": ((0.6, 0.61, 0.63), 0.45, " metalness 0.7"),
+    "lamp": ((1.0, 0.96, 0.85), 0.5, " emissiveColor 1 0.96 0.85 emissiveIntensity 2"),
+    "steel": ((0.5, 0.52, 0.53), 0.5, " metalness 0.7"), "cable": ((0.1, 0.1, 0.1), 0.6, ""),
+    "bridge": ((0.8, 0.81, 0.82), 0.45, " metalness 0.3"), "bridge_glass": ((0.22, 0.3, 0.36), 0.15, ""),
+}
+
+
+def prop_look(name: str) -> str:
+    rgb, rough, extra = PROP_LOOK[name]
+    return f"PBRAppearance {{ baseColor {fmt(rgb, 3)} roughness {rough} metalness 0{extra} }}".replace(
+        " metalness 0 metalness", " metalness")
+
+
+class MeshSet:
+    """Meshes merged per material and per `tile` square, so cameras cull whole tiles."""
+
+    def __init__(self, prefix: str, origin, tile=1000.0):
+        self.prefix, self.origin, self.tile = prefix, origin, tile
+        self.objs: dict[tuple, Obj] = {}
+
+    def add(self, mat: str, x: float, y: float, verts, faces):
+        key = (mat, int((x - self.origin[0]) // self.tile), int((y - self.origin[1]) // self.tile))
+        self.objs.setdefault(key, Obj()).add(verts, faces)
+
+    def write(self, assets: Path) -> list[tuple[str, str]]:
+        for old in assets.glob(f"{self.prefix}_*.obj"):
+            old.unlink()
+        out = []
+        for (mat, i, j), o in sorted(self.objs.items()):
+            name = f"{self.prefix}_{mat}_{i}_{j}.obj"
+            o.write(assets / name)
+            out.append((mat, name))
+        return out
+
+
+_BOX_F = np.array([[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+                   [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]])
+
+
+def obox(cx, cy, z0, z1, length, width, yaw):
+    """A box standing on z0, `length` along compass-free direction yaw (radians from +x)."""
+    c, s_ = math.cos(yaw), math.sin(yaw)
+    pts = [(-length / 2, -width / 2), (length / 2, -width / 2), (length / 2, width / 2), (-length / 2, width / 2)]
+    ring = [(cx + c * u - s_ * v, cy + s_ * u + c * v) for u, v in pts]
+    return np.array([(x, y, z0) for x, y in ring] + [(x, y, z1) for x, y in ring]), _BOX_F
+
+
+def seg_box(a, b, width, z0, z1, za=0.0, zb=0.0):
+    """A box along the segment a-b (its ends may sit at different ground heights za, zb)."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L = math.hypot(dx, dy) or 1e-3
+    nx, ny = -dy / L * width / 2, dx / L * width / 2
+    ring = [(a[0] - nx, a[1] - ny, za), (b[0] - nx, b[1] - ny, zb), (b[0] + nx, b[1] + ny, zb),
+            (a[0] + nx, a[1] + ny, za)]
+    v = [(x, y, z + z0) for x, y, z in ring] + [(x, y, z + z1) for x, y, z in ring]
+    return np.array(v), _BOX_F
+
+
+def strut(p, q, w):
+    """A thin square beam between two 3D points (lattice members, cables)."""
+    p, q = np.asarray(p, float), np.asarray(q, float)
+    d = q - p
+    L = np.linalg.norm(d) or 1e-3
+    d /= L
+    u = np.cross(d, [0, 0, 1.0]) if abs(d[2]) < 0.95 else np.cross(d, [1.0, 0, 0])
+    u /= np.linalg.norm(u)
+    v = np.cross(d, u)
+    h = w / 2
+    ring = [-u * h - v * h, u * h - v * h, u * h + v * h, -u * h + v * h]
+    return np.array([p + r for r in ring] + [q + r for r in ring]), _BOX_F[4:]  # open ends
+
+
+def osm_trees(raw: dict, city_dir: Path) -> list:
+    """Single trees and tree rows (one every 8 m) mapped in OSM."""
+    ref = raw.get("features")
+    if not ref:
+        return []
+    feats = json.loads((city_dir / ref).read_text())
+    pts = [tuple(p) for p in feats.get("trees", [])]
+    for line in feats.get("tree_rows", []):
+        pts += densify(line, 8.0)
+    return pts
+
+
+def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: list[dict]) -> tuple[list, list]:
+    """Hedges, walls, fences, light and radio masts, power lines, cars on the surface car
+    parks and jet bridges to the parked aircraft. Returns the mesh files and the car-park
+    polygons (the photo under them is cleaned of its flat cars)."""
+    ref = raw.get("features")
+    feats = json.loads((city_dir / ref).read_text()) if ref else {}
+    ms = MeshSet("props", city.bounds[:2])
+    prng = np.random.default_rng(23)
+    g = city.ground
+    bx0, by0, bx1, by1 = city.bounds
+    reach = 1500.0  # small props further out than this would be sub-pixel: leave them out
+
+    def near(line) -> bool:
+        return any(bx0 - reach < x < bx1 + reach and by0 - reach < y < by1 + reach for x, y in line)
+
+    for k in ("hedges", "walls", "fences", "parking"):
+        feats[k] = [ln for ln in feats.get(k, []) if near(ln)]
+
+    for line in feats.get("hedges", []):
+        for a, b in itertools.pairwise(line):
+            ms.add("hedge", *a, *seg_box(a, b, 1.1, 0, 1.7, float(g(*a)), float(g(*b))))
+    for line in feats.get("walls", []):
+        for a, b in itertools.pairwise(line):
+            ms.add("wall", *a, *seg_box(a, b, 0.3, 0, 2.6, float(g(*a)), float(g(*b))))
+    for line in feats.get("fences", []):  # mesh panels and a top rail per segment, posts every 4 m
+        for a, b in itertools.pairwise(line):
+            za, zb = float(g(*a)), float(g(*b))
+            ms.add("fence", *a, *seg_box(a, b, 0.03, 0.05, 2.4, za, zb))
+            ms.add("post", *a, *seg_box(a, b, 0.06, 2.45, 2.55, za, zb))
+        for x, y in densify(line, 4.0):
+            z = float(g(x, y))
+            ms.add("post", x, y, *trunk(x, y, z, z + 2.6, 0.06, 3))
+    for x, y, kind, h in feats.get("masts", []):
+        z = float(g(x, y))
+        if kind == "light":  # apron floodlight: a tapered pole with a lamp head
+            ms.add("mast", x, y, *trunk(x, y, z, z + h, 0.35, 8))
+            ms.add("mast", x, y, *obox(x, y, z + h, z + h + 0.4, 4.5, 1.2, prng.uniform(0, math.pi)))
+            ms.add("lamp", x, y, *obox(x, y, z + h - 0.25, z + h, 4.2, 1.0, prng.uniform(0, math.pi)))
+        else:  # radio mast with panel antennas
+            ms.add("mast", x, y, *trunk(x, y, z, z + h, 0.5, 8))
+            for k in range(3):
+                a = k * 2 * math.pi / 3
+                ms.add("mast", x, y, *obox(x + 0.7 * math.cos(a), y + 0.7 * math.sin(a), z + h - 3, z + h - 0.5,
+                                           0.15, 0.4, a))
+    tower_h = 38.0
+    towers = [(round(x, 1), round(y, 1)) for x, y in feats.get("power_towers", [])]
+    tower_set = set(towers)
+    perp: dict[tuple, np.ndarray] = {}  # cross-arm direction: across the line at each pylon
+    spans = []
+    for line in feats.get("power_lines", []):
+        pts = [(round(p[0], 1), round(p[1], 1)) for p in line]
+        pts = [p for p in pts if p in tower_set]
+        for a, b in itertools.pairwise(pts):
+            d = np.subtract(b, a)
+            if np.linalg.norm(d) < 1:
+                continue
+            n = np.array([-d[1], d[0]]) / np.linalg.norm(d)
+            for p in (a, b):
+                perp.setdefault(p, n)
+            spans.append((a, b))
+    arms = ((tower_h * 0.72, 12.0, 11.0), (tower_h * 0.9, 8.0, 7.0))  # height, half length, cable offset
+    for x, y in towers:  # lattice pylon: four legs, bracing, two cross arms
+        z = float(g(x, y))
+        n = perp.get((x, y), np.array([1.0, 0.0]))
+        t = np.array([-n[1], n[0]])
+        base, top = 4.0, 1.2
+        legs = []
+        for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1)):
+            off = n * sx + t * sy
+            legs.append(((x + off[0] * base, y + off[1] * base, z), (x + off[0] * top, y + off[1] * top, z + tower_h)))
+        for p, q in legs:
+            ms.add("steel", x, y, *strut(p, q, 0.35))
+        for k in range(4):
+            (p0, q0), (p1, q1) = legs[k], legs[(k + 1) % 4]
+            for t0, t1 in ((0.0, 0.35), (0.35, 0.65), (0.65, 0.95)):
+                pa = np.add(p0, np.multiply(t0, np.subtract(q0, p0)))
+                pb = np.add(p1, np.multiply(t1, np.subtract(q1, p1)))
+                ms.add("steel", x, y, *strut(pa, pb, 0.18))
+        for zh, half, _ in arms:
+            ms.add("steel", x, y, *strut((x - n[0] * half, y - n[1] * half, z + zh),
+                                         (x + n[0] * half, y + n[1] * half, z + zh), 0.6))
+    for a, b in spans:  # four cables per span, hanging from the arm tips
+        za, zb = float(g(*a)), float(g(*b))
+        na, nb = perp[a], perp[b]
+        for zh, _, off in arms:
+            for sgn in (-1, 1):
+                ms.add("cable", *a, *strut((a[0] + sgn * off * na[0], a[1] + sgn * off * na[1], za + zh - 1),
+                                           (b[0] + sgn * off * nb[0], b[1] + sgn * off * nb[1], zb + zh - 1), 0.08))
+
+    # cars in rows on the surface car parks: 2.6 m bays, 5 m deep, a 6.5 m aisle every two rows
+    lots = [Polygon(p) for p in feats.get("parking", [])]
+    lots = [p for p in lots if p.is_valid and p.area > 150]
+    for lot in lots:
+        rect = lot.minimum_rotated_rectangle
+        xs_, ys_ = rect.exterior.coords.xy
+        e1 = np.array([xs_[1] - xs_[0], ys_[1] - ys_[0]])
+        e2 = np.array([xs_[2] - xs_[1], ys_[2] - ys_[1]])
+        u, wdt = (e1, e2) if np.linalg.norm(e1) >= np.linalg.norm(e2) else (e2, e1)
+        lu_, lw = np.linalg.norm(u), np.linalg.norm(wdt)
+        u, wdt = u / lu_, wdt / lw
+        o = np.array([xs_[0], ys_[0]]) if np.linalg.norm(e1) >= np.linalg.norm(e2) else np.array([xs_[1], ys_[1]])
+        inner = lot.buffer(-1.0)
+        yaw = math.atan2(wdt[1], wdt[0])  # cars point across the rows
+        rows = [v0 + dv for v0 in np.arange(1.0, lw, 16.5) for dv in (2.5, 7.7) if v0 + dv < lw - 2.0]
+        for row_v in rows:  # two rows back to back, then an aisle
+            for bay_u in np.arange(1.5, lu_ - 1.2, 2.6):
+                c = o + u * bay_u + wdt * row_v
+                if prng.random() > 0.72 or not inner.contains(Point(*c)):
+                    continue
+                z = float(g(*c))
+                paint = f"car{int(prng.integers(6))}"
+                ms.add(paint, *c, *obox(c[0], c[1], z + 0.3, z + 1.05, 4.4, 1.8, yaw))
+                cc = c - wdt * 0.25
+                ms.add("glass", *c, *obox(cc[0], cc[1], z + 1.05, z + 1.48, 2.3, 1.6, yaw))
+                ms.add("tyre", *c, *obox(c[0], c[1], z, z + 0.35, 3.7, 1.7, yaw))
+
+    # jet bridges: from the nearest terminal wall to the forward left door of a parked aircraft
+    walls_tree = STRtree([b.footprint for b in city.buildings]) if city.buildings else None
+    for s in stands:
+        if not s["parked"] or walls_tree is None:
+            continue
+        L, _, r = AIRLINERS[s["kind"]]
+        d = np.asarray(s["dir"])
+        left = np.array([-d[1], d[0]])
+        door = np.asarray(s["nose"]) - d * 0.13 * L + left * (r + 0.4)
+        i = walls_tree.query_nearest(Point(*door))[0]
+        wall_pt = city.buildings[i].footprint.exterior.interpolate(
+            city.buildings[i].footprint.exterior.project(Point(*door)))
+        start = np.array([wall_pt.x, wall_pt.y])
+        if np.linalg.norm(door - start) > 45:
+            continue  # no terminal close by: a remote stand, served by buses
+        zc = r + 0.18 * r + 1.0 + float(g(*door))
+        zr = float(g(*start)) + 5.0
+        ms.add("bridge", *door, *seg_box(start, door, 3.2, 0, 3.0, zr - 1.5, zc - 1.5))
+        ms.add("bridge_glass", *door, *seg_box(start, door, 3.25, 1.6, 2.4, zr - 1.5, zc - 1.5))
+        mid = (start + door) / 2
+        zm = (zr + zc) / 2 - 1.5
+        ms.add("post", *mid, *trunk(mid[0], mid[1], float(g(*mid)), zm, 0.35, 6))  # drive column
+        ms.add("tyre", *mid, *obox(mid[0], mid[1], float(g(*mid)), float(g(*mid)) + 0.9, 1.2, 3.0,
+                                    math.atan2(d[1], d[0])))
+    return ms.write(assets), lots
 
 
 def aircraft_look(name: str) -> str:
@@ -490,6 +747,58 @@ def aircraft_look(name: str) -> str:
 
 def mesh_shape(url: str, rgb, rough=0.9) -> str:
     return f'Shape {{ appearance {pbr(rgb, rough)} geometry Mesh {{ url "{url}" }} castShadows FALSE }}'
+
+
+def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list) -> Image.Image:
+    """Take the flat objects out of an aerial photo tile where 3D ones stand now: on each
+    stand, blobs much brighter (fuselages) or darker (their shadows) than the concrete become
+    concrete (thin paint lines survive the opening); car parks become plain asphalt."""
+    tx0, ty0, tx1, ty1 = bounds
+    s = img.width / (tx1 - tx0)
+    tile = Polygon([(tx0, ty0), (tx1, ty0), (tx1, ty1), (tx0, ty1)])
+    a = np.asarray(img.convert("RGB")).astype(np.float32)
+    nrng = np.random.default_rng(7)
+
+    def patch(poly):
+        """(rows, cols) slice of the polygon's bounding box and its mask there, or None."""
+        bx0, by0, bx1, by1 = poly.bounds
+        c0, c1 = max(0, int((bx0 - tx0) * s)), min(img.width, int((bx1 - tx0) * s) + 1)
+        r0, r1 = max(0, int((ty1 - by1) * s)), min(img.height, int((ty1 - by0) * s) + 1)
+        if c1 - c0 < 3 or r1 - r0 < 3:
+            return None
+        m = Image.new("L", (c1 - c0, r1 - r0), 0)
+        ImageDraw.Draw(m).polygon([((x - tx0) * s - c0, (ty1 - y) * s - r0) for x, y in poly.exterior.coords],
+                                  fill=255)
+        return (slice(r0, r1), slice(c0, c1)), np.asarray(m) > 0
+
+    for lot in lots:
+        if not lot.intersects(tile) or (p := patch(lot)) is None:
+            continue
+        sl, m = p
+        sub = a[sl]
+        if m.sum() < 20:
+            continue
+        sub[m] = np.median(sub[m], axis=0) + nrng.normal(0, 3.0, (m.sum(), 1))
+    for st in stands:
+        if not st["foot"].intersects(tile) or (p := patch(st["foot"])) is None:
+            continue
+        sl, m = p
+        sub = a[sl]
+        if m.sum() < 50:
+            continue
+        lum = sub.mean(axis=2)
+        base = np.median(lum[m])
+        out = np.zeros(lum.shape, np.uint8)
+        out[m & ((lum > base + 22) | (lum < base - 38))] = 255
+        k = max(3, int(2.5 * s) | 1)  # opening: drop anything thinner than ~2.5 m
+        blob = Image.fromarray(out).filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k + 4))
+        bm = (np.asarray(blob) > 0) & m
+        if not bm.any():
+            continue
+        rest = m & ~bm
+        fill = np.median(sub[rest if rest.any() else m], axis=0)
+        sub[bm] = fill + nrng.normal(0, 2.5, (bm.sum(), 1))
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
 def photo_roofs(obj: Path, tiles: list[dict], city_dir: Path, out: Path, m_per_px=0.5) -> None:
@@ -543,16 +852,101 @@ def facade_texture(out: Path) -> None:
 def facade_walls(obj: Path, out: Path) -> None:
     """Give every wall triangle UVs in metres along the wall and up it, for facade_texture."""
     verts = [[float(v) for v in ln.split()[1:4]] for ln in obj.read_text().splitlines() if ln.startswith("v ")]
-    p = np.asarray(verts).reshape(-1, 3, 3)
+    facade_obj(np.asarray(verts).reshape(-1, 3, 3), out, FACADE_W, FACADE_H)
+
+
+def facade_obj(p: np.ndarray, out: Path, w: float, h: float) -> None:
+    """Triangles (n, 3, 3) -> an OBJ with UVs `w` m along each wall and `h` m up it."""
     nrm = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0])
     t = np.stack([-nrm[:, 1], nrm[:, 0]], axis=1)  # horizontal, along the wall
     t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
-    u = np.einsum("tvk,tk->tv", p[:, :, :2], t) / FACADE_W
-    v = p[:, :, 2] / FACADE_H
-    lines_ = [f"v {x} {y} {z}" for x, y, z in verts]
+    u = np.einsum("tvk,tk->tv", p[:, :, :2], t) / w
+    v = p[:, :, 2] / h
+    lines_ = [f"v {x:.2f} {y:.2f} {z:.2f}" for x, y, z in p.reshape(-1, 3)]
     lines_ += [f"vt {a:.4f} {b:.4f}" for a, b in zip(u.ravel(), v.ravel(), strict=True)]
-    lines_ += [f"f {k}/{k} {k + 1}/{k + 1} {k + 2}/{k + 2}" for k in range(1, len(verts) + 1, 3)]
+    lines_ += [f"f {k}/{k} {k + 1}/{k + 1} {k + 2}/{k + 2}" for k in range(1, len(p) * 3 + 1, 3)]
     out.write_text("\n".join(lines_) + "\n")
+
+
+HOUSE_W, HOUSE_H = 7.0, 2.9  # m of wall per house facade texture repeat: one storey, two windows
+
+
+def house_texture(out: Path) -> None:
+    """A storey of a plastered house: off-white render, two windows with frames and shutters."""
+    n = 256
+    img = np.empty((n, n, 3), float)
+    img[:] = (0.86, 0.84, 0.78)
+    img += rng.normal(0, 0.012, img.shape)
+    for cx in (0.27, 0.73):  # windows, image rows run top-down
+        x0, x1 = int((cx - 0.09) * n), int((cx + 0.09) * n)
+        y0, y1 = int(0.22 * n), int(0.62 * n)
+        img[y0 - 4:y1 + 4, x0 - 4:x1 + 4] = (0.95, 0.95, 0.93)  # frame
+        img[y0:y1, x0:x1] = (0.16, 0.2, 0.24)  # glass
+        img[y0:y1, (x0 + x1) // 2 - 1:(x0 + x1) // 2 + 1] = (0.95, 0.95, 0.93)
+        img[y0:y1, x0 - 18:x0 - 6] = (0.35, 0.22, 0.13)  # shutters
+        img[y0:y1, x1 + 6:x1 + 18] = (0.35, 0.22, 0.13)
+    img[int(0.95 * n):] = (0.7, 0.68, 0.62)  # plinth line
+    Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(out)
+
+
+def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[list[str], list, list, tuple]:
+    """The land around the City: its aerial photo as plates, the LoD2 villages (plastered
+    walls, tiled or gravel roofs). Returns VRML parts, tree points for the forests there
+    (denser near the City) and the bounds it covers."""
+    sur = raw.get("surround")
+    if not sur:
+        return [], [], [], None
+    parts = []
+    for t in sur["tiles"]:
+        tx0, ty0, tx1, ty1 = t["bounds"]
+        name = Path(t["image"]).name
+        (assets / name).write_bytes((city_dir / t["image"]).read_bytes())
+        parts.append(f"Pose {{ translation {(tx0 + tx1) / 2} {(ty0 + ty1) / 2} -0.05 children [ Shape {{ "
+                     f"appearance {photo_look(f'{rel}/{name}')} geometry Box {{ size {tx1 - tx0} {ty1 - ty0} 0.1 }} "
+                     f"castShadows FALSE }} ] }}")
+    house_texture(assets / "house.png")
+    looks = {"walls": pbr((1, 1, 1), 0.85, texture=f"{rel}/house.png"),
+             "roofs_pitched": pbr((0.56, 0.24, 0.16), 0.75), "roofs_flat": pbr((0.5, 0.5, 0.49), 0.9)}
+    data = np.load(city_dir / sur["buildings"])
+    for old in assets.glob("sur_*.obj"):
+        old.unlink()
+    defined = set()
+    for mesh in sur["meshes"]:
+        kind = mesh.rsplit("_", 2)[0]
+        v = data[f"{mesh}_v"].astype(float) / 10
+        f = data[f"{mesh}_f"]
+        out = assets / f"sur_{mesh}.obj"
+        if kind == "walls":
+            facade_obj(v[f], out, HOUSE_W, HOUSE_H)
+        else:
+            lines_ = [f"v {x:.1f} {y:.1f} {z:.1f}" for x, y, z in v] + [f"f {a + 1} {b + 1} {c + 1}" for a, b, c in f]
+            out.write_text("\n".join(lines_) + "\n")
+        look = f"USE SUR_{kind.upper()}" if kind in defined else f"DEF SUR_{kind.upper()} {looks[kind]}"
+        defined.add(kind)
+        parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{out.name}" }} castShadows FALSE }}')
+    trees_, far_trees = [], []
+    ref = raw.get("features")
+    if ref:
+        x0, y0, x1, y1 = raw["bounds"]
+        frng = np.random.default_rng(31)
+        for ring in json.loads((city_dir / ref).read_text()).get("woods", []):
+            poly = Polygon(ring)
+            if not poly.is_valid or poly.area < 200:
+                continue
+            bx0, by0, bx1, by1 = poly.bounds
+            far = max(0.0, max(x0 - bx1, bx0 - x1, y0 - by1, by0 - y1))
+            if bx0 >= x0 and bx1 <= x1 and by0 >= y0 and by1 <= y1:
+                continue  # inside the City the land-use raster already plants its forests
+            spacing = 18.0 if far < 1500 else 30.0  # thinner where only the canopy line shows
+            n = int(poly.area / spacing**2)
+            if n == 0:
+                continue
+            cand = np.column_stack([frng.uniform(bx0, bx1, 3 * n), frng.uniform(by0, by1, 3 * n)])
+            inside = shapely.contains_xy(poly, cand[:, 0], cand[:, 1])
+            pts = cand[inside][:n]
+            out_city = ~((pts[:, 0] > x0) & (pts[:, 0] < x1) & (pts[:, 1] > y0) & (pts[:, 1] < y1))
+            (trees_ if far < 1500 else far_trees).extend(tuple(p) for p in pts[out_city])
+    return parts, trees_, far_trees, tuple(sur["bounds"])
 
 
 def _pow2(px: float) -> int:
@@ -745,6 +1139,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     assets.mkdir(parents=True, exist_ok=True)
     side = [t["image"] for t in raw.get("ground_tiles", [])]  # files the City JSON points to
     side += [f for m in raw.get("building_meshes", []) for f in m.values()]
+    side += [raw["features"]] if raw.get("features") else []
+    if raw.get("surround"):
+        side += [t["image"] for t in raw["surround"]["tiles"]] + [raw["surround"]["buildings"]]
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
                          + b"".join((city_file.parent / f).read_bytes() for f in side)
                          + Path(__file__).read_bytes()  # and the backend's node layout:
@@ -757,9 +1154,12 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     x0, y0, x1, y1 = city.bounds
     lu = landuse(raw, city_file.parent, city)
     photo = raw.get("ground_tiles")  # a real aerial photo instead of the painted land use
-    if photo:
+    aircraft, stands = stand_aircraft(raw, city, assets)
+    props, lots = street_props(raw, city, city_file.parent, assets, stands)
+    if photo:  # with the flat aircraft and cars taken out where 3D ones stand
         for t in photo:
-            (assets / Path(t["image"]).name).write_bytes((city_file.parent / t["image"]).read_bytes())
+            clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots).save(
+                assets / Path(t["image"]).name, quality=88)
     else:
         paint_ground(lu, x1 - x0).save(assets / "ground.png")
     meshes = raw.get("building_meshes")  # real wall and roof geometry (LoD2) per tile
@@ -773,10 +1173,14 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
                 (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
     if meshes:
         facade_texture(assets / "facade.png")
-    tree_tiles = trees(lu, city, assets, forest_only=bool(photo))
-    rail_meshes(city, assets)
-    aircraft = stand_aircraft(raw, city, assets)
     rel = assets.name
+    ring_parts, ring_trees, far_trees, ring_bounds = surround_parts(raw, city_file.parent, assets, rel)
+    osm_near, osm_far = [], []  # mapped trees: full detail near the City, cones further out
+    for x, y in osm_trees(raw, city_file.parent):
+        (osm_near if x0 - 1500 < x < x1 + 1500 and y0 - 1500 < y < y1 + 1500 else osm_far).append((x, y))
+    tree_tiles = trees(lu, city, assets, forest_only=bool(photo), extra=osm_near + ring_trees,
+                       far=far_trees + osm_far)
+    rail_meshes(city, assets)
 
     parts = ["#VRML_SIM R2025a utf8",
              f"# generated by tools/build_webots_world.py from {scenario_path} -- do not edit by hand"]
@@ -786,7 +1190,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts += [
         'WorldInfo { info [ "Earshot" ] basicTimeStep 20 gravity 0 }',
         (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(0, 14)} position {cx:.0f} "
-        f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} far 25000"
+        f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} "
+        f"far {14000 if raw.get('surround') else 25000}"  # with surroundings: only as far as the haze
         f"{' near 1' if photo else ''} }}"),
         'TexturedBackground { texture "noon_cloudy_countryside" }',
         'TexturedBackgroundLight { texture "noon_cloudy_countryside" castShadows FALSE }',
@@ -809,12 +1214,21 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
             parts.append(f"Pose {{ translation {(tx0 + tx1) / 2} {(ty0 + ty1) / 2} -0.05 children [ Shape {{ "
                          f"appearance {photo_look(img)} geometry Box {{ size {tx1 - tx0} "
                          f"{ty1 - ty0} 0.1 }} castShadows FALSE }} ] }}")
-        # grass around the map as a frame, not under it: coplanar plates z-fight at a distance
+        parts += ring_parts  # the photographed land around the City, its villages
+        # grass around all of it as a frame, not under it: coplanar plates z-fight at a distance
         m = 2.5 * span
-        for fx0, fy0, fx1, fy1 in ((x0 - m, y1, x1 + m, y1 + m), (x0 - m, y0 - m, x1 + m, y0),
-                                   (x0 - m, y0, x0, y1), (x1, y0, x1 + m, y1)):
+        fx0_, fy0_, fx1_, fy1_ = ring_bounds or (x0, y0, x1, y1)
+        field = next((Path(t["image"]).name for t in raw["surround"]["tiles"]), None) if ring_bounds else None
+        for fx0, fy0, fx1, fy1 in ((fx0_ - m, fy1_, fx1_ + m, fy1_ + m), (fx0_ - m, fy0_ - m, fx1_ + m, fy0_),
+                                   (fx0_ - m, fy0_, fx0_, fy1_), (fx1_, fy0_, fx1_ + m, fy1_)):
+            if field:  # one photographed square of farmland, repeated per km out into the haze
+                look = (f'PBRAppearance {{ baseColor 0.5 0.5 0.5 roughness 1 metalness 0 baseColorMap '
+                        f'ImageTexture {{ url "{rel}/{field}" }} textureTransform TextureTransform {{ '
+                        f"scale {(fx1 - fx0) / 1000:.1f} {(fy1 - fy0) / 1000:.1f} }} }}")
+            else:
+                look = pbr((0.42, 0.55, 0.3), 1)
             parts.append(f"Pose {{ translation {(fx0 + fx1) / 2} {(fy0 + fy1) / 2} -0.05 children [ Shape {{ "
-                         f"appearance {pbr((0.42, 0.55, 0.3), 1)} geometry Box {{ size {fx1 - fx0} "
+                         f"appearance {look} geometry Box {{ size {fx1 - fx0} "
                          f"{fy1 - fy0} 0.1 }} castShadows FALSE }} ] }}")
     else:  # flat city: a textured ground plane, wider grass around it
         parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -0.05 children [ Shape {{ appearance "
@@ -862,11 +1276,13 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     else:
         for k, b in enumerate(raw["buildings"]):
             parts.append(building(b, k))
-    looks = set()  # one appearance per aircraft material, DEF on first use
-    for name, file in aircraft:
-        look = f"USE AC_{name.upper()}" if name in looks else f"DEF AC_{name.upper()} {aircraft_look(name)}"
-        looks.add(name)
-        parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{file}" }} castShadows FALSE }}')
+    looks = set()  # one appearance per material, DEF on first use
+    for prefix, files, look_of in (("AC", aircraft, aircraft_look), ("PROP", props, prop_look)):
+        for name, file in files:
+            key = f"{prefix}_{name.upper()}"
+            look = f"USE {key}" if key in looks else f"DEF {key} {look_of(name)}"
+            looks.add(key)
+            parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{file}" }} castShadows FALSE }}')
 
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0

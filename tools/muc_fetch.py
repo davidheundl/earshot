@@ -3,6 +3,7 @@
     uv run python tools/muc_fetch.py osm      OpenStreetMap, tiled API calls (polite, resumable)
     uv run python tools/muc_fetch.py lod2     Bavarian LoD2 CityGML tiles (2 x 2 km, EPSG:25832)
     uv run python tools/muc_fetch.py dop      Bavarian aerial photo (DOP) via WMS, ~1 m/px
+    uv run python tools/muc_fetch.py ring     the surroundings: 4 km more of all three, photo at 2 m/px
 
 Run once on a machine with internet; tools/make_muc.py builds data/cities/muc.json from the
 cache, and that file is committed, so nothing here runs at the venue.
@@ -40,10 +41,23 @@ def get(url: str, out: Path, timeout: float = 120.0) -> bool:
     except urllib.error.HTTPError as e:
         print(f"  HTTP {e.code} {url}", flush=True)
         return False
+    except (urllib.error.URLError, TimeoutError) as e:  # resumable: the next run fetches it
+        print(f"  skipped ({e}) {url}", flush=True)
+        return False
     tmp = out.with_suffix(out.suffix + ".part")
     tmp.write_bytes(data)
     tmp.rename(out)
     return True
+
+
+def osm_split(e, lon0, lat0, lon1, lat1, depth) -> None:
+    if e.code == 400 and depth < 3:  # too many nodes: split in four
+        mx, my = (lon0 + lon1) / 2, (lat0 + lat1) / 2
+        for a, b, c, d in ((lon0, lat0, mx, my), (mx, lat0, lon1, my),
+                           (lon0, my, mx, lat1), (mx, my, lon1, lat1)):
+            osm_tile(a, b, c, d, depth + 1)
+        return
+    raise e
 
 
 def osm_tile(lon0: float, lat0: float, lon1: float, lat1: float, depth: int = 0) -> None:
@@ -55,14 +69,11 @@ def osm_tile(lon0: float, lat0: float, lon1: float, lat1: float, depth: int = 0)
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
             data = r.read()
-    except urllib.error.HTTPError as e:
-        if e.code == 400 and depth < 3:  # too many nodes: split in four
-            mx, my = (lon0 + lon1) / 2, (lat0 + lat1) / 2
-            for a, b, c, d in ((lon0, lat0, mx, my), (mx, lat0, lon1, my),
-                               (lon0, my, mx, lat1), (mx, my, lon1, lat1)):
-                osm_tile(a, b, c, d, depth + 1)
-            return
-        raise
+    except (urllib.error.URLError, TimeoutError) as e:
+        if isinstance(e, urllib.error.HTTPError):
+            return osm_split(e, lon0, lat0, lon1, lat1, depth)
+        print(f"  skipped ({e}) {out.name}", flush=True)  # resumable: the next run fetches it
+        return
     out.write_bytes(data)
     print(f"  osm {out.name}: {len(data) / 1e6:.1f} MB", flush=True)
     time.sleep(1.0)  # the API's usage policy: no parallel or rapid-fire requests
@@ -124,8 +135,41 @@ def fetch_dop(m_per_px: float = 0.5, chunk_m: float = 2000.0) -> None:
         time.sleep(0.5)
 
 
+# the surroundings: the City's bounds plus 4 km on every side (EPSG:25832), and a WGS84 box
+# that is whole OSM tiles beyond the airfield box, so cached tiles are reused by name
+RING_BOUNDS = (699000, 5353000, 714000, 5366000)
+RING_LON0, RING_LAT0, RING_LON1, RING_LAT1 = 11.64, 48.30, 11.92, 48.42
+
+
+def fetch_ring() -> None:
+    """Coarser photo, LoD2 and OSM for the land around the City (tools/make_muc.py surround)."""
+    global LON0, LAT0, LON1, LAT1
+    (RAW / "dop_ring").mkdir(parents=True, exist_ok=True)
+    x0b, y0b, x1b, y1b = RING_BOUNDS
+    chunk, px = 2000, 1000  # 2 m/px
+    for e in range(x0b // 1000 - x0b // 1000 % 2, x1b // 1000, 2):
+        for n in range(y0b // 1000 - y0b // 1000 % 2, y1b // 1000, 2):
+            out = RAW / "dop_ring" / f"{e}_{n}.jpg"
+            if out.exists():
+                continue
+            url = (f"{DOP_WMS}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=by_dop40c&STYLES="
+                   f"&SRS=EPSG:25832&BBOX={e * 1000},{n * 1000},{e * 1000 + chunk},{n * 1000 + chunk}"
+                   f"&WIDTH={px}&HEIGHT={px}&FORMAT=image/jpeg")
+            if get(url, out):
+                print(f"  dop_ring {out.name}: {out.stat().st_size / 1e6:.2f} MB", flush=True)
+            time.sleep(0.5)
+    (RAW / "lod2").mkdir(parents=True, exist_ok=True)
+    for e in range(x0b // 1000 - x0b // 1000 % 2, x1b // 1000, 2):
+        for n in range(y0b // 1000 - y0b // 1000 % 2, y1b // 1000, 2):
+            out = RAW / "lod2" / f"{e}_{n}.gml"
+            if not out.exists() and get(LOD2_URL.format(e=e, n=n), out, timeout=300):
+                print(f"  lod2 {out.name}: {out.stat().st_size / 1e6:.1f} MB", flush=True)
+    LON0, LAT0, LON1, LAT1 = RING_LON0, RING_LAT0, RING_LON1, RING_LAT1
+    fetch_osm()
+
+
 if __name__ == "__main__":
-    what = sys.argv[1:] or ["osm", "lod2", "dop"]
+    what = sys.argv[1:] or ["osm", "lod2", "dop", "ring"]
     for w in what:
         print(f"[fetch] {w}", flush=True)
-        {"osm": fetch_osm, "lod2": fetch_lod2, "dop": fetch_dop}[w]()
+        {"osm": fetch_osm, "lod2": fetch_lod2, "dop": fetch_dop, "ring": fetch_ring}[w]()
