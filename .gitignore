@@ -16,3 +16,4 @@ webots/worlds/.*.wbproj
 # generated worlds and their assets
 webots/worlds/*_assets/
 webots/worlds/valley.wbt
+webots/worlds/muc.wbt

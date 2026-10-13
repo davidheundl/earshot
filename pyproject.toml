@@ -22,9 +22,11 @@ earshot = "earshot.cli:main"
 dev = ["pytest>=8", "ruff>=0.6"]
 # Live microphone arrays in the room (concept section 10). Nikolas' area.
 audio = ["sounddevice>=0.4", "pyroomacoustics>=0.7"]
+# Building cities from open data (tools/muc_fetch.py, tools/make_muc.py); not needed at runtime.
+data = ["pyproj>=3.6"]
 
 [tool.uv]
-default-groups = ["dev", "audio"]
+default-groups = ["dev", "audio", "data"]
 
 [build-system]
 requires = ["hatchling"]

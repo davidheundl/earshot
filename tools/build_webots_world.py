@@ -37,7 +37,7 @@ from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
-BUILDER_VERSION = "4"
+BUILDER_VERSION = "5"
 PROTO = "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects"
 EXTERNPROTOS = [
     "objects/backgrounds/protos/TexturedBackground.proto",
@@ -47,7 +47,8 @@ EXTERNPROTOS = [
     "robots/dji/mavic/protos/Mavic2Pro.proto",
     "vehicles/protos/generic/TruckSimple.proto",
 ]
-LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial"]
+LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial",
+           "runway", "taxiway", "apron"]  # the last three: airfields (tools/make_muc.py)
 TEXTURE_PX = 2048
 TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
 OWN_RGB, INTRUDER_RGB = (0.2, 0.6, 1.0), (1.0, 0.15, 0.15)
@@ -124,7 +125,8 @@ def paint_ground(lu: np.ndarray, size_m: float) -> Image.Image:
     base = {
         "meadow": (108, 146, 72), "forest": (58, 78, 44), "urban": (138, 140, 128),
         "industrial": (150, 150, 146), "water": (52, 82, 100), "road": (72, 72, 74),
-        "rail": (108, 98, 86), "field": (0, 0, 0),
+        "rail": (108, 98, 86), "field": (0, 0, 0), "runway": (96, 96, 98),
+        "taxiway": (128, 128, 126), "apron": (150, 150, 146),
     }
     rgb = np.zeros((n, n, 3))
     for name, col in base.items():
@@ -230,9 +232,10 @@ def trunk(x, y, z0, z1, r, k=3):
     return np.vstack([lo, hi]), np.array(faces)
 
 
-def trees(lu: np.ndarray, city: City, assets: Path) -> list[tuple[str, str]]:
+def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False) -> list[tuple[str, str]]:
     """Forests and scattered trees on the ground, merged by species and shade within each
-    TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file)."""
+    TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file).
+    forest_only: no scattered trees (an aerial photo already shows where they stand)."""
     x0, y0, x1, y1 = city.bounds
     n = lu.shape[0]
     spacing = 9.5
@@ -245,7 +248,7 @@ def trees(lu: np.ndarray, city: City, assets: Path) -> list[tuple[str, str]]:
     keep_p = np.zeros(len(LANDUSE))
     for name, p in (("forest", 0.92), ("meadow", 0.015), ("field", 0.002), ("urban", 0.05),
                     ("industrial", 0.01)):
-        keep_p[LANDUSE.index(name)] = p
+        keep_p[LANDUSE.index(name)] = p if name == "forest" or not forest_only else 0.0
     keep = rng.random(cls.shape) < keep_p[cls]
     xs, ys = gx[keep], gy[keep]
     if city.buildings and len(xs):  # no trees inside buildings
@@ -434,8 +437,17 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
 
     x0, y0, x1, y1 = city.bounds
     lu = landuse(raw, city_file.parent, city)
-    paint_ground(lu, x1 - x0).save(assets / "ground.png")
-    tree_tiles = trees(lu, city, assets)
+    photo = raw.get("ground_tiles")  # a real aerial photo instead of the painted land use
+    if photo:
+        for t in photo:
+            (assets / Path(t["image"]).name).write_bytes((city_file.parent / t["image"]).read_bytes())
+    else:
+        paint_ground(lu, x1 - x0).save(assets / "ground.png")
+    meshes = raw.get("building_meshes")  # real wall and roof geometry (LoD2) per tile
+    for m in meshes or []:
+        for f in m.values():
+            (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
+    tree_tiles = trees(lu, city, assets, forest_only=bool(photo))
     rail_meshes(city, assets)
     rel = assets.name
 
@@ -447,7 +459,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts += [
         'WorldInfo { info [ "Earshot" ] basicTimeStep 20 gravity 0 }',
         (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(0, 14)} position {cx:.0f} "
-        f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} far 25000 }}"),
+        f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} far 25000"
+        f"{' near 1' if photo else ''} }}"),
         'TexturedBackground { texture "noon_cloudy_countryside" }',
         'TexturedBackgroundLight { texture "noon_cloudy_countryside" castShadows FALSE }',
         f"Fog {{ color 0.78 0.82 0.87 visibilityRange {1.5 * span:.0f} }}",
@@ -462,6 +475,20 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
             paint_outer().save(assets / "outer.png")
             to = raw["terrain_outer"]
             parts.append(elevation(to["origin"], to["spacing"], outer, f"{rel}/outer.png"))
+    elif photo:  # flat city on its aerial photo, one textured plate per tile
+        for t in photo:
+            tx0, ty0, tx1, ty1 = t["bounds"]
+            img = f"{rel}/{Path(t['image']).name}"
+            parts.append(f"Pose {{ translation {(tx0 + tx1) / 2} {(ty0 + ty1) / 2} -0.05 children [ Shape {{ "
+                         f"appearance {pbr((0.66, 0.66, 0.66), 1, texture=img)} geometry Box {{ size {tx1 - tx0} "
+                         f"{ty1 - ty0} 0.1 }} castShadows FALSE }} ] }}")
+        # grass around the map as a frame, not under it: coplanar plates z-fight at a distance
+        m = 2.5 * span
+        for fx0, fy0, fx1, fy1 in ((x0 - m, y1, x1 + m, y1 + m), (x0 - m, y0 - m, x1 + m, y0),
+                                   (x0 - m, y0, x0, y1), (x1, y0, x1 + m, y1)):
+            parts.append(f"Pose {{ translation {(fx0 + fx1) / 2} {(fy0 + fy1) / 2} -0.05 children [ Shape {{ "
+                         f"appearance {pbr((0.42, 0.55, 0.3), 1)} geometry Box {{ size {fx1 - fx0} "
+                         f"{fy1 - fy0} 0.1 }} castShadows FALSE }} ] }}")
     else:  # flat city: a textured ground plane, wider grass around it
         parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -0.05 children [ Shape {{ appearance "
                      f"{pbr((1, 1, 1), 1, texture=f'{rel}/ground.png')} geometry Box {{ size {x1 - x0} {y1 - y0} 0.1 }} }} ] }}")
@@ -486,10 +513,23 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     widths = raw.get("road_widths", [8.0] * len(city.roads))
     town_discs = [Point(t["x"], t["y"]).buffer(t["r"]) for t in raw.get("towns", [])]
     for k, (r, wdt) in enumerate(zip(city.roads, widths, strict=True)):
+        if photo:
+            break  # the photo shows the roads
         mid = r.interpolate(0.5, normalized=True)
         parts.append(road(list(r.coords), wdt, city, k, any(d.contains(mid) for d in town_discs)))
-    for k, b in enumerate(raw["buildings"]):
-        parts.append(building(b, k))
+    if meshes:
+        defined_look = set()  # one appearance per kind, DEF on first use
+        for m in meshes:
+            for kind, rgb in (("walls", (0.74, 0.72, 0.68)), ("roofs", (0.36, 0.37, 0.39))):
+                if kind not in m:
+                    continue
+                look = f"USE {kind.upper()}" if kind in defined_look else f"DEF {kind.upper()} {pbr(rgb, 0.7)}"
+                defined_look.add(kind)
+                parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(m[kind]).name}" }} '
+                             f"castShadows FALSE }}")
+    else:
+        for k, b in enumerate(raw["buildings"]):
+            parts.append(building(b, k))
 
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0

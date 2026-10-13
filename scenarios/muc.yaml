@@ -1,0 +1,41 @@
+# Munich Airport 1:1 (tools/make_muc.py: LoD2 buildings, OSM runways and rail, aerial photo).
+# The whole airfield is in the map (7 x 5 km), but six drones cannot listen to 35 km2: they
+# sit on the terminal roofs, where the danger is. An intruder (a larger drone) comes in from
+# the south apron and loiters over the apron east of the Terminal 2 satellite; the
+# S-Bahn runs its surface stretch west of the terminals into the tunnel; trucks use the
+# access road; a fan unit hums on Terminal 1's roof; a jammer covers the satellite for 40 s once it is found.
+name: muc
+seed: 42
+city: data/cities/muc.json
+duration: 480
+dt: 0.1
+map_cell: 25        # m; probability-map cell (7 x 5 km / 25 m = 280 x 200)
+
+drones:
+  - {id: 0, x: 794,  y: 1524, home: [794, 1524],  default: listen}   # Terminal 2
+  - {id: 1, x: 1318, y: 1513, home: [1318, 1513], default: listen}   # satellite, south end
+  - {id: 2, x: -108, y: 1511, home: [-108, 1511], default: listen}   # Terminal 1
+  - {id: 3, x: -913, y: 879,  home: [-913, 879],  default: listen}   # hangars by the S-Bahn
+  - {id: 4, x: 1318, y: 1633, home: [1318, 1633], default: listen}   # satellite, north end
+  - {id: 5, x: 1500, y: 900,  home: [1500, 900],  default: patrol}   # south apron
+
+environment:
+  background_db: 40   # night
+  ego_filter: true
+  ego_filter_db: 8
+
+sources:           # path: list of points, or {road: i} / {rail: i} from the city (reverse: true)
+  - {id: drone1, cls: drone,    start: 60,  end: 450, level_db: 89, rf: [2g4], path: [[1950, 1000], [1650, 1300], [1480, 1460], [1520, 1640], [1440, 1700], [1450, 1520], [1540, 1480], [1470, 1620], [1480, 1460], [1520, 1640], [1440, 1700], [1450, 1520], [1540, 1480], [1470, 1620], [1480, 1460], [1520, 1640], [1440, 1700], [1450, 1520], [1540, 1480], [1470, 1620], [1480, 1460], [1520, 1640], [1440, 1700], [1450, 1520], [1540, 1480], [1470, 1620], [1480, 1460], [1520, 1640], [1440, 1700], [1450, 1520], [1540, 1480], [1470, 1620]]}
+  - {id: sbahn1, cls: train,    start: 30,  end: 150, level_db: 115, path: {rail: 0}}
+  - {id: sbahn2, cls: train,    start: 300, end: 420, level_db: 115, path: {rail: 0, reverse: true}}
+  - {id: truck1, cls: vehicle,  start: 20,  end: 200, level_db: 105, path: {road: 10}}
+  - {id: truck2, cls: vehicle,  start: 240, end: 420, level_db: 105, path: {road: 11}}
+  - {id: fan1,   cls: nuisance, start: 0,   end: 480, level_db: 75,  path: [[-90, 1530]]}
+
+jamming:
+  - {start: 330, end: 370, center: [1318, 1513], radius: 400}
+
+radio:
+  sf: 7
+  bw_khz: 500
+  nominal_range_m: 1200   # drones on 25-30 m roofs over an open airfield

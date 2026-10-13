@@ -18,6 +18,9 @@ Loaded from a City JSON file. That file is the hand-off between the data pipelin
       "landuse": {"image": "valley_landuse.png", "classes": [...]},
       "water": [{"x":, "y":, "r":, "z":}], "towns": [...], "road_widths": [...],
       # building styles for Webots: "floors", "floor_height", "wall", "roof", "town"
+      # v3, all optional (tools/make_muc.py): "ground_tiles": [{"image", "bounds"}] aerial
+      # photo as the Webots ground, "basemap": the dashboard's photo, "building_meshes":
+      # [{"walls", "roofs"}] real geometry (.obj) instead of extruded footprints
     }
 
 The same file feeds both backends (Webots world generator and the 2D twin) and the agents.

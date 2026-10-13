@@ -39,12 +39,18 @@ LANDUSE_RGB = {"meadow": (118, 150, 84), "field": (178, 168, 104), "forest": (52
 
 
 def basemap(city_json: dict, city_dir: Path) -> bytes | None:
-    """Hill-shaded land-use map (PNG, north up) for cities with terrain or land use."""
+    """The City's own photo basemap (dimmed JPEG), else a hill-shaded land-use map (PNG),
+    north up, for cities with terrain or land use."""
     import io
 
     import numpy as np
     from PIL import Image
 
+    if city_json.get("basemap"):  # an aerial photo (tools/make_muc.py)
+        img = Image.open(city_dir / city_json["basemap"]).convert("RGB")
+        buf = io.BytesIO()
+        Image.eval(img, lambda v: int(v * 0.8)).save(buf, "JPEG", quality=85)  # dimmed
+        return buf.getvalue()
     if "terrain" not in city_json and "landuse" not in city_json:
         return None
     n = 1024
@@ -292,7 +298,8 @@ def create_app(scenario_path: str) -> FastAPI:
     async def basemap_png():
         if base_png is None:
             return Response(status_code=404)
-        return Response(base_png, media_type="image/png")
+        jpeg = base_png[:3] == b"\xff\xd8\xff"
+        return Response(base_png, media_type="image/jpeg" if jpeg else "image/png")
 
     @app.get("/city")
     async def city():

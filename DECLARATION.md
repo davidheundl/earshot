@@ -13,6 +13,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Webots bridge: puppeted drones, a single camera rig with recognition, world generator from City JSON.
 - Webots performance: backend paces Webots (fast mode) to the wall clock, Verifier camera rendered once per tick, drone view cameras only while a screen shows them, tree meshes tiled for culling, `--no-webots-view`.
 - Placeholder synthetic city and a demo scenario.
+- Munich Airport city, 1:1 from open data (`tools/muc_fetch.py`, `tools/make_muc.py`): 1,303 LoD2 buildings with their measured walls and roofs, Perch Sites on flat roofs, OSM runways, roads and the S-Bahn surface track, the aerial photo as Webots ground and dashboard basemap; scenario `scenarios/muc.yaml` (drones on the terminal roofs, intruder over the apron).
 - Dashboard skeleton (map, drones, modes, radio links, ground truth).
 - Game screen motion: drones glide between states on the map and flight display (60 fps), static map layer cached.
 - Message store with duplicate filter and plain hop-limited flooding (baseline).
@@ -38,7 +39,8 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 ## Third-party
 
 - Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`.
-- Planned: EfficientAT (MIT), DroneAudioset (MIT), Bavarian LoD2 (check licence), OpenStreetMap (ODbL).
+- Munich Airport map data: buildings (LoD2) and aerial photo (DOP) © Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0; © OpenStreetMap contributors, ODbL. Both need this attribution on the slide.
+- Planned: EfficientAT (MIT), DroneAudioset (MIT).
 
 ## Built on the day
 

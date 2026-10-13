@@ -53,6 +53,22 @@ When the dashboard is the show, skip Webots' own 3D window (the drone cameras st
 uv run earshot live --backend webots --no-webots-view
 ```
 
+Munich Airport, 1:1 from open data (LoD2 buildings, OSM runways and rail, the aerial photo as ground). The valley stays as the backup map:
+
+```bash
+uv run earshot live --scenario scenarios/muc.yaml --backend webots
+```
+
+The airport files in `data/cities/` are committed. To rebuild them from the open data (needs internet once; downloads ~250 MB into `data/raw/muc/`):
+
+```bash
+uv run python tools/muc_fetch.py
+```
+
+```bash
+uv run python tools/make_muc.py
+```
+
 Evaluation over seeded runs, policies side by side (concept section 17). `--scenario random` generates a new world per seed; `--scheme ours flood unicast3` and `--bw 125` compare radio set-ups:
 
 ```bash
