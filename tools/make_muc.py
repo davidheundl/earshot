@@ -290,7 +290,7 @@ def landuse_raster(bounds, osm_areas, runways, taxiways, roads, rails, blds) -> 
 # -- ground photo ------------------------------------------------------------------------------
 
 
-def ground_tiles(bounds, m_per_px: float = 1.0) -> list[dict]:
+def ground_tiles(bounds, m_per_px: float = 0.5) -> list[dict]:
     """The DOP chunks cropped to the bounds, rescaled to m_per_px, as committed JPEGs."""
     x0, y0, x1, y1 = bounds
     out_dir = OUT / "muc_ground"
@@ -319,7 +319,7 @@ def _pow2(px: float) -> int:
     return 1 << max(0, round(math.log2(max(px, 1.0))))
 
 
-def basemap(tiles: list[dict], bounds, width_px: int = 2048) -> str:
+def basemap(tiles: list[dict], bounds, width_px: int = 4096) -> str:
     """One downsampled photo of the whole City for the dashboard, north up."""
     x0, y0, x1, y1 = bounds
     s = width_px / (x1 - x0)

@@ -37,7 +37,7 @@ from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
-BUILDER_VERSION = "5"
+BUILDER_VERSION = "6"
 PROTO = "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects"
 EXTERNPROTOS = [
     "objects/backgrounds/protos/TexturedBackground.proto",
@@ -70,6 +70,11 @@ def pbr(rgb, rough=0.9, emissive=None, intensity=1.0, transparency=0.0, texture=
     if transparency:
         s += f" transparency {transparency}"
     return s + " }"
+
+
+def photo_look(url: str) -> str:
+    """An aerial photo as ground or roof: lit, but dimmed, since it carries its own sunlight."""
+    return pbr((0.66, 0.66, 0.66), 1, texture=url)
 
 
 def axis_angle_view(yaw_deg: float, pitch_down_deg: float) -> str:
@@ -321,6 +326,73 @@ def mesh_shape(url: str, rgb, rough=0.9) -> str:
     return f'Shape {{ appearance {pbr(rgb, rough)} geometry Mesh {{ url "{url}" }} castShadows FALSE }}'
 
 
+def photo_roofs(obj: Path, tiles: list[dict], city_dir: Path, out: Path, m_per_px=0.5) -> None:
+    """Drape the aerial photo over a roof mesh: crop the photo under the mesh's footprint
+    (it may straddle ground tiles) into out.jpg and rewrite out.obj with planar UVs."""
+    verts, faces = [], []
+    for line in obj.read_text().splitlines():
+        if line.startswith("v "):
+            verts.append([float(v) for v in line.split()[1:4]])
+        elif line.startswith("f "):
+            faces.append(line.split()[1:])
+    xy = np.asarray(verts)[:, :2]
+    bx0, by0 = xy.min(axis=0) - 2.0
+    bx1, by1 = xy.max(axis=0) + 2.0
+    w, h = min(2048, _pow2((bx1 - bx0) / m_per_px)), min(2048, _pow2((by1 - by0) / m_per_px))
+    sx, sy = w / (bx1 - bx0), h / (by1 - by0)
+    crop = Image.new("RGB", (w, h), (128, 128, 128))
+    for t in tiles:
+        tx0, ty0, tx1, ty1 = t["bounds"]
+        if tx1 <= bx0 or tx0 >= bx1 or ty1 <= by0 or ty0 >= by1:
+            continue
+        im = Image.open(city_dir / t["image"])
+        crop.paste(im.resize((round((tx1 - tx0) * sx), round((ty1 - ty0) * sy)), Image.LANCZOS),
+                   (round((tx0 - bx0) * sx), round((by1 - ty1) * sy)))
+    crop.save(out.with_suffix(".jpg"), quality=85)
+    uv = (xy - [bx0, by0]) / [bx1 - bx0, by1 - by0]
+    lines_ = [f"v {x} {y} {z}" for x, y, z in verts] + [f"vt {u:.5f} {v:.5f}" for u, v in uv]
+    lines_ += ["f " + " ".join(f"{i}/{i}" for i in f) for f in faces]
+    out.with_suffix(".obj").write_text("\n".join(lines_) + "\n")
+
+
+FACADE_W, FACADE_H = 6.0, 4.0  # m of wall per facade texture repeat: one storey, four panes
+
+
+def facade_texture(out: Path) -> None:
+    """A storey of curtain wall: a concrete spandrel under a band of tinted glass with mullions."""
+    n = 512
+    img = np.empty((n, n, 3), float)
+    img[:] = (0.30, 0.36, 0.42)  # glass
+    img[:, :] *= np.linspace(1.15, 0.85, n)[:, None, None]  # sky reflection, brighter at the top
+    sill = int(n * 0.28)
+    img[n - sill:] = (0.72, 0.71, 0.68)  # spandrel (image rows run top-down)
+    img[n - sill - 6:n - sill] = (0.55, 0.55, 0.55)
+    for k in range(4):  # mullions every 1.5 m
+        c = int(k * n / 4)
+        img[:n - sill, max(0, c - 3):c + 3] = (0.58, 0.59, 0.6)
+    img += rng.normal(0, 0.015, img.shape)
+    Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(out)
+
+
+def facade_walls(obj: Path, out: Path) -> None:
+    """Give every wall triangle UVs in metres along the wall and up it, for facade_texture."""
+    verts = [[float(v) for v in ln.split()[1:4]] for ln in obj.read_text().splitlines() if ln.startswith("v ")]
+    p = np.asarray(verts).reshape(-1, 3, 3)
+    nrm = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0])
+    t = np.stack([-nrm[:, 1], nrm[:, 0]], axis=1)  # horizontal, along the wall
+    t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+    u = np.einsum("tvk,tk->tv", p[:, :, :2], t) / FACADE_W
+    v = p[:, :, 2] / FACADE_H
+    lines_ = [f"v {x} {y} {z}" for x, y, z in verts]
+    lines_ += [f"vt {a:.4f} {b:.4f}" for a, b in zip(u.ravel(), v.ravel(), strict=True)]
+    lines_ += [f"f {k}/{k} {k + 1}/{k + 1} {k + 2}/{k + 2}" for k in range(1, len(verts) + 1, 3)]
+    out.write_text("\n".join(lines_) + "\n")
+
+
+def _pow2(px: float) -> int:
+    return 1 << max(0, round(math.log2(max(px, 1.0))))
+
+
 # -- world parts ------------------------------------------------------------------------------
 
 def elevation(origin, spacing, heights2d, url) -> str:
@@ -427,7 +499,10 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     out = Path(out_path)
     assets = out.with_name(out.stem + "_assets")
     assets.mkdir(parents=True, exist_ok=True)
+    side = [t["image"] for t in raw.get("ground_tiles", [])]  # files the City JSON points to
+    side += [f for m in raw.get("building_meshes", []) for f in m.values()]
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
+                         + b"".join((city_file.parent / f).read_bytes() for f in side)
                          + Path(__file__).read_bytes()  # and the backend's node layout:
                          + f"{markers}{BUILDER_VERSION}{LIVE_SLOTS}{N_VIEWS}{TRAIN_WAGONS}".encode()).hexdigest()
     stamp = assets / "build.hash"
@@ -445,8 +520,15 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         paint_ground(lu, x1 - x0).save(assets / "ground.png")
     meshes = raw.get("building_meshes")  # real wall and roof geometry (LoD2) per tile
     for m in meshes or []:
-        for f in m.values():
-            (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
+        for kind, f in m.items():
+            if kind == "roofs" and photo:
+                photo_roofs(city_file.parent / f, photo, city_file.parent, assets / Path(f).name)
+            elif kind == "walls":
+                facade_walls(city_file.parent / f, assets / Path(f).name)
+            else:
+                (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
+    if meshes:
+        facade_texture(assets / "facade.png")
     tree_tiles = trees(lu, city, assets, forest_only=bool(photo))
     rail_meshes(city, assets)
     rel = assets.name
@@ -480,7 +562,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
             tx0, ty0, tx1, ty1 = t["bounds"]
             img = f"{rel}/{Path(t['image']).name}"
             parts.append(f"Pose {{ translation {(tx0 + tx1) / 2} {(ty0 + ty1) / 2} -0.05 children [ Shape {{ "
-                         f"appearance {pbr((0.66, 0.66, 0.66), 1, texture=img)} geometry Box {{ size {tx1 - tx0} "
+                         f"appearance {photo_look(img)} geometry Box {{ size {tx1 - tx0} "
                          f"{ty1 - ty0} 0.1 }} castShadows FALSE }} ] }}")
         # grass around the map as a frame, not under it: coplanar plates z-fight at a distance
         m = 2.5 * span
@@ -520,11 +602,16 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     if meshes:
         defined_look = set()  # one appearance per kind, DEF on first use
         for m in meshes:
-            for kind, rgb in (("walls", (0.74, 0.72, 0.68)), ("roofs", (0.36, 0.37, 0.39))):
+            for kind, rgb in (("walls", (1, 1, 1)), ("roofs", (0.36, 0.37, 0.39))):
                 if kind not in m:
                     continue
-                look = f"USE {kind.upper()}" if kind in defined_look else f"DEF {kind.upper()} {pbr(rgb, 0.7)}"
-                defined_look.add(kind)
+                if kind == "roofs" and photo:
+                    look = photo_look(f"{rel}/{Path(m[kind]).stem}.jpg")
+                else:
+                    tex = f"{rel}/facade.png" if kind == "walls" else None
+                    look = (f"USE {kind.upper()}" if kind in defined_look
+                            else f"DEF {kind.upper()} {pbr(rgb, 0.6, texture=tex)}")
+                    defined_look.add(kind)
                 parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(m[kind]).name}" }} '
                              f"castShadows FALSE }}")
     else:
