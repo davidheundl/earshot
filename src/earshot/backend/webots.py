@@ -28,7 +28,7 @@ from earshot.scenario import Scenario
 from earshot.state import Command, DroneState
 
 PARKED = [0.0, 0.0, -100.0]
-# visual model origin above ground: Mavic at flight height, truck wheel axis, wagon on the rails
+# visual model origin above ground: drone at flight height, truck wheel axis, wagon on the rails
 SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 0.5, "TRAIN": 0.45, "NOTHING": 0.7}
 TRAIN_WAGONS = 9  # locomotive + 8 container wagons, nodes SRC_<id>_w<k>
 WAGON_PITCH = 21.0  # m between wagon centres
@@ -77,9 +77,9 @@ N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
 VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
-PILOT = {"ahead": 1.8, "up": -0.2, "pitch": 16.0}  # just outside the marker ring
-CHASE = {"back": 14.0, "up": 6.0, "pitch": 22.0}
-CHASE_PERCHED = {"back": 32.0, "up": 20.0, "pitch": 30.0}  # see the roof and what it listens to
+PILOT = {"ahead": 0.6, "up": -0.15, "pitch": 10.0}  # just ahead of the props
+CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills the lower third
+CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
 
 
 class WebotsBackend:

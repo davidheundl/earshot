@@ -15,6 +15,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Placeholder synthetic city and a demo scenario.
 - Munich Airport city, 1:1 from open data (`tools/muc_fetch.py`, `tools/make_muc.py`): 1,303 LoD2 buildings with their measured walls and roofs, Perch Sites on flat roofs, OSM runways, roads and the S-Bahn surface track, the aerial photo as Webots ground and dashboard basemap; scenario `scenarios/muc.yaml` (drones on the terminal roofs, intruder over the apron).
 - Munich Airport look in Webots: the aerial photo draped over the LoD2 roofs, a curtain-wall facade texture on the walls, ground photo at 0.5 m/px (dashboard basemap 4096 px).
+- Drone models from Webots primitives (swarm in signal orange, a larger dark intruder), closer chase and pilot cameras, view cameras with anti-aliasing and ambient occlusion at 960x540.
 - Dashboard skeleton (map, drones, modes, radio links, ground truth).
 - Game screen motion: drones glide between states on the map and flight display (60 fps), static map layer cached.
 - Message store with duplicate filter and plain hop-limited flooding (baseline).

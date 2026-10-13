@@ -9,8 +9,9 @@ The look (ADR 0005 superseded: the venue has WLAN, Webots fetches PROTO assets o
 - Webots SimpleBuilding per building (walls, roof shape and material from the City), Road
   PROTOs draped on the terrain, a rail bed with rails and sleepers, a lake
 - forests and scattered trees as a few merged meshes (Webots' Forest cannot follow hills)
-- sky, sun and haze; real Mavic 2 Pro drones; intruders carry a glowing red ring and beam
-  (--no-markers to hide); trucks, a train of separate wagons, and a rooftop fan unit as Sources
+- sky, sun and haze; quadcopters from primitives (swarm in signal orange; intruders larger and
+  dark, with a glowing red ring and beam, --no-markers to hide); trucks, a train of separate
+  wagons, and a rooftop fan unit as Sources
 Assets go to <world>_assets/ next to the world; a hash skips rebuilding when nothing changed.
 A City without terrain (the flat test city) gets the same look on flat ground.
 """
@@ -44,14 +45,13 @@ EXTERNPROTOS = [
     "objects/backgrounds/protos/TexturedBackgroundLight.proto",
     "objects/buildings/protos/SimpleBuilding.proto",
     "objects/road/protos/Road.proto",
-    "robots/dji/mavic/protos/Mavic2Pro.proto",
     "vehicles/protos/generic/TruckSimple.proto",
 ]
 LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial",
            "runway", "taxiway", "apron"]  # the last three: airfields (tools/make_muc.py)
 TEXTURE_PX = 2048
 TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
-OWN_RGB, INTRUDER_RGB = (0.2, 0.6, 1.0), (1.0, 0.15, 0.15)
+INTRUDER_RGB = (1.0, 0.15, 0.15)
 rng = np.random.default_rng(5)
 
 
@@ -74,7 +74,7 @@ def pbr(rgb, rough=0.9, emissive=None, intensity=1.0, transparency=0.0, texture=
 
 def photo_look(url: str) -> str:
     """An aerial photo as ground or roof: lit, but dimmed, since it carries its own sunlight."""
-    return pbr((0.66, 0.66, 0.66), 1, texture=url)
+    return pbr((0.52, 0.52, 0.52), 1, texture=url)
 
 
 def axis_angle_view(yaw_deg: float, pitch_down_deg: float) -> str:
@@ -452,13 +452,90 @@ def marker(rgb) -> str:
             f"subdivision 8 }} castShadows FALSE }} ] }} ] }}")
 
 
-def mavic(def_name, name, x, y, z, rgb, markers, recognisable=False) -> str:
-    slot = [marker(rgb)] if markers else []
-    if recognisable:  # invisible recognisable body: Mavic2Pro exposes no recognitionColors
-        slot.append(f'Solid {{ name "rec" recognitionColors [ {fmt(rgb, 2)} ] children [ Shape {{ '
-                    f"appearance {pbr((0, 0, 0), transparency=1.0)} geometry Box {{ size 0.5 0.5 0.2 }} }} ] }}")
-    return (f'DEF {def_name} Mavic2Pro {{ translation {x:.1f} {y:.1f} {z:.1f} name "{name}" '
-            f'controller "<none>" cameraSlot [ ] bodySlot [ {" ".join(slot)} ] }}')
+QUAD_LOOKS = {  # body colour, scale (1 = 0.9 m motor to motor across the diagonal)
+    "SWARM": ((1.0, 0.32, 0.02), 1.0),  # signal orange: red stays the intruder's colour
+    "INTRUDER": ((0.13, 0.13, 0.14), 1.3),  # a larger, dark drone
+}
+
+
+def _metal(rgb, rough=0.35) -> str:
+    return f"PBRAppearance {{ baseColor {fmt(rgb, 3)} roughness {rough} metalness 0.9 }}"
+
+
+def quad_model(kind: str) -> str:
+    """A quadcopter from primitives, x forward: body shell, carbon arms, motors, blurred
+    props, nav lights (red left, green right, white tail), a gimbal camera under the nose.
+    Nothing hangs below the body forward of its centre: the Verifier camera sits there."""
+    rgb, k = QUAD_LOOKS[kind]
+    shell = pbr(rgb, 0.35, rgb if kind == "SWARM" else None, 0.25)
+    carbon, white = pbr((0.05, 0.05, 0.06), 0.45), pbr((0.93, 0.93, 0.93), 0.3)
+
+    def at(x, y, z, node, rot="0 0 1 0"):
+        return f"Pose {{ translation {x * k:.4f} {y * k:.4f} {z * k:.4f} rotation {rot} children [ {node} ] }}"
+
+    def shape(look, geom):
+        return f"Shape {{ appearance {look} geometry {geom} castShadows FALSE }}"
+
+    def ellipsoid(look, rx, ry, rz):
+        return (f"Transform {{ scale {rx * k:.4f} {ry * k:.4f} {rz * k:.4f} children [ "
+                f"{shape(look, 'Sphere { radius 1 subdivision 3 }')} ] }}")
+
+    parts = [
+        ellipsoid(shell, 0.17, 0.095, 0.06),  # streamlined shell
+        at(-0.01, 0, 0.035, ellipsoid(shell, 0.12, 0.075, 0.04)),  # canopy hump
+        at(-0.05, 0, 0.07, shape(carbon, f"Box {{ size {0.12 * k:.4f} {0.08 * k:.4f} {0.014 * k:.4f} }}")),
+        at(0.06, 0, 0.068, shape(white, f"Box {{ size {0.035 * k:.4f} {0.09 * k:.4f} {0.004 * k:.4f} }}")),
+        at(0.15, 0, -0.035, shape(carbon, f"Sphere {{ radius {0.035 * k:.4f} subdivision 2 }}")),
+        at(0.18, 0, -0.035, shape(_metal((0.1, 0.15, 0.25), 0.05),
+                                  f"Sphere {{ radius {0.015 * k:.4f} subdivision 2 }}")),
+        at(-0.08, 0.07, -0.1, shape(carbon, f"Box {{ size {0.2 * k:.4f} {0.012 * k:.4f} {0.012 * k:.4f} }}")),
+        at(-0.08, -0.07, -0.1, shape(carbon, f"Box {{ size {0.2 * k:.4f} {0.012 * k:.4f} {0.012 * k:.4f} }}")),
+        at(-0.08, 0.07, -0.05, shape(carbon, f"Box {{ size {0.012 * k:.4f} {0.012 * k:.4f} {0.1 * k:.4f} }}")),
+        at(-0.08, -0.07, -0.05, shape(carbon, f"Box {{ size {0.012 * k:.4f} {0.012 * k:.4f} {0.1 * k:.4f} }}")),
+    ]
+    r = 0.32  # arm length from the centre
+    for a_deg, light in ((45, (1, 0.05, 0.05)), (-45, (0.1, 1, 0.2)), (135, None), (-135, None)):
+        a = math.radians(a_deg)
+        c, s_ = math.cos(a), math.sin(a)
+        parts.append(at(c * r / 2, s_ * r / 2, 0.01, shape(carbon, f"Cylinder {{ radius {0.02 * k:.4f} "
+                        f"height {r * k:.4f} subdivision 10 }}"), f"{-s_:.4f} {c:.4f} 0 1.5708"))
+        parts.append(at(c * r, s_ * r, 0.03, shape(_metal((0.2, 0.2, 0.22)), f"Cylinder {{ radius "
+                        f"{0.032 * k:.4f} height {0.05 * k:.4f} subdivision 14 }}")))
+        parts.append(at(c * r, s_ * r, 0.052, shape(shell, f"Cylinder {{ radius {0.034 * k:.4f} "
+                        f"height {0.006 * k:.4f} subdivision 14 }}")))  # motor cap in body colour
+        parts.append(at(c * r, s_ * r, 0.058, shape(pbr((0.85, 0.85, 0.88), 0.3, transparency=0.78),
+                        f"Cylinder {{ radius {0.17 * k:.4f} height {0.003 * k:.4f} subdivision 24 }}")))
+        parts.append(at(c * r, s_ * r, 0.06, shape(carbon, f"Box {{ size {0.3 * k:.4f} {0.025 * k:.4f} "
+                        f"{0.004 * k:.4f} }}"), f"0 0 1 {a + 0.7:.4f}"))
+        if light:
+            parts.append(at(c * (r + 0.04), s_ * (r + 0.04), 0.02, shape(
+                pbr(light, 1, light, 4), f"Sphere {{ radius {0.018 * k:.4f} subdivision 1 }}")))
+    parts.append(at(-0.13, 0, 0.03, shape(pbr((1, 1, 1), 1, (1, 1, 1), 4),
+                                         f"Sphere {{ radius {0.016 * k:.4f} subdivision 1 }}")))
+    return f"DEF QUAD_{kind} Pose {{ children [ {' '.join(parts)} ] }}"
+
+
+_defined_quads: set[str] = set()
+
+
+def quad(kind: str) -> str:
+    """The model on first use in a world, USE after that (all drones share one geometry)."""
+    if kind in _defined_quads:
+        return f"USE QUAD_{kind}"
+    _defined_quads.add(kind)
+    return quad_model(kind)
+
+
+def swarm_drone(def_name, name, x, y, z) -> str:
+    return f"DEF {def_name} Pose {{ translation {x:.1f} {y:.1f} {z:.1f} children [ {quad('SWARM')} ] }}"
+
+
+def intruder_drone(def_name, name, markers) -> str:
+    """Pose (moved by the backend) > recognisable Solid with the body, plus the red marker
+    outside that Solid so the beam never counts as part of what the Verifier recognises."""
+    slot = marker(INTRUDER_RGB) if markers else ""
+    return (f'DEF {def_name} Pose {{ translation 0 0 -100 children [ Solid {{ name "{name}" '
+            f"recognitionColors [ {fmt(INTRUDER_RGB, 2)} ] children [ {quad('INTRUDER')} ] }} {slot} ] }}")
 
 
 def wagon(def_name, name, k) -> str:
@@ -477,7 +554,7 @@ def wagon(def_name, name, k) -> str:
 
 def source_nodes(sid: str, cls: str, markers: bool) -> list[str]:
     if cls == "DRONE":
-        return [mavic(f"SRC_{sid}", f"src_{sid}", 0, 0, -100, INTRUDER_RGB, markers, recognisable=True)]
+        return [intruder_drone(f"SRC_{sid}", f"src_{sid}", markers)]
     if cls == "VEHICLE":
         return [(f'DEF SRC_{sid} TruckSimple {{ translation 0 0 -100 name "src_{sid}" '
                 f"color 0.55 0.3 0.12 recognitionColors [ 1 0.6 0.1 ] }}")]
@@ -493,6 +570,7 @@ def source_nodes(sid: str, cls: str, markers: bool) -> list[str]:
 
 def build(scenario_path: str, out_path: str, markers: bool = True, force: bool = False) -> Path:
     sc = Scenario.load(scenario_path)
+    _defined_quads.clear()  # DEF the drone models afresh in every world
     city_file = Path(sc.city) if Path(sc.city).is_absolute() else ROOT / sc.city
     raw = json.loads(city_file.read_text())
     city = City(raw)
@@ -620,7 +698,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
 
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0
-        parts.append(mavic(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z, OWN_RGB, False))  # no beacon
+        parts.append(swarm_drone(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z))
     slots = [(s.id, s.cls.name) for s in sc.sources] + [
         (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(LIVE_SLOTS)]
     for sid, cls in slots:
@@ -629,7 +707,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
     views = " ".join(
         f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
-        f'width {640 if k == 0 else 384} height {360 if k == 0 else 216} fieldOfView 1.15 far 9000 }} ] }}'
+        f'width {960 if k == 0 else 384} height {540 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
+        f'antiAliasing TRUE ambientOcclusionRadius 2 bloomThreshold 6 }} ] }}'
         for k in range(N_VIEWS))
     parts.append(
         'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
