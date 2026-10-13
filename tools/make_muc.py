@@ -287,6 +287,27 @@ def landuse_raster(bounds, osm_areas, runways, taxiways, roads, rails, blds) -> 
     return np.array(img)
 
 
+# -- aircraft stands ---------------------------------------------------------------------------
+
+
+def stands(nodes, ways, bounds) -> list[dict]:
+    """OSM aeroway=parking_position lead-in lines, one per stand: where the Webots world parks
+    aircraft. A stand split into A/B/... sub-stands for small aircraft keeps only its main line."""
+    x0, y0, x1, y1 = bounds
+    lines = {}
+    for nd, t in ways.values():
+        if t.get("aeroway") != "parking_position" or len(nd) < 2 or any(n not in nodes for n in nd):
+            continue
+        a, b = nodes[nd[0]], nodes[nd[-1]]
+        if not all(x0 < x < x1 and y0 < y < y1 for x, y in (a, b)):
+            continue
+        ref = t.get("ref") or t.get("name") or str(len(lines))
+        lines[ref] = [[round(a[0], 1), round(a[1], 1)], [round(b[0], 1), round(b[1], 1)]]
+    out = [{"ref": r, "line": ln} for r, ln in sorted(lines.items())
+           if not (r[-1:].isalpha() and r[:-1] in lines)]  # 607A, 607B -> 607 when it exists
+    return out
+
+
 # -- ground photo ------------------------------------------------------------------------------
 
 
@@ -477,6 +498,7 @@ def main() -> None:
         "road_widths": widths,
         "runways": [{"ref": t.get("ref"), "width": wdt, "line": pts(g)}
                     for (g, t), (_, wdt) in zip(rw, runways, strict=True)],
+        "stands": stands(nodes, ways, BOUNDS),
         "attribution": ["(c) OpenStreetMap contributors, ODbL",
                         "Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0"],
     }

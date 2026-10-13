@@ -17,6 +17,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Munich Airport look in Webots: the aerial photo draped over the LoD2 roofs, a curtain-wall facade texture on the walls, ground photo at 0.5 m/px (dashboard basemap 4096 px).
 - Drone models from Webots primitives (swarm in signal orange, a larger dark intruder), closer chase and pilot cameras, view cameras with anti-aliasing and ambient occlusion at 960x540.
 - Head-up display over the main drone view: speed and height tapes, vertical speed, horizon and pitch ladder, flight path marker, heading tape, target bracket and threat box, battery, position, REC.
+- Airliners parked nose-in on the OSM stands at Munich (generated narrow- and wide-body models, generic liveries); `stands` key in muc.json.
 - Dashboard skeleton (map, drones, modes, radio links, ground truth).
 - Game screen motion: drones glide between states on the map and flight display (60 fps), static map layer cached.
 - Message store with duplicate filter and plain hop-limited flooding (baseline).

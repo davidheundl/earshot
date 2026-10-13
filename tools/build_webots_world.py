@@ -322,6 +322,172 @@ def rail_meshes(city: City, assets: Path) -> None:
     sleepers.write(assets / "rail_sleepers.obj")
 
 
+# -- aircraft at the stands -------------------------------------------------------------------
+
+AIRLINERS = {  # length, span, fuselage radius (m): an A320-like and an A350-like twin
+    "narrow": (37.6, 35.8, 2.0),
+    "wide": (66.8, 64.8, 3.0),
+}
+TAIL_RGB = [(0.07, 0.12, 0.32), (0.72, 0.07, 0.08), (0.0, 0.38, 0.44), (0.96, 0.7, 0.08),
+            (0.1, 0.32, 0.18), (0.55, 0.1, 0.45)]  # generic liveries, no real airline's
+AIRCRAFT_LOOK = {"body": ((0.92, 0.92, 0.93), 0.6), "wing": ((0.74, 0.76, 0.78), 0.55),
+                 "engine": ((0.62, 0.63, 0.66), 0.3), "dark": ((0.06, 0.07, 0.09), 0.2)}
+
+
+def _slab(poly, z, thick, out: list, tilt=None):
+    """A thin plate: polygon `poly` [(x, y)] at height z (or z per vertex via tilt(x, y))."""
+    n = len(poly)
+    top = [(x, y, (tilt(x, y) if tilt else z) + thick / 2) for x, y in poly]
+    bot = [(x, y, (tilt(x, y) if tilt else z) - thick / 2) for x, y in poly]
+    v = np.array(top + bot)
+    f = [[0, i, i + 1] for i in range(1, n - 1)] + [[n, n + i + 1, n + i] for i in range(1, n - 1)]
+    for i in range(n):
+        j = (i + 1) % n
+        f += [[i, j, n + j], [i, n + j, n + i]]
+    f = np.array(f)
+    out.append((v, np.vstack([f, f[:, ::-1]])))  # both windings: no culled faces at any angle
+
+
+def _fin(poly_xz, y, thick, out: list):
+    """A vertical plate: polygon [(x, z)] in the plane y."""
+    _slab([(x, z) for x, z in poly_xz], 0, thick, out)
+    v, f = out.pop()
+    out.append((v[:, [0, 2, 1]] + [0, y, 0], f))  # swap y and z: the plate stands up
+
+
+def _tube(stations, k, out: list):
+    """A lofted tube along x: stations [(x, radius_y, radius_z, z_centre)]."""
+    a = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    rings = [np.stack([np.full(k, x), ry * np.cos(a), zc + rz * np.sin(a)], 1) for x, ry, rz, zc in stations]
+    v = np.vstack(rings)
+    f = []
+    for s in range(len(stations) - 1):
+        for i in range(k):
+            j = (i + 1) % k
+            p, q, r_, t = s * k + i, s * k + j, (s + 1) * k + j, (s + 1) * k + i
+            f += [[p, r_, q], [p, t, r_]]
+    f = np.array(f)
+    out.append((v, np.vstack([f, f[:, ::-1]])))
+
+
+def airliner(kind: str) -> dict[str, list]:
+    """An airliner in local metres, nose along +x, wheels on z = 0: parts per material."""
+    L, S, r = AIRLINERS[kind]
+    parts: dict[str, list] = {m: [] for m in ("body", "wing", "engine", "dark", "tail")}
+    zc = r + 0.18 * r + 1.0  # fuselage centre: belly ~1.4 m (narrow) above the apron
+    nose, tail = L / 2, -L / 2
+    prof = [(0.0, 0.0, 0.0), (0.012, 0.32, 0.0), (0.035, 0.62, -0.03), (0.07, 0.86, -0.02),
+            (0.12, 0.98, 0.0), (0.18, 1.0, 0.0), (0.68, 1.0, 0.0), (0.8, 0.86, 0.12),
+            (0.9, 0.58, 0.32), (0.97, 0.3, 0.48), (1.0, 0.14, 0.52)]  # (from nose, radius, rise)
+    _tube([(nose - t * L, rr * r, rr * r * 1.04, zc + up * r) for t, rr, up in prof], 18, parts["body"])
+    # cabin window band and cockpit windows
+    for side in (-1, 1):
+        y = side * (r * 1.002)
+        _fin([(nose - 0.17 * L, zc + 0.28 * r), (tail + 0.27 * L, zc + 0.28 * r),
+              (tail + 0.27 * L, zc + 0.36 * r), (nose - 0.17 * L, zc + 0.36 * r)], y, 0.02, parts["dark"])
+        _fin([(nose - 0.035 * L, zc + 0.3 * r), (nose - 0.075 * L, zc + 0.3 * r),
+              (nose - 0.075 * L, zc + 0.52 * r), (nose - 0.045 * L, zc + 0.48 * r)],
+             side * r * 0.86, 0.02, parts["dark"])
+    # wings: swept, low, with dihedral
+    xr = nose - 0.40 * L  # root leading edge
+    c_root, c_tip, sweep = 0.19 * L, 0.055 * L, 0.24 * S
+    zw = zc - 0.62 * r
+    for side in (-1, 1):
+        tip = side * S / 2
+        poly = [(xr, side * r * 0.8), (xr - sweep, tip), (xr - sweep - c_tip, tip), (xr - c_root, side * r * 0.8)]
+        _slab(poly if side > 0 else poly[::-1], zw, 0.45 * r / 2, parts["wing"],
+              tilt=lambda x, y: zw + 0.09 * abs(y))
+        # winglet
+        _fin([(xr - sweep - c_tip * 0.1, zw + 0.09 * S / 2), (xr - sweep - c_tip, zw + 0.09 * S / 2),
+              (xr - sweep - c_tip * 1.05, zw + 0.09 * S / 2 + 0.07 * S), (xr - sweep - c_tip * 0.7,
+              zw + 0.09 * S / 2 + 0.07 * S)], tip, 0.15, parts["tail"])
+        # engine under the wing, ahead of it
+        ey = side * 0.32 * S / 2
+        ex = xr - sweep * 0.32 * 1.0 + 0.06 * L
+        er, el = 0.56 * r, 0.12 * L
+        ez = zw + 0.09 * abs(ey) - er * 1.05
+        _tube([(ex, er * 0.92, er * 0.92, ez), (ex - 0.02 * L, er, er, ez), (ex - 0.8 * el, er * 0.9, er * 0.9, ez),
+               (ex - el, er * 0.55, er * 0.55, ez)], 14, parts["engine"])
+        _tube([(ex + 0.01, er * 0.8, er * 0.8, ez), (ex + 0.02, 0.01, 0.01, ez)], 14, parts["dark"])  # intake
+    # tailplane and fin (fin in the livery colour)
+    xt = tail + 0.16 * L
+    for side in (-1, 1):
+        poly = [(xt, side * r * 0.4), (xt - 0.1 * L, side * 0.17 * S), (xt - 0.13 * L, side * 0.17 * S),
+                (xt - 0.12 * L, side * r * 0.4)]
+        _slab(poly if side > 0 else poly[::-1], zc + 0.35 * r, 0.25, parts["wing"])
+    fz = zc + 0.55 * r
+    _fin([(tail + 0.2 * L, fz), (tail + 0.01 * L, fz), (tail - 0.02 * L, fz + 0.17 * L),
+          (tail + 0.06 * L, fz + 0.17 * L)], 0.0, 0.5, parts["tail"])
+    # landing gear: nose strut and two main legs with wheels
+    for gx, gy in ((nose - 0.1 * L, 0.0), (xr - 0.1 * L, 0.18 * S / 2), (xr - 0.1 * L, -0.18 * S / 2)):
+        _slab([(gx - 0.2, gy - 0.2), (gx + 0.2, gy - 0.2), (gx + 0.2, gy + 0.2), (gx - 0.2, gy + 0.2)],
+              (zc - r) / 2 + 0.5, zc - r - 0.5, parts["dark"])
+        _slab([(gx - 0.6, gy - 0.5), (gx + 0.6, gy - 0.5), (gx + 0.6, gy + 0.5), (gx - 0.6, gy + 0.5)],
+              0.6, 1.1, parts["dark"])
+    return parts
+
+
+def stand_aircraft(raw: dict, city: City, assets: Path, tile=1000.0) -> list[tuple[str, str]]:
+    """Park airliners nose-in on most OSM stands (the end of the lead-in line nearer a building
+    is the nose), merged per tile and material so cameras cull them. -> [(material, file)]."""
+    st = raw.get("stands") or []
+    if not st:
+        return []
+    srng = np.random.default_rng(11)
+    tree = STRtree([b.footprint for b in city.buildings])
+    mids = np.array([np.mean(s["line"], axis=0) for s in st])
+    models = {k: airliner(k) for k in AIRLINERS}
+    objs: dict[tuple, Obj] = {}
+    x0, y0 = city.bounds[:2]
+    parked: list[Polygon] = []  # footprints so far: overlapping stands (MARS) hold one aircraft
+    for s, mid in zip(st, mids, strict=True):
+        if srng.random() > 0.78:
+            continue  # an empty stand
+        a, b = np.array(s["line"][0], float), np.array(s["line"][1], float)
+        da = tree.query_nearest(Point(*a), return_distance=True)[1][0]
+        db = tree.query_nearest(Point(*b), return_distance=True)[1][0]
+        nose_pt, back_pt = (a, b) if da < db else (b, a)
+        d = nose_pt - back_pt
+        if np.linalg.norm(d) < 1:
+            continue
+        d /= np.linalg.norm(d)
+        gap = np.sort(np.linalg.norm(mids - mid, axis=1))[1] if len(mids) > 1 else 999
+        kind = "wide" if gap > 62 and srng.random() < 0.55 else "narrow"
+        L = AIRLINERS[kind][0]
+        c = nose_pt - d * (L / 2 + 4.0)  # nose a few metres short of the stop bar
+        yaw = math.atan2(d[1], d[0])
+        R = np.array([[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]])
+        S = AIRLINERS[kind][1]
+        foot = Polygon([c + R @ [sx * L / 2, sy * S / 2] for sx, sy in ((1, 0), (0, 1), (-1, 0), (0, -1))])
+        if any(foot.intersects(q) for q in parked):
+            continue
+        parked.append(foot)
+        z0 = float(city.ground(*c))
+        livery = int(srng.integers(len(TAIL_RGB)))
+        key_t = (int((c[0] - x0) // tile), int((c[1] - y0) // tile))
+        for mat, plist in models[kind].items():
+            name = f"tail{livery}" if mat == "tail" else mat
+            o = objs.setdefault((*key_t, name), Obj())
+            for v, f in plist:
+                w = v.copy()
+                w[:, :2] = v[:, :2] @ R.T + c
+                w[:, 2] += z0
+                o.add(w, f)
+    out = []
+    for (i, j, name), o in sorted(objs.items()):
+        fname = f"aircraft_{name}_{i}_{j}.obj"
+        o.write(assets / fname)
+        out.append((name, fname))
+    return out
+
+
+def aircraft_look(name: str) -> str:
+    if name.startswith("tail"):
+        return pbr(TAIL_RGB[int(name[4:])], 0.5)
+    rgb, rough = AIRCRAFT_LOOK[name]
+    return pbr(rgb, rough)
+
+
 def mesh_shape(url: str, rgb, rough=0.9) -> str:
     return f'Shape {{ appearance {pbr(rgb, rough)} geometry Mesh {{ url "{url}" }} castShadows FALSE }}'
 
@@ -609,6 +775,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         facade_texture(assets / "facade.png")
     tree_tiles = trees(lu, city, assets, forest_only=bool(photo))
     rail_meshes(city, assets)
+    aircraft = stand_aircraft(raw, city, assets)
     rel = assets.name
 
     parts = ["#VRML_SIM R2025a utf8",
@@ -695,6 +862,11 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     else:
         for k, b in enumerate(raw["buildings"]):
             parts.append(building(b, k))
+    looks = set()  # one appearance per aircraft material, DEF on first use
+    for name, file in aircraft:
+        look = f"USE AC_{name.upper()}" if name in looks else f"DEF AC_{name.upper()} {aircraft_look(name)}"
+        looks.add(name)
+        parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{file}" }} castShadows FALSE }}')
 
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0
