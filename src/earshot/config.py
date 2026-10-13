@@ -12,3 +12,7 @@ RADIO_PUB = f"tcp://{HOST}:5553"  # radio -> agents ("rx.<id>"), dashboard ("rad
 DASHBOARD_PORT = 8000
 # our own Webots instance, so an already-open Webots does not clash
 WEBOTS_PORT = int(os.environ.get("EARSHOT_WEBOTS_PORT", "1240"))
+# Gazebo: the bridge process that embeds the Gazebo server (ADR 0008), and gz-transport kept
+# on loopback in its own partition, so another Gazebo on the network never joins our bus
+GAZEBO_BRIDGE = f"tcp://{HOST}:5554"
+GZ_PARTITION = os.environ.get("EARSHOT_GZ_PARTITION", "earshot")
