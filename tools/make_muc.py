@@ -374,7 +374,7 @@ def features(nodes, ways, rels, bounds) -> dict:
 
 
 def area_kind(t: dict) -> str | None:
-    if t.get("amenity") == "parking" and t.get("parking", "surface") == "surface":
+    if t.get("amenity") == "parking" and t.get("parking", "surface") in ("surface", "street_side", "lane"):
         return "parking"
     if t.get("natural") == "wood" or t.get("landuse") == "forest":
         return "woods"

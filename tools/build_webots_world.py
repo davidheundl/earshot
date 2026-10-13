@@ -686,7 +686,7 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
 
     # cars in rows on the surface car parks: 2.6 m bays, 5 m deep, a 6.5 m aisle every two rows
     lots = [Polygon(p) for p in feats.get("parking", [])]
-    lots = [p for p in lots if p.is_valid and p.area > 150]
+    lots = [p for p in lots if p.is_valid and p.area > 40]
     for lot in lots:
         rect = lot.minimum_rotated_rectangle
         xs_, ys_ = rect.exterior.coords.xy
@@ -698,16 +698,20 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
         o = np.array([xs_[0], ys_[0]]) if np.linalg.norm(e1) >= np.linalg.norm(e2) else np.array([xs_[1], ys_[1]])
         inner = lot.buffer(-1.0)
         yaw = math.atan2(wdt[1], wdt[0])  # cars point across the rows
-        rows = [v0 + dv for v0 in np.arange(1.0, lw, 16.5) for dv in (2.5, 7.7) if v0 + dv < lw - 2.0]
-        for row_v in rows:  # two rows back to back, then an aisle
-            for bay_u in np.arange(1.5, lu_ - 1.2, 2.6):
+        if lw < 5.5:  # a strip along a street: one row, cars nose to tail
+            rows, bay, yaw = [lw / 2], 5.8, math.atan2(u[1], u[0])
+        else:  # two rows back to back, then an aisle
+            rows = [v0 + dv for v0 in np.arange(1.0, lw, 16.5) for dv in (2.5, 7.7) if v0 + dv < lw - 2.0]
+            bay = 2.6
+        for row_v in rows:
+            for bay_u in np.arange(bay / 2 + 0.2, lu_ - bay / 2, bay):
                 c = o + u * bay_u + wdt * row_v
                 if prng.random() > 0.72 or not inner.contains(Point(*c)):
                     continue
                 z = float(g(*c))
                 paint = f"car{int(prng.integers(6))}"
                 ms.add(paint, *c, *obox(c[0], c[1], z + 0.3, z + 1.05, 4.4, 1.8, yaw))
-                cc = c - wdt * 0.25
+                cc = c - np.array([math.cos(yaw), math.sin(yaw)]) * 0.25
                 ms.add("glass", *c, *obox(cc[0], cc[1], z + 1.05, z + 1.48, 2.3, 1.6, yaw))
                 ms.add("tyre", *c, *obox(c[0], c[1], z, z + 0.35, 3.7, 1.7, yaw))
 
@@ -749,7 +753,102 @@ def mesh_shape(url: str, rgb, rough=0.9) -> str:
     return f'Shape {{ appearance {pbr(rgb, rough)} geometry Mesh {{ url "{url}" }} castShadows FALSE }}'
 
 
-def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list) -> Image.Image:
+PAVED = ("road", "runway", "taxiway", "apron", "industrial")  # land use where vehicles stand
+
+
+def _open(mask: np.ndarray, k: int) -> np.ndarray:
+    """Morphological opening: drop anything thinner than k px."""
+    m = Image.fromarray(mask.astype(np.uint8) * 255)
+    if k > 1:
+        m = m.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k))
+    return np.asarray(m) > 0
+
+
+def _grow(mask: np.ndarray, px: int) -> np.ndarray:
+    """Dilate by about `px` pixels; large radii on a coarser grid (PIL's filters are O(k^2))."""
+    if px <= 0:
+        return mask
+    f = max(1, px // 4)
+    H, W = mask.shape
+    h, w = -(-H // f), -(-W // f)
+    pad = np.zeros((h * f, w * f), bool)
+    pad[:H, :W] = mask
+    small = pad.reshape(h, f, w, f).any(axis=(1, 3))
+    k = 2 * -(-px // f) + 1
+    small = np.asarray(Image.fromarray(small.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(k))) > 0
+    return np.repeat(np.repeat(small, f, axis=0), f, axis=1)[:H, :W]
+
+
+def _local_mean(a: np.ndarray, valid: np.ndarray, f: int = 24) -> np.ndarray:
+    """Smooth local colour from the valid pixels only (normalised convolution on a coarse grid)."""
+    H, W = valid.shape
+    w = valid.astype(np.float32)[..., None]
+
+    def blur(x):
+        out = []
+        for c in range(x.shape[2]):
+            g = np.asarray(Image.fromarray(x[..., c]).resize((max(1, W // f), max(1, H // f)), Image.BOX))
+            p = np.pad(g, 1, mode="edge")  # a 3x3 mean on the coarse grid widens the reach
+            g = sum(p[i:i + g.shape[0], j:j + g.shape[1]] for i in range(3) for j in range(3)) / 9
+            out.append(np.asarray(Image.fromarray(g.astype(np.float32)).resize((W, H), Image.BILINEAR)))
+        return np.stack(out, axis=2)
+
+    num, den = blur(a * w), blur(w)
+    return num / np.maximum(den, 1e-3)
+
+
+def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: np.ndarray) -> None:
+    """Every vehicle the photo shows on paved ground (taxiing aircraft, buses, tugs, cars on
+    the roads) and the shadows beside them: blobs much brighter or darker than the pavement
+    around them, wider than paint lines, become that pavement. Building shadows stay. In place."""
+    H, W = a.shape[:2]
+    tx0, ty0, tx1, ty1 = bounds
+    cx0, cy0, cx1, cy1 = city_bounds
+    nrow, ncol = lu.shape[:2]
+    xs = tx0 + (np.arange(W) + 0.5) / W * (tx1 - tx0)
+    ys = ty1 - (np.arange(H) + 0.5) / H * (ty1 - ty0)
+    cols = np.clip(((xs - cx0) / (cx1 - cx0) * ncol).astype(int), 0, ncol - 1)
+    rows = np.clip(((1 - (ys - cy0) / (cy1 - cy0)) * nrow).astype(int), 0, nrow - 1)
+    cls = lu[np.ix_(rows, cols)]
+    road = cls == LANDUSE.index("road")
+    field = np.isin(cls, [LANDUSE.index(c) for c in PAVED if c != "road"])
+    if not (road.any() or field.any()):
+        return
+    lum = a.mean(axis=2)
+    paved = road | field
+    bg = _local_mean(a, paved)
+    d = lum - bg.mean(axis=2)
+    ppm = W / (tx1 - tx0)  # px per metre
+    big = max(3, int(2.5 * ppm) | 1)  # aircraft, buses: wider than any paint line
+    small = max(3, int(1.4 * ppm) | 1)  # cars on the roads
+    bright = _open(field & (d > 20), big) | _open(road & ((d > 30) | (d < -40)), small)
+    bright = _grow(bright, int(1.5 * ppm))
+    dark = _open(field & (d < -30) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
+    m = _grow(bright | dark, max(1, int(1.0 * ppm))) & paved
+    if m.any():
+        fill = _local_mean(a, paved & ~m)  # the pavement around, without what is taken out
+        a[m] = fill[m] + np.random.default_rng(5).normal(0, 2.0, (m.sum(), 1))
+
+
+def near_buildings(img_size, bounds, buildings, metres=25.0) -> np.ndarray:
+    """Pixels within `metres` of a building footprint: their dark patches are its shadow."""
+    W, H = img_size
+    tx0, ty0, tx1, ty1 = bounds
+    s = W / (tx1 - tx0)
+    tile = Polygon([(tx0, ty0), (tx1, ty0), (tx1, ty1), (tx0, ty1)]).buffer(metres)
+    m = Image.new("L", (W, H), 0)
+    dr = ImageDraw.Draw(m)
+    for b in buildings:
+        fp = b.footprint
+        if not fp.intersects(tile):
+            continue
+        g = fp.buffer(metres, quad_segs=2)
+        dr.polygon([((x - tx0) * s, (ty1 - y) * s) for x, y in g.exterior.coords], fill=255)
+    return np.asarray(m) > 0
+
+
+def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list, lu=None,
+                city_bounds=None, buildings=()) -> Image.Image:
     """Take the flat objects out of an aerial photo tile where 3D ones stand now: on each
     stand, blobs much brighter (fuselages) or darker (their shadows) than the concrete become
     concrete (thin paint lines survive the opening); car parks become plain asphalt."""
@@ -758,6 +857,9 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list) -> Ima
     tile = Polygon([(tx0, ty0), (tx1, ty0), (tx1, ty1), (tx0, ty1)])
     a = np.asarray(img.convert("RGB")).astype(np.float32)
     nrng = np.random.default_rng(7)
+    near_bld = near_buildings(img.size, bounds, buildings)
+    if lu is not None:
+        clean_surface(a, bounds, lu, city_bounds, near_bld)
 
     def patch(poly):
         """(rows, cols) slice of the polygon's bounding box and its mask there, or None."""
@@ -789,9 +891,9 @@ def clean_photo(img: Image.Image, bounds, stands: list[dict], lots: list) -> Ima
         lum = sub.mean(axis=2)
         base = np.median(lum[m])
         out = np.zeros(lum.shape, np.uint8)
-        out[m & ((lum > base + 22) | (lum < base - 38))] = 255
+        out[m & ((lum > base + 18) | ((lum < base - 30) & ~near_bld[sl]))] = 255
         k = max(3, int(2.5 * s) | 1)  # opening: drop anything thinner than ~2.5 m
-        blob = Image.fromarray(out).filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k + 4))
+        blob = Image.fromarray(out).filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k + 8))
         bm = (np.asarray(blob) > 0) & m
         if not bm.any():
             continue
@@ -1158,7 +1260,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     props, lots = street_props(raw, city, city_file.parent, assets, stands)
     if photo:  # with the flat aircraft and cars taken out where 3D ones stand
         for t in photo:
-            clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots).save(
+            clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots, lu, city.bounds, city.buildings).save(
                 assets / Path(t["image"]).name, quality=88)
     else:
         paint_ground(lu, x1 - x0).save(assets / "ground.png")
