@@ -237,13 +237,13 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False) -
     TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file).
     forest_only: no scattered trees (an aerial photo already shows where they stand)."""
     x0, y0, x1, y1 = city.bounds
-    n = lu.shape[0]
+    nrow, ncol = lu.shape[:2]
     spacing = 9.5
     gx, gy = np.meshgrid(np.arange(x0 + 5, x1 - 5, spacing), np.arange(y0 + 5, y1 - 5, spacing))
     gx = gx + rng.uniform(-0.45, 0.45, gx.shape) * spacing
     gy = gy + rng.uniform(-0.45, 0.45, gy.shape) * spacing
-    col = np.clip(((gx - x0) / (x1 - x0) * n).astype(int), 0, n - 1)
-    row = np.clip(((1 - (gy - y0) / (y1 - y0)) * n).astype(int), 0, n - 1)
+    col = np.clip(((gx - x0) / (x1 - x0) * ncol).astype(int), 0, ncol - 1)
+    row = np.clip(((1 - (gy - y0) / (y1 - y0)) * nrow).astype(int), 0, nrow - 1)
     cls = lu[row, col]
     keep_p = np.zeros(len(LANDUSE))
     for name, p in (("forest", 0.92), ("meadow", 0.015), ("field", 0.002), ("urban", 0.05),

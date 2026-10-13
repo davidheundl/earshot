@@ -477,7 +477,8 @@ function drawMap(now) {
     if (d.id === selected) { ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, 12, 0, 7); ctx.stroke(); }
     ctx.fillStyle = css("--text"); ctx.font = "11px B612, sans-serif"; ctx.fillText(d.id, a + 9, b - 7);
   });
-  $("maplegend").textContent = `Map of drone ${selected}${showHeat ? ", red is probable threat" : ""}`;
+  $("maplegend").textContent = `Map of drone ${selected}${showHeat ? ", red is probable threat" : ""}`
+    + (city?.attribution ? ` · ${city.attribution.join(" · ")}` : "");  // CC BY / ODbL credit
 }
 function isFaulty(id) { return drones().some(d => (d.telemetry?.belief?.faulty || []).includes(id)); }
 function line(ctx, P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
