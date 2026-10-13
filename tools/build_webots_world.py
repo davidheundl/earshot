@@ -204,8 +204,13 @@ def cone(x, y, z0, z1, r, k=7):
 _BLOB = None
 
 
-def blob(x, y, zc, rx, rz):
-    """Low-poly canopy: a squashed, slightly irregular octahedron subdivided once (32 faces)."""
+_OCTA = (np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], float),
+         np.array([(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)]))
+
+
+def blob(x, y, zc, rx, rz, fine=True):
+    """Low-poly canopy: a squashed, slightly irregular octahedron subdivided once (32 faces);
+    not fine: the plain octahedron (8 faces), for trees seen only from afar."""
     global _BLOB
     if _BLOB is None:
         t = [np.array(v, float) for v in ([1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1])]
@@ -224,7 +229,7 @@ def blob(x, y, zc, rx, rz):
             ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
             out += [(a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)]
         _BLOB = (np.array(verts), np.array(out))
-    v, f = _BLOB
+    v, f = _BLOB if fine else _OCTA
     v = v * (1 + 0.12 * (rng.random((len(v), 1)) - 0.5))
     return v * [rx, rx, rz] + [x, y, zc], f
 
@@ -273,18 +278,24 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False,
     for x, y, z in zip(xs, ys, zs, strict=True):
         tile = (int((x - x0) // TREE_TILE), int((y - y0) // TREE_TILE))
         mesh = lambda name, tile=tile: meshes.setdefault((name, *tile), Obj())
+        # in the City full trees; around it a drone sees them from a kilometre or more: no trunks, coarser crowns
+        near = x0 <= x <= x1 and y0 <= y <= y1
         conifer = rng.random() < 0.35 + 0.45 * (z - zlo) / max(zhi - zlo, 1.0)
         h = rng.uniform(11, 22)
         if conifer:
             name = "conifer_dark" if rng.random() < 0.5 else "conifer"
             r = h * rng.uniform(0.18, 0.24)
-            mesh(name).add(*cone(x, y, z + 0.15 * h, z + 0.62 * h, r * 1.15))
-            mesh(name).add(*cone(x, y, z + 0.45 * h, z + h, r * 0.8))
-            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.2 * h, 0.25))
+            if near:
+                mesh(name).add(*cone(x, y, z + 0.15 * h, z + 0.62 * h, r * 1.15))
+                mesh(name).add(*cone(x, y, z + 0.45 * h, z + h, r * 0.8))
+                mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.2 * h, 0.25))
+            else:
+                mesh(name).add(*cone(x, y, z + 0.1 * h, z + h, r * 1.05))
         else:
             name = "broadleaf" if rng.random() < 0.55 else "broadleaf_light"
-            mesh(name).add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.26, 0.34), h * 0.3))
-            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.3))
+            mesh(name).add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.26, 0.34), h * 0.3, near))
+            if near:
+                mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.3))
     for x, y in far or []:  # distant forest: one five-sided cone each, only the canopy line shows
         z = float(city.ground(x, y))
         tile = (int((x - x0) // (4 * TREE_TILE)) * 4, int((y - y0) // (4 * TREE_TILE)) * 4)
@@ -621,12 +632,12 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
     for line in feats.get("walls", []):
         for a, b in itertools.pairwise(line):
             ms.add("wall", *a, *seg_box(a, b, 0.3, 0, 2.6, float(g(*a)), float(g(*b))))
-    for line in feats.get("fences", []):  # mesh panels and a top rail per segment, posts every 4 m
+    for line in feats.get("fences", []):  # mesh panels and a top rail per segment, posts every 8 m
         for a, b in itertools.pairwise(line):
             za, zb = float(g(*a)), float(g(*b))
             ms.add("fence", *a, *seg_box(a, b, 0.03, 0.05, 2.4, za, zb))
             ms.add("post", *a, *seg_box(a, b, 0.06, 2.45, 2.55, za, zb))
-        for x, y in densify(line, 4.0):
+        for x, y in densify(line, 8.0):
             z = float(g(x, y))
             ms.add("post", x, y, *trunk(x, y, z, z + 2.6, 0.06, 3))
     for x, y, kind, h in feats.get("masts", []):
@@ -712,10 +723,10 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
                     continue
                 z = float(g(*c))
                 paint = f"car{int(prng.integers(6))}"
-                ms.add(paint, *c, *obox(c[0], c[1], z + 0.3, z + 1.05, 4.4, 1.8, yaw))
+                # body down to the wheels (no separate tyre box: hidden from any drone's height)
+                ms.add(paint, *c, *obox(c[0], c[1], z + 0.15, z + 1.05, 4.4, 1.8, yaw))
                 cc = c - np.array([math.cos(yaw), math.sin(yaw)]) * 0.25
                 ms.add("glass", *c, *obox(cc[0], cc[1], z + 1.05, z + 1.48, 2.3, 1.6, yaw))
-                ms.add("tyre", *c, *obox(c[0], c[1], z, z + 0.35, 3.7, 1.7, yaw))
 
     # jet bridges: from the nearest terminal wall to the forward left door of a parked aircraft
     walls_tree = STRtree([b.footprint for b in city.buildings]) if city.buildings else None
@@ -1065,6 +1076,42 @@ def facade_obj(p: np.ndarray, out: Path, w: float, h: float) -> None:
     out.write_text("\n".join(lines_) + "\n")
 
 
+def block_walls(v: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """LoD2 wall triangles -> LoD1 ones: each building's footprint (from its bottom edges),
+    simplified to 1.5 m and pulled up to its eaves. Drops the gables and the short wall
+    pieces, about a third of the triangles; for villages a drone sees from 2 km or more."""
+    e = np.concatenate([f[:, [0, 1, 2]], f[:, [1, 2, 0]], f[:, [2, 0, 1]]])  # edge a-b, third vertex c
+    key = np.sort(e[:, :2], 1)
+    _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True)
+    z = v[:, 2]
+    base = (cnt[inv.ravel()] == 1) & (np.abs(z[e[:, 0]] - z[e[:, 1]]) < 0.3) \
+        & (z[e[:, 2]] > np.maximum(z[e[:, 0]], z[e[:, 1]]) + 1.0)
+    lines = shapely.linestrings(v[e[base][:, :2]][:, :, :2])
+    polys = shapely.get_parts(shapely.polygonize(lines))
+    tris = []
+    for poly in polys:
+        poly = shapely.orient_polygons(poly.simplify(1.5), exterior_cw=False)
+        if poly.is_empty or poly.area < 10 or poly.geom_type != "Polygon":
+            continue
+        bx0, by0, bx1, by1 = poly.buffer(0.5).bounds
+        sel = (v[:, 0] > bx0) & (v[:, 0] < bx1) & (v[:, 1] > by0) & (v[:, 1] < by1)
+        sel[sel] = shapely.contains_xy(poly.buffer(0.5), v[sel, 0], v[sel, 1])
+        zs = z[sel]
+        if not len(zs):
+            continue
+        z0 = float(zs.min())
+        up = zs[zs > z0 + 1.0]
+        if not len(up):
+            continue
+        z1 = float(np.median(up))
+        ring = np.asarray(poly.exterior.coords)
+        for (ax, ay), (bx, by) in itertools.pairwise(ring):  # counter-clockwise: faces point out
+            a0, b0, a1, b1 = (ax, ay, z0), (bx, by, z0), (ax, ay, z1), (bx, by, z1)
+            tris += [(a0, b0, b1), (a0, b1, a1)]
+    return np.asarray(tris, float).reshape(-1, 3, 3)
+
+
+SURROUND_BLOCKS_M = 2000.0  # villages this far from the City get LoD1 walls (block_walls)
 HOUSE_W, HOUSE_H = 7.0, 2.9  # m of wall per house facade texture repeat: one storey, two windows
 
 
@@ -1108,13 +1155,17 @@ def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[l
     for old in assets.glob("sur_*.obj"):
         old.unlink()
     defined = set()
+    cx0, cy0, cx1, cy1 = raw["bounds"]
+    rx0, ry0 = sur["bounds"][:2]
     for mesh in sur["meshes"]:
-        kind = mesh.rsplit("_", 2)[0]
+        kind, i, j = mesh.rsplit("_", 2)
+        tx, ty = rx0 + 1000 * int(i), ry0 + 1000 * int(j)  # its 1 km tile
+        gap = max(0.0, cx0 - (tx + 1000), tx - cx1, cy0 - (ty + 1000), ty - cy1)
         v = data[f"{mesh}_v"].astype(float) / 10
         f = data[f"{mesh}_f"]
         out = assets / f"sur_{mesh}.obj"
         if kind == "walls":
-            facade_obj(v[f], out, HOUSE_W, HOUSE_H)
+            facade_obj(block_walls(v, f) if gap >= SURROUND_BLOCKS_M else v[f], out, HOUSE_W, HOUSE_H)
         else:
             lines_ = [f"v {x:.1f} {y:.1f} {z:.1f}" for x, y, z in v] + [f"f {a + 1} {b + 1} {c + 1}" for a, b, c in f]
             out.write_text("\n".join(lines_) + "\n")

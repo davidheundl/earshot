@@ -11,7 +11,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Lockstep fast-mode runner with fixed seeds.
 - 2D twin backend (kinematic drones, perching on flat roofs, battery drain).
 - Webots bridge: puppeted drones, a single camera rig with recognition, world generator from City JSON.
-- Webots performance: backend paces Webots (fast mode) to the wall clock, Verifier camera rendered once per tick, drone view cameras only while a screen shows them, tree meshes tiled for culling, `--no-webots-view`.
+- Webots performance: backend paces Webots (fast mode) to the wall clock, Verifier camera rendered once per tick, drone view cameras only while a screen shows them, tree meshes tiled for culling, `--no-webots-view`; detail falls off with distance from the City (trees outside it without trunks and with coarser crowns, villages 2 km out as LoD1 blocks), parked cars without separate tyres, fence posts every 8 m.
 - Placeholder synthetic city and a demo scenario.
 - Munich Airport city, 1:1 from open data (`tools/muc_fetch.py`, `tools/make_muc.py`): 1,303 LoD2 buildings with their measured walls and roofs, Perch Sites on flat roofs, OSM runways, roads and the S-Bahn surface track, the aerial photo as Webots ground and dashboard basemap; scenario `scenarios/muc.yaml` (drones on the terminal roofs, intruder over the apron).
 - Munich Airport look in Webots: the aerial photo draped over the LoD2 roofs, a curtain-wall facade texture on the walls, ground photo at 0.5 m/px (dashboard basemap 4096 px).
