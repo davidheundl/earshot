@@ -515,6 +515,8 @@ PROP_LOOK = {  # material -> (rgb, roughness, extra PBRAppearance fields)
     "lamp": ((1.0, 0.96, 0.85), 0.5, " emissiveColor 1 0.96 0.85 emissiveIntensity 2"),
     "steel": ((0.5, 0.52, 0.53), 0.5, " metalness 0.7"), "cable": ((0.1, 0.1, 0.1), 0.6, ""),
     "bridge": ((0.8, 0.81, 0.82), 0.45, " metalness 0.3"), "bridge_glass": ((0.22, 0.3, 0.36), 0.15, ""),
+    "gse_tug": ((0.95, 0.75, 0.1), 0.5, ""), "gse_loader": ((0.9, 0.9, 0.88), 0.5, ""),
+    "gse_cart": ((0.55, 0.56, 0.58), 0.6, ""), "gse_fuel": ((0.85, 0.85, 0.85), 0.4, " metalness 0.4"),
 }
 
 
@@ -739,6 +741,27 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
         ms.add("post", *mid, *trunk(mid[0], mid[1], float(g(*mid)), zm, 0.35, 6))  # drive column
         ms.add("tyre", *mid, *obox(mid[0], mid[1], float(g(*mid)), float(g(*mid)) + 0.9, 1.2, 3.0,
                                     math.atan2(d[1], d[0])))
+    # ground equipment at each parked aircraft: a tug at the nose, a belt loader and a train of
+    # baggage carts at the forward hold, sometimes a fuel truck under the wing
+    gse = {"tug": (3.2, 1.8, 1.4), "loader": (7.5, 2.0, 1.2), "cart": (3.0, 1.5, 1.6), "fuel": (9.0, 2.5, 3.0)}
+    for s in stands:
+        if not s["parked"]:
+            continue
+        L, S, r = AIRLINERS[s["kind"]]
+        d = np.asarray(s["dir"])
+        right = np.array([d[1], -d[0]])
+        nose = np.asarray(s["nose"])
+        yaw = math.atan2(d[1], d[0])
+        z = float(g(*nose))
+        hold = nose - d * 0.3 * L + right * (r + 2.0)
+        place = [("tug", nose + d * 3.5, yaw), ("loader", hold + right * 1.0, yaw + math.pi / 2)]
+        place += [("cart", hold + right * (6.0 + 3.6 * k), yaw + math.pi / 2) for k in range(int(prng.integers(2, 5)))]
+        if prng.random() < 0.4:
+            place.append(("fuel", nose - d * 0.45 * L + right * (0.3 * S), yaw))
+        for name, c, a in place:
+            ln, wd, h = gse[name]
+            ms.add(f"gse_{name}", *c, *obox(c[0], c[1], z + 0.35, z + h, ln, wd, a))
+            ms.add("tyre", *c, *obox(c[0], c[1], z, z + 0.4, ln * 0.85, wd * 0.95, a))
     return ms.write(assets), lots
 
 
@@ -794,7 +817,18 @@ def _local_mean(a: np.ndarray, valid: np.ndarray, f: int = 24) -> np.ndarray:
         return np.stack(out, axis=2)
 
     num, den = blur(a * w), blur(w)
-    return num / np.maximum(den, 1e-3)
+    out = num / np.maximum(den, 1e-3)
+    out[den[..., 0] < 0.02] = np.nan  # too little valid ground nearby to say
+    return out
+
+
+def _fill_colour(a: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """The local colour of the valid ground: near first, further out where there is none near."""
+    out = _local_mean(a, valid, 24)
+    far = np.isnan(out[..., 0])
+    if far.any():
+        out[far] = _local_mean(a, valid, 128)[far]
+    return out
 
 
 def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: np.ndarray) -> None:
@@ -816,19 +850,21 @@ def clean_surface(a: np.ndarray, bounds, lu: np.ndarray, city_bounds, near_bld: 
         return
     lum = a.mean(axis=2)
     paved = road | field
-    bg = _local_mean(a, paved)
-    d = lum - bg.mean(axis=2)
+    bg = _fill_colour(a, paved)
+    d = np.nan_to_num(lum - bg.mean(axis=2))
     ppm = W / (tx1 - tx0)  # px per metre
     big = max(3, int(2.5 * ppm) | 1)  # aircraft, buses: wider than any paint line
     small = max(3, int(1.4 * ppm) | 1)  # cars on the roads
     on_field = field & (d > 20)
     bright = _touching(on_field, _open(on_field, big))  # bodies and what is joined to them
     bright |= _open(road & ((d > 30) | (d < -40)), small)
+    bright |= _open(field & ((d > 22) | ((d < -28) & ~near_bld)), small)  # carts, tugs, vans
     bright = _grow(bright, int(1.5 * ppm))
     dark = _open(field & (d < -20) & ~near_bld, big) & _grow(bright, int(40 * ppm))  # their shadows
     m = _grow(bright | dark, max(1, int(1.0 * ppm))) & paved
     if m.any():
-        fill = _local_mean(a, paved & ~m & (d > -30))  # the sunlit pavement around, without the blobs
+        fill = _fill_colour(a, paved & ~m & (d > -30))  # the sunlit pavement around, without the blobs
+        m &= ~np.isnan(fill[..., 0])  # no clean pavement within reach: leave the photo as it is
         a[m] = fill[m] + np.random.default_rng(5).normal(0, 2.0, (m.sum(), 1))
 
 
