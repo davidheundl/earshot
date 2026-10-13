@@ -9,8 +9,8 @@ The look (ADR 0005 superseded: the venue has WLAN, Webots fetches PROTO assets o
 - Webots SimpleBuilding per building (walls, roof shape and material from the City), Road
   PROTOs draped on the terrain, a rail bed with rails and sleepers, a lake
 - forests and scattered trees as a few merged meshes (Webots' Forest cannot follow hills)
-- sky, sun and haze; real Mavic 2 Pro drones with a glowing ring and beam marker (--no-markers
-  to hide); trucks, a train of separate wagons, and a rooftop fan unit as Sources
+- sky, sun and haze; real Mavic 2 Pro drones; intruders carry a glowing red ring and beam
+  (--no-markers to hide); trucks, a train of separate wagons, and a rooftop fan unit as Sources
 Assets go to <world>_assets/ next to the world; a hash skips rebuilding when nothing changed.
 A City without terrain (the flat test city) gets the same look on flat ground.
 """
@@ -533,7 +533,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
 
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0
-        parts.append(mavic(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z, OWN_RGB, markers))
+        parts.append(mavic(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z, OWN_RGB, False))  # no beacon
     slots = [(s.id, s.cls.name) for s in sc.sources] + [
         (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(LIVE_SLOTS)]
     for sid, cls in slots:
