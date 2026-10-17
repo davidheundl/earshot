@@ -1,0 +1,20 @@
+{
+  "localization": {
+    "strategy": "consensus",
+    "queries": 4,
+    "accepted": 1,
+    "median_retrieval_error_m": 25.0,
+    "errors_m": [
+      0.17022187230549538,
+      null,
+      null,
+      null
+    ],
+    "orientation_errors_deg": [
+      0.025171908013586652,
+      null,
+      null,
+      null
+    ]
+  }
+}

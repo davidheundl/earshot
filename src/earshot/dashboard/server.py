@@ -2,6 +2,8 @@
 
     python -m earshot.dashboard.server --scenario scenarios/demo.yaml   -> http://127.0.0.1:8000
 
+Set EARSHOT_DASHBOARD_PORT to use a different local port.
+
 Subscribes to world "state." and radio "radio." and fans them out over WebSocket. Operator
 hotkeys arrive as POST /control and are forwarded to the world as scenario events; Agents
 never see the dashboard, and a crash here never stops a run.

@@ -9,7 +9,7 @@ WORLD_PUB = f"tcp://{HOST}:5550"  # world -> agents ("tick.<id>"), radio + dashb
 WORLD_PULL = f"tcp://{HOST}:5551"  # agents -> world: command + telemetry
 RADIO_PULL = f"tcp://{HOST}:5552"  # agents -> radio: frames to transmit
 RADIO_PUB = f"tcp://{HOST}:5553"  # radio -> agents ("rx.<id>"), dashboard ("radio")
-DASHBOARD_PORT = 8000
+DASHBOARD_PORT = int(os.environ.get("EARSHOT_DASHBOARD_PORT", "8000"))
 # our own Webots instance, so an already-open Webots does not clash
 WEBOTS_PORT = int(os.environ.get("EARSHOT_WEBOTS_PORT", "1240"))
 # Gazebo: the bridge process that embeds the Gazebo server (ADR 0008), and gz-transport kept

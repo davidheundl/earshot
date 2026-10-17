@@ -1,0 +1,110 @@
+[
+  {
+    "setting": "low_640",
+    "distance_results": [
+      {
+        "distance": 5,
+        "total": 4,
+        "iou50_hits": 4,
+        "center_hits": 4
+      },
+      {
+        "distance": 15,
+        "total": 4,
+        "iou50_hits": 3,
+        "center_hits": 3
+      },
+      {
+        "distance": 30,
+        "total": 4,
+        "iou50_hits": 1,
+        "center_hits": 1
+      },
+      {
+        "distance": 60,
+        "total": 4,
+        "iou50_hits": 0,
+        "center_hits": 0
+      },
+      {
+        "distance": 90,
+        "total": 4,
+        "iou50_hits": 0,
+        "center_hits": 0
+      }
+    ],
+    "empty_false_frames": 0
+  },
+  {
+    "setting": "high_640",
+    "distance_results": [
+      {
+        "distance": 5,
+        "total": 4,
+        "iou50_hits": 4,
+        "center_hits": 4
+      },
+      {
+        "distance": 15,
+        "total": 4,
+        "iou50_hits": 3,
+        "center_hits": 3
+      },
+      {
+        "distance": 30,
+        "total": 4,
+        "iou50_hits": 1,
+        "center_hits": 2
+      },
+      {
+        "distance": 60,
+        "total": 4,
+        "iou50_hits": 0,
+        "center_hits": 0
+      },
+      {
+        "distance": 90,
+        "total": 4,
+        "iou50_hits": 0,
+        "center_hits": 0
+      }
+    ],
+    "empty_false_frames": 0
+  },
+  {
+    "setting": "high_1280",
+    "distance_results": [
+      {
+        "distance": 5,
+        "total": 4,
+        "iou50_hits": 4,
+        "center_hits": 4
+      },
+      {
+        "distance": 15,
+        "total": 4,
+        "iou50_hits": 3,
+        "center_hits": 3
+      },
+      {
+        "distance": 30,
+        "total": 4,
+        "iou50_hits": 4,
+        "center_hits": 4
+      },
+      {
+        "distance": 60,
+        "total": 4,
+        "iou50_hits": 2,
+        "center_hits": 3
+      },
+      {
+        "distance": 90,
+        "total": 4,
+        "iou50_hits": 1,
+        "center_hits": 2
+      }
+    ],
+    "empty_false_frames": 0
+  }
+]

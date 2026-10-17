@@ -1,0 +1,1235 @@
+[
+  {
+    "setting": "low_640",
+    "frames": [
+      {
+        "frame": 0,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            159.85421752929688,
+            101.1343002319336,
+            241.09323120117188,
+            135.74313354492188
+          ]
+        ],
+        "scores": [
+          0.2900066375732422
+        ],
+        "iou": 0.6718846600491842,
+        "centered": true,
+        "inference_ms": 34.16716598439962
+      },
+      {
+        "frame": 1,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            184.38113403320312,
+            112.93224334716797,
+            215.53111267089844,
+            127.07515716552734
+          ]
+        ],
+        "scores": [
+          0.5963996648788452
+        ],
+        "iou": 0.6809647112313992,
+        "centered": true,
+        "inference_ms": 26.858082972466946
+      },
+      {
+        "frame": 2,
+        "present": true,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 25.393040967173874
+      },
+      {
+        "frame": 3,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.589749984443188
+      },
+      {
+        "frame": 4,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.467125069350004
+      },
+      {
+        "frame": 5,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            154.88914489746094,
+            93.53021240234375,
+            242.7135772705078,
+            141.28289794921875
+          ]
+        ],
+        "scores": [
+          0.7615223526954651
+        ],
+        "iou": 0.5919636230370844,
+        "centered": true,
+        "inference_ms": 24.104999960400164
+      },
+      {
+        "frame": 6,
+        "present": true,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.710250087082386
+      },
+      {
+        "frame": 7,
+        "present": true,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.576500058174133
+      },
+      {
+        "frame": 8,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.367749923840165
+      },
+      {
+        "frame": 9,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.947584024630487
+      },
+      {
+        "frame": 10,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            160.76683044433594,
+            103.08969116210938,
+            237.81272888183594,
+            133.4469451904297
+          ]
+        ],
+        "scores": [
+          0.6534059047698975
+        ],
+        "iou": 0.7500342612971672,
+        "centered": true,
+        "inference_ms": 24.779082974418998
+      },
+      {
+        "frame": 11,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            184.3889923095703,
+            112.3965835571289,
+            216.0644073486328,
+            125.732421875
+          ]
+        ],
+        "scores": [
+          0.62975013256073
+        ],
+        "iou": 0.6436157136194545,
+        "centered": true,
+        "inference_ms": 24.228665977716446
+      },
+      {
+        "frame": 12,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            193.29049682617188,
+            116.003662109375,
+            206.33604431152344,
+            122.35382080078125
+          ]
+        ],
+        "scores": [
+          0.28459516167640686
+        ],
+        "iou": 0.5823446685848064,
+        "centered": true,
+        "inference_ms": 24.254458025097847
+      },
+      {
+        "frame": 13,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.31820798665285
+      },
+      {
+        "frame": 14,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.259541067294776
+      },
+      {
+        "frame": 15,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            153.1117401123047,
+            98.16583251953125,
+            245.44358825683594,
+            139.20106506347656
+          ]
+        ],
+        "scores": [
+          0.5689073801040649
+        ],
+        "iou": 0.6876658240369656,
+        "centered": true,
+        "inference_ms": 24.23579094465822
+      },
+      {
+        "frame": 16,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            186.28367614746094,
+            111.73966217041016,
+            214.05665588378906,
+            126.06377410888672
+          ]
+        ],
+        "scores": [
+          0.4907500147819519
+        ],
+        "iou": 0.5105910463444127,
+        "centered": true,
+        "inference_ms": 23.91004201490432
+      },
+      {
+        "frame": 17,
+        "present": true,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.412082973867655
+      },
+      {
+        "frame": 18,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 25.08262498304248
+      },
+      {
+        "frame": 19,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.712582933716476
+      },
+      {
+        "frame": 20,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.181333021260798
+      },
+      {
+        "frame": 21,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.295290932059288
+      },
+      {
+        "frame": 22,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 23.926082998514175
+      },
+      {
+        "frame": 23,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.49187496677041
+      },
+      {
+        "frame": 24,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.26729106809944
+      },
+      {
+        "frame": 25,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.389500031247735
+      },
+      {
+        "frame": 26,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 25.25487495586276
+      },
+      {
+        "frame": 27,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.803167092613876
+      },
+      {
+        "frame": 28,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.638707982376218
+      },
+      {
+        "frame": 29,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.88716598600149
+      }
+    ]
+  },
+  {
+    "setting": "high_640",
+    "frames": [
+      {
+        "frame": 0,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            515.5104370117188,
+            328.919677734375,
+            768.6528930664062,
+            432.0462646484375
+          ]
+        ],
+        "scores": [
+          0.6581839919090271
+        ],
+        "iou": 0.7409871038017393,
+        "centered": true,
+        "inference_ms": 24.443125003017485
+      },
+      {
+        "frame": 1,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            589.977294921875,
+            362.75335693359375,
+            689.4287109375,
+            405.0555419921875
+          ]
+        ],
+        "scores": [
+          0.5754565000534058
+        ],
+        "iou": 0.7302094338156545,
+        "centered": true,
+        "inference_ms": 24.71958298701793
+      },
+      {
+        "frame": 2,
+        "present": true,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.237333913333714
+      },
+      {
+        "frame": 3,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.63291701860726
+      },
+      {
+        "frame": 4,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 24.440833018161356
+      },
+      {
+        "frame": 5,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            497.34185791015625,
+            295.55816650390625,
+            776.3659057617188,
+            450.82244873046875
+          ]
+        ],
+        "scores": [
+          0.6590085625648499
+        ],
+        "iou": 0.5802455649844008,
+        "centered": true,
+        "inference_ms": 24.708249955438077
+      },
+      {
+        "frame": 6,
+        "present": true,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 23.063499946147203
+      },
+      {
+        "frame": 7,
+        "present": true,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 23.03062507417053
+      },
+      {
+        "frame": 8,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 23.131415946409106
+      },
+      {
+        "frame": 9,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.83233404159546
+      },
+      {
+        "frame": 10,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            519.745849609375,
+            333.6192626953125,
+            765.8157958984375,
+            428.1209716796875
+          ]
+        ],
+        "scores": [
+          0.7358519434928894
+        ],
+        "iou": 0.7681201643955217,
+        "centered": true,
+        "inference_ms": 22.912833956070244
+      },
+      {
+        "frame": 11,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            589.7388916015625,
+            361.2587585449219,
+            691.0760498046875,
+            401.0627136230469
+          ]
+        ],
+        "scores": [
+          0.6946349740028381
+        ],
+        "iou": 0.6901989309816731,
+        "centered": true,
+        "inference_ms": 23.0058750603348
+      },
+      {
+        "frame": 12,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            618.4293823242188,
+            370.3463134765625,
+            661.6399536132812,
+            394.64453125
+          ]
+        ],
+        "scores": [
+          0.2856278121471405
+        ],
+        "iou": 0.47050313404146954,
+        "centered": true,
+        "inference_ms": 23.02641700953245
+      },
+      {
+        "frame": 13,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.838125005364418
+      },
+      {
+        "frame": 14,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.95987494289875
+      },
+      {
+        "frame": 15,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            483.6455993652344,
+            313.33270263671875,
+            793.0465087890625,
+            451.8631591796875
+          ]
+        ],
+        "scores": [
+          0.38118261098861694
+        ],
+        "iou": 0.6224707860971351,
+        "centered": true,
+        "inference_ms": 23.015416925773025
+      },
+      {
+        "frame": 16,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            596.8004150390625,
+            359.8759765625,
+            684.4478759765625,
+            401.8594970703125
+          ]
+        ],
+        "scores": [
+          0.5470932126045227
+        ],
+        "iou": 0.5652559494821091,
+        "centered": true,
+        "inference_ms": 23.17025000229478
+      },
+      {
+        "frame": 17,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            614.1776123046875,
+            370.0970153808594,
+            666.3092041015625,
+            396.2775573730469
+          ]
+        ],
+        "scores": [
+          0.2654165029525757
+        ],
+        "iou": 0.527536941797795,
+        "centered": true,
+        "inference_ms": 22.786958026699722
+      },
+      {
+        "frame": 18,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.89649995509535
+      },
+      {
+        "frame": 19,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.96441700309515
+      },
+      {
+        "frame": 20,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 23.02387508098036
+      },
+      {
+        "frame": 21,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.919292096048594
+      },
+      {
+        "frame": 22,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.78024994302541
+      },
+      {
+        "frame": 23,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.759624989703298
+      },
+      {
+        "frame": 24,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.934374981559813
+      },
+      {
+        "frame": 25,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.800749982707202
+      },
+      {
+        "frame": 26,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.78100000694394
+      },
+      {
+        "frame": 27,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.855666931718588
+      },
+      {
+        "frame": 28,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.84350001718849
+      },
+      {
+        "frame": 29,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 22.910499945282936
+      }
+    ]
+  },
+  {
+    "setting": "high_1280",
+    "frames": [
+      {
+        "frame": 0,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            511.19757080078125,
+            326.32122802734375,
+            771.2410278320312,
+            446.24969482421875
+          ]
+        ],
+        "scores": [
+          0.4177214503288269
+        ],
+        "iou": 0.6202661358749127,
+        "centered": true,
+        "inference_ms": 95.52433295175433
+      },
+      {
+        "frame": 1,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            587.82958984375,
+            357.68048095703125,
+            691.38330078125,
+            407.47344970703125
+          ]
+        ],
+        "scores": [
+          0.6374998688697815
+        ],
+        "iou": 0.5957822003308236,
+        "centered": true,
+        "inference_ms": 86.34866599459201
+      },
+      {
+        "frame": 2,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            617.5545654296875,
+            370.9725646972656,
+            662.92041015625,
+            395.3544006347656
+          ]
+        ],
+        "scores": [
+          0.5699604153633118
+        ],
+        "iou": 0.506282155435135,
+        "centered": true,
+        "inference_ms": 86.3336669281125
+      },
+      {
+        "frame": 3,
+        "present": true,
+        "distance": 60,
+        "boxes": [
+          [
+            626.8834228515625,
+            376.4901123046875,
+            652.8321533203125,
+            390.8109130859375
+          ]
+        ],
+        "scores": [
+          0.43581831455230713
+        ],
+        "iou": 0.49514728805475927,
+        "centered": true,
+        "inference_ms": 86.24500001315027
+      },
+      {
+        "frame": 4,
+        "present": true,
+        "distance": 90,
+        "boxes": [
+          [
+            632.5397338867188,
+            379.4200439453125,
+            646.5061645507812,
+            386.421630859375
+          ]
+        ],
+        "scores": [
+          0.30732613801956177
+        ],
+        "iou": 0.4908618992436444,
+        "centered": true,
+        "inference_ms": 86.18966699577868
+      },
+      {
+        "frame": 5,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            487.32977294921875,
+            284.9901123046875,
+            791.3512573242188,
+            456.7080078125
+          ]
+        ],
+        "scores": [
+          0.614677906036377
+        ],
+        "iou": 0.5092908078020445,
+        "centered": true,
+        "inference_ms": 86.70683298259974
+      },
+      {
+        "frame": 6,
+        "present": true,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.52504102792591
+      },
+      {
+        "frame": 7,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            614.726806640625,
+            372.2265319824219,
+            664.447998046875,
+            393.2339782714844
+          ]
+        ],
+        "scores": [
+          0.6670477986335754
+        ],
+        "iou": 0.6433606353958665,
+        "centered": true,
+        "inference_ms": 86.87416696920991
+      },
+      {
+        "frame": 8,
+        "present": true,
+        "distance": 60,
+        "boxes": [
+          [
+            629.1263427734375,
+            377.77392578125,
+            649.8507080078125,
+            388.36407470703125
+          ]
+        ],
+        "scores": [
+          0.3806558847427368
+        ],
+        "iou": 0.5404742949336522,
+        "centered": true,
+        "inference_ms": 86.66508295573294
+      },
+      {
+        "frame": 9,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.79516694974154
+      },
+      {
+        "frame": 10,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            513.6295166015625,
+            334.8680114746094,
+            765.1209716796875,
+            430.5382995605469
+          ]
+        ],
+        "scores": [
+          0.5131993889808655
+        ],
+        "iou": 0.762751526029753,
+        "centered": true,
+        "inference_ms": 87.80104201287031
+      },
+      {
+        "frame": 11,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            589.8560791015625,
+            362.69671630859375,
+            690.6968994140625,
+            401.57257080078125
+          ]
+        ],
+        "scores": [
+          0.6381989121437073
+        ],
+        "iou": 0.7101546140482092,
+        "centered": true,
+        "inference_ms": 86.75329200923443
+      },
+      {
+        "frame": 12,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            619.0777587890625,
+            373.16107177734375,
+            661.0335693359375,
+            392.9434814453125
+          ]
+        ],
+        "scores": [
+          0.5791208744049072
+        ],
+        "iou": 0.5951900220616153,
+        "centered": true,
+        "inference_ms": 86.5980830276385
+      },
+      {
+        "frame": 13,
+        "present": true,
+        "distance": 60,
+        "boxes": [
+          [
+            627.1596069335938,
+            377.501953125,
+            652.8189086914062,
+            389.89794921875
+          ]
+        ],
+        "scores": [
+          0.27653053402900696
+        ],
+        "iou": 0.5281812947675538,
+        "centered": true,
+        "inference_ms": 86.31179097574204
+      },
+      {
+        "frame": 14,
+        "present": true,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.07295795809478
+      },
+      {
+        "frame": 15,
+        "present": true,
+        "distance": 5,
+        "boxes": [
+          [
+            487.84912109375,
+            317.58905029296875,
+            793.829345703125,
+            447.67498779296875
+          ]
+        ],
+        "scores": [
+          0.44883790612220764
+        ],
+        "iou": 0.6702890349856467,
+        "centered": true,
+        "inference_ms": 87.55775005556643
+      },
+      {
+        "frame": 16,
+        "present": true,
+        "distance": 15,
+        "boxes": [
+          [
+            597.8511962890625,
+            363.7355651855469,
+            682.3555908203125,
+            401.8989562988281
+          ],
+          [
+            966.30419921875,
+            202.84097290039062,
+            1007.0244140625,
+            253.79763793945312
+          ]
+        ],
+        "scores": [
+          0.6807979345321655,
+          0.3010888993740082
+        ],
+        "iou": 0.6449663881843771,
+        "centered": true,
+        "inference_ms": 86.47029206622392
+      },
+      {
+        "frame": 17,
+        "present": true,
+        "distance": 30,
+        "boxes": [
+          [
+            614.48583984375,
+            372.55023193359375,
+            666.1328125,
+            393.07257080078125
+          ],
+          [
+            947.8782958984375,
+            212.80978393554688,
+            985.745361328125,
+            260.8128967285156
+          ]
+        ],
+        "scores": [
+          0.5647584199905396,
+          0.48897144198417664
+        ],
+        "iou": 0.6792986821012965,
+        "centered": true,
+        "inference_ms": 86.83037501759827
+      },
+      {
+        "frame": 18,
+        "present": true,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.26529201865196
+      },
+      {
+        "frame": 19,
+        "present": true,
+        "distance": 90,
+        "boxes": [
+          [
+            631.338134765625,
+            379.1139221191406,
+            648.918212890625,
+            386.8157653808594
+          ],
+          [
+            363.7122802734375,
+            131.9342803955078,
+            370.5244140625,
+            138.1549835205078
+          ]
+        ],
+        "scores": [
+          0.2991016209125519,
+          0.29207831621170044
+        ],
+        "iou": 0.5169905004475016,
+        "centered": true,
+        "inference_ms": 86.47195901721716
+      },
+      {
+        "frame": 20,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.37820894364268
+      },
+      {
+        "frame": 21,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.34691697079688
+      },
+      {
+        "frame": 22,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.26737492159009
+      },
+      {
+        "frame": 23,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.50970901362598
+      },
+      {
+        "frame": 24,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.44387498497963
+      },
+      {
+        "frame": 25,
+        "present": false,
+        "distance": 5,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.55741706024855
+      },
+      {
+        "frame": 26,
+        "present": false,
+        "distance": 15,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.51291707064956
+      },
+      {
+        "frame": 27,
+        "present": false,
+        "distance": 30,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 87.27091597393155
+      },
+      {
+        "frame": 28,
+        "present": false,
+        "distance": 60,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.71383303590119
+      },
+      {
+        "frame": 29,
+        "present": false,
+        "distance": 90,
+        "boxes": [],
+        "scores": [],
+        "iou": 0,
+        "centered": false,
+        "inference_ms": 86.3569580251351
+      }
+    ]
+  }
+]

@@ -1,0 +1,1002 @@
+[
+  {
+    "demo": "verify",
+    "frame": 1,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6935129165649414
+  },
+  {
+    "demo": "verify",
+    "frame": 2,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6419879198074341
+  },
+  {
+    "demo": "verify",
+    "frame": 3,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6350626349449158
+  },
+  {
+    "demo": "verify",
+    "frame": 4,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.661238431930542
+  },
+  {
+    "demo": "verify",
+    "frame": 5,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7031939029693604
+  },
+  {
+    "demo": "verify",
+    "frame": 6,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6982564926147461
+  },
+  {
+    "demo": "verify",
+    "frame": 7,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7243309020996094
+  },
+  {
+    "demo": "verify",
+    "frame": 8,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.713709831237793
+  },
+  {
+    "demo": "verify",
+    "frame": 9,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.700021505355835
+  },
+  {
+    "demo": "verify",
+    "frame": 10,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6947053074836731
+  },
+  {
+    "demo": "verify",
+    "frame": 11,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6960214376449585
+  },
+  {
+    "demo": "verify",
+    "frame": 12,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7315381765365601
+  },
+  {
+    "demo": "verify",
+    "frame": 13,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.733498215675354
+  },
+  {
+    "demo": "verify",
+    "frame": 14,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7053839564323425
+  },
+  {
+    "demo": "verify",
+    "frame": 15,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7070620656013489
+  },
+  {
+    "demo": "verify",
+    "frame": 16,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7017999887466431
+  },
+  {
+    "demo": "verify",
+    "frame": 17,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7324444055557251
+  },
+  {
+    "demo": "verify",
+    "frame": 18,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7017648816108704
+  },
+  {
+    "demo": "verify",
+    "frame": 19,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7150328159332275
+  },
+  {
+    "demo": "verify",
+    "frame": 20,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7037261128425598
+  },
+  {
+    "demo": "verify",
+    "frame": 21,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7097644209861755
+  },
+  {
+    "demo": "verify",
+    "frame": 22,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6845425367355347
+  },
+  {
+    "demo": "verify",
+    "frame": 23,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.622452437877655
+  },
+  {
+    "demo": "verify",
+    "frame": 24,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5864073634147644
+  },
+  {
+    "demo": "verify",
+    "frame": 25,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5107875466346741
+  },
+  {
+    "demo": "verify",
+    "frame": 26,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4711509943008423
+  },
+  {
+    "demo": "verify",
+    "frame": 27,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5107875466346741
+  },
+  {
+    "demo": "verify",
+    "frame": 28,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5864073634147644
+  },
+  {
+    "demo": "verify",
+    "frame": 29,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.622452437877655
+  },
+  {
+    "demo": "verify",
+    "frame": 30,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6845425367355347
+  },
+  {
+    "demo": "verify",
+    "frame": 31,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7097644209861755
+  },
+  {
+    "demo": "verify",
+    "frame": 32,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7037261128425598
+  },
+  {
+    "demo": "verify",
+    "frame": 33,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7150328159332275
+  },
+  {
+    "demo": "verify",
+    "frame": 34,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7017648816108704
+  },
+  {
+    "demo": "verify",
+    "frame": 35,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7324444055557251
+  },
+  {
+    "demo": "verify",
+    "frame": 36,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7017999887466431
+  },
+  {
+    "demo": "verify",
+    "frame": 37,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7070620656013489
+  },
+  {
+    "demo": "verify",
+    "frame": 38,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7053839564323425
+  },
+  {
+    "demo": "verify",
+    "frame": 39,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.733498215675354
+  },
+  {
+    "demo": "verify",
+    "frame": 40,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7315381765365601
+  },
+  {
+    "demo": "verify",
+    "frame": 41,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 42,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 43,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 44,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 45,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 46,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 47,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 48,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 49,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 50,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 51,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 52,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.699195384979248
+  },
+  {
+    "demo": "verify",
+    "frame": 53,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.659351110458374
+  },
+  {
+    "demo": "verify",
+    "frame": 54,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5407347083091736
+  },
+  {
+    "demo": "verify",
+    "frame": 55,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6311272382736206
+  },
+  {
+    "demo": "verify",
+    "frame": 56,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6179617047309875
+  },
+  {
+    "demo": "verify",
+    "frame": 57,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6904738545417786
+  },
+  {
+    "demo": "verify",
+    "frame": 58,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6576254367828369
+  },
+  {
+    "demo": "verify",
+    "frame": 59,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.697608470916748
+  },
+  {
+    "demo": "verify",
+    "frame": 60,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7229124307632446
+  },
+  {
+    "demo": "verify",
+    "frame": 61,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7120274901390076
+  },
+  {
+    "demo": "verify",
+    "frame": 62,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6573837399482727
+  },
+  {
+    "demo": "verify",
+    "frame": 63,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5805090069770813
+  },
+  {
+    "demo": "verify",
+    "frame": 64,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.3737550675868988
+  },
+  {
+    "demo": "verify",
+    "frame": 65,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5108670592308044
+  },
+  {
+    "demo": "verify",
+    "frame": 66,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.32316792011260986
+  },
+  {
+    "demo": "verify",
+    "frame": 67,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.33301734924316406
+  },
+  {
+    "demo": "verify",
+    "frame": 68,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4840323030948639
+  },
+  {
+    "demo": "verify",
+    "frame": 69,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.37945276498794556
+  },
+  {
+    "demo": "verify",
+    "frame": 70,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.3767630457878113
+  },
+  {
+    "demo": "verify",
+    "frame": 71,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4560542106628418
+  },
+  {
+    "demo": "verify",
+    "frame": 72,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6188371777534485
+  },
+  {
+    "demo": "verify",
+    "frame": 73,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5146873593330383
+  },
+  {
+    "demo": "verify",
+    "frame": 74,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4108427166938782
+  },
+  {
+    "demo": "verify",
+    "frame": 75,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 76,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 77,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 78,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.0
+  },
+  {
+    "demo": "verify",
+    "frame": 79,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5146873593330383
+  },
+  {
+    "demo": "verify",
+    "frame": 80,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6188371777534485
+  },
+  {
+    "demo": "verify",
+    "frame": 81,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4560542106628418
+  },
+  {
+    "demo": "verify",
+    "frame": 82,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.3767630457878113
+  },
+  {
+    "demo": "verify",
+    "frame": 83,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.37945276498794556
+  },
+  {
+    "demo": "verify",
+    "frame": 84,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.4840323030948639
+  },
+  {
+    "demo": "verify",
+    "frame": 85,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.33301734924316406
+  },
+  {
+    "demo": "verify",
+    "frame": 86,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.32316792011260986
+  },
+  {
+    "demo": "verify",
+    "frame": 87,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5108670592308044
+  },
+  {
+    "demo": "verify",
+    "frame": 88,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.3737550675868988
+  },
+  {
+    "demo": "verify",
+    "frame": 89,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5805090069770813
+  },
+  {
+    "demo": "verify",
+    "frame": 90,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6573837399482727
+  },
+  {
+    "demo": "verify",
+    "frame": 91,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7120274901390076
+  },
+  {
+    "demo": "verify",
+    "frame": 92,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.7229124307632446
+  },
+  {
+    "demo": "verify",
+    "frame": 93,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.697608470916748
+  },
+  {
+    "demo": "verify",
+    "frame": 94,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6576254367828369
+  },
+  {
+    "demo": "verify",
+    "frame": 95,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6904738545417786
+  },
+  {
+    "demo": "verify",
+    "frame": 96,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6179617047309875
+  },
+  {
+    "demo": "verify",
+    "frame": 97,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.6311272382736206
+  },
+  {
+    "demo": "verify",
+    "frame": 98,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.5407347083091736
+  },
+  {
+    "demo": "verify",
+    "frame": 99,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.659351110458374
+  },
+  {
+    "demo": "verify",
+    "frame": 100,
+    "target": "quadcopter",
+    "camera_evidence": "INCONCLUSIVE",
+    "confirmed_track_ids": [],
+    "consecutive_hits": 0,
+    "required_hits": 3,
+    "max_confidence": 0.699195384979248
+  }
+]
