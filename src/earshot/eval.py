@@ -108,24 +108,33 @@ def _time_to_agree(r: RunResult) -> float | None:
     return None
 
 
-def evaluate(scenario_path: str, runs: int, seed0: int, policy: str,
-             scheme: str | None = None, bw_khz: float | None = None) -> list[RunMetrics]:
-    out = []
-    base = Scenario.load("scenarios/demo.yaml") if scenario_path == "random" else None
-    for k in range(runs):
-        if base is not None:
-            from earshot.scenario_gen import generate
+def load_scenario(scenario_path: str, seed: int) -> Scenario:
+    """A scenario YAML at `seed`, or with "random" a generated world for that seed."""
+    if scenario_path == "random":
+        from earshot.scenario_gen import generate
 
-            sc = generate(base, seed0 + k)
-        else:
-            sc = Scenario.load(scenario_path, seed=seed0 + k)
-        sc.policy = policy
-        if scheme:
-            sc.radio = {**sc.radio, "scheme": scheme}
-        if bw_khz:
-            sc.radio = {**sc.radio, "bw_khz": bw_khz}
-        out.append(metrics(run(sc), policy))
-    return out
+        return generate(Scenario.load("scenarios/demo.yaml"), seed)
+    return Scenario.load(scenario_path, seed=seed)
+
+
+def run_one(scenario_path: str, seed: int, policy: str, scheme: str | None = None,
+            bw_khz: float | None = None, params: dict | None = None) -> RunMetrics:
+    sc = load_scenario(scenario_path, seed)
+    sc.policy = policy
+    if params is not None:  # state.PolicyParams overrides, on top of the scenario's own
+        sc.params = {**sc.params, **params}
+    if scheme:
+        sc.radio = {**sc.radio, "scheme": scheme}
+    if bw_khz:
+        sc.radio = {**sc.radio, "bw_khz": bw_khz}
+    return metrics(run(sc), policy)
+
+
+def evaluate(scenario_path: str, runs: int, seed0: int, policy: str,
+             scheme: str | None = None, bw_khz: float | None = None,
+             params: dict | None = None) -> list[RunMetrics]:
+    return [run_one(scenario_path, seed0 + k, policy, scheme, bw_khz, params)
+            for k in range(runs)]
 
 
 def summarize(rows: list[RunMetrics], label: str | None = None) -> dict:

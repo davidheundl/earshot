@@ -1,7 +1,8 @@
 """Scenarios: seeded, reproducible scripts of sources, jamming zones and sensor faults.
 
 A scenario is a YAML file (see scenarios/). Ground truth lives here and nowhere else;
-agents never see it, only the sensor models and the dashboard do.
+agents never see it, only the sensor models and the dashboard do. An optional `params:` map
+overrides the decision thresholds (state.PolicyParams) for every drone.
 
 Events change a scenario while it runs. The same op dicts come from three places: the YAML
 `events:` list (applied at their `t`), live hotkeys on the dashboard (applied at the next
@@ -161,6 +162,7 @@ class Scenario:
     radio: dict = field(default_factory=dict)
     policy: str = "earshot"  # see state.SwarmConfig
     map_cell: float = 20.0  # m, Probability Map cell
+    params: dict = field(default_factory=dict)  # state.PolicyParams overrides
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     _live_count: int = 0
@@ -198,6 +200,7 @@ class Scenario:
             ],
             policy=d.get("policy", "earshot"),
             map_cell=float(d.get("map_cell", 20.0)),
+            params=dict(d.get("params") or {}),
             sources=[
                 Source(
                     id=s["id"],

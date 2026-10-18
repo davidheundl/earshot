@@ -18,7 +18,7 @@ from earshot.city import City
 from earshot.messages import Sensor
 from earshot.runners.wire import command_to_dict, pack, sensed_from_dict, topic, unpack
 from earshot.scenario import Scenario
-from earshot.state import Sensed, SwarmConfig
+from earshot.state import PolicyParams, Sensed, SwarmConfig
 
 
 def merge_ticks(ticks: list[Sensed]) -> Sensed:
@@ -46,7 +46,8 @@ def main(argv=None) -> None:
         print(f"[agent {a.id}] sound from array {dev!r}, rotation {rot or 0} deg", flush=True)
     scenario = Scenario.load(a.scenario)
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"), scenario.map_cell)
+                                   scenario.radio.get("scheme", "ours"), scenario.map_cell,
+                                   PolicyParams.from_dict(scenario.params))
     agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()

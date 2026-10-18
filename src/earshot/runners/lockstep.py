@@ -19,7 +19,7 @@ from earshot.backend.twin2d import Twin2D
 from earshot.city import City
 from earshot.radio.medium import RadioConfig, RadioMedium
 from earshot.scenario import Scenario
-from earshot.state import SwarmConfig
+from earshot.state import PolicyParams, SwarmConfig
 from earshot.world import World
 
 
@@ -46,7 +46,8 @@ def build(scenario: Scenario, root: Path = Path("."), audio=None):
         RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)
     )
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"), scenario.map_cell)
+                                   scenario.radio.get("scheme", "ours"), scenario.map_cell,
+                                   PolicyParams.from_dict(scenario.params))
     agents = {d.id: Agent(d.id, city, config.KEY, swarm) for d in scenario.drones}
     return city, world, radio, agents
 

@@ -26,7 +26,8 @@ def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
     x0, y0, x1, y1 = city.bounds
     sc = Scenario(name=f"random-{seed}", seed=seed, city=base.city, duration=base.duration,
                   dt=base.dt, drones=base.drones, sources=[], radio=dict(base.radio),
-                  policy=base.policy, environment=base.environment)
+                  policy=base.policy, params=dict(base.params),
+                  environment=base.environment)
 
     # intruder: away from rail and roads, so it is not explained away by map knowledge
     for _ in range(10_000):

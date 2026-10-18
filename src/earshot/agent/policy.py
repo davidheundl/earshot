@@ -13,7 +13,7 @@ Concept section 7, as reworked on 2026-10-11:
 - Allocation without a central node: each free drone bids on its nearest task and broadcasts a
   Claim (task, bid, lease, target point). Bid = NEAREST_BID - metres / 10, so the highest bid
   is the nearest drone (ties to the lower id); it follows the Verifier's distance as it flies.
-  The auction is by place: Claims within SAME_TASK_RADIUS + 100 m are one danger, whatever
+  The auction is by place: Claims within same_task_radius + 100 m are one danger, whatever
   cell each drone's averaged Suspicion falls in. A drone flies only after holding the best bid
   for a settle window, renews its lease while working, and releases with lease 0. A silent
   drone's lease lapses and someone else bids; a nearer drone that bids later takes over.
@@ -42,15 +42,8 @@ VERIFY = 0  # the only task kind (listening tasks were dropped: listeners hold t
 KIND_NAME = {VERIFY: "verify"}
 LEASE = 10.0  # s
 RENEW = 4.0
-SETTLE = 3.0  # > typical 3-hop Claim latency, so competing bids arrive before anyone flies
-VERIFY_MIN_CONFIDENCE = 0.5
-TOP_SUSPICIONS = 2  # only the strongest Suspicions spawn tasks; ghosts rank below the truth
-CONFIRMED_SHADOW = 200.0  # Suspicions this close to a confirmed drone are its side lobes
 NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nearest drone
-VERIFY_MIN_STRENGTH = 4.0  # log-odds; 8 waited ~4x as long to confirm (eval 2026-10-12), 0 floods
-SAME_TASK_RADIUS = 200.0  # a Claim of the same kind this close covers a drifted Suspicion
-ARRIVE = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
-DISMISS_AFTER = 8.0  # s at the target with no Suspicion left -> dismissed
+# the tunable thresholds (strength gate, settle window, ...) are state.PolicyParams: self.p
 SECTOR_CELL = 100.0
 
 
@@ -88,6 +81,7 @@ class Policy:
         self.me = me
         self.city = city
         self.swarm = swarm
+        self.p = swarm.params
         self.home = swarm.homes[me]
         self.fixed = me in swarm.fixed
         self.default = Mode.PATROL if swarm.policy == "no_perch" and not self.fixed \
@@ -139,16 +133,16 @@ class Policy:
         out: dict[int, _Task] = {}
         confirmed = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED]
         tracks = sorted((tr for tr in tracks if tr.status != TrackStatus.CONFIRMED and not any(
-            math.hypot(c.x - tr.x, c.y - tr.y) <= CONFIRMED_SHADOW for c in confirmed)),
+            math.hypot(c.x - tr.x, c.y - tr.y) <= self.p.confirmed_shadow for c in confirmed)),
             key=lambda tr: -tr.strength)
         if self.swarm.policy != "nearest":
             tracks = [tr for tr in tracks if tr.cls == TargetClass.DRONE
-                      and tr.status == TrackStatus.SUSPECTED][:TOP_SUSPICIONS]
+                      and tr.status == TrackStatus.SUSPECTED][:self.p.top_suspicions]
         for tr in tracks:
             if tr.status == TrackStatus.CONFIRMED:
                 continue
             if self.swarm.policy == "nearest":
-                if tr.confidence >= VERIFY_MIN_CONFIDENCE:
+                if tr.confidence >= self.p.verify_min_confidence:
                     tid = task_id(VERIFY, tr.track_id)
                     out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
                 continue
@@ -156,20 +150,21 @@ class Policy:
                 continue  # Explained: not every alarm deserves a drone
             # one Verifier per Suspicion and nobody else moves: the other drones hold their
             # posts to catch further dangers (no listening tasks)
-            if tr.confidence >= VERIFY_MIN_CONFIDENCE and tr.strength >= VERIFY_MIN_STRENGTH:
+            if (tr.confidence >= self.p.verify_min_confidence
+                    and tr.strength >= self.p.verify_min_strength):
                 tid = task_id(VERIFY, tr.track_id)
                 out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
         return out
 
     def _rival(self, task: _Task, active) -> tuple[float, int] | None:
         """The best (bid, -origin) among other drones' Claims for the same danger: any task
-        id of the same kind within SAME_TASK_RADIUS + 100 m. Each drone's (averaged)
+        id of the same kind within same_task_radius + 100 m. Each drone's (averaged)
         Suspicion can sit in a different 100 m cell, so the auction is by place, not by id."""
         best = None
         for (origin, tid), c in active.items():
             if origin == self.me or task_kind(tid) != task.kind:
                 continue
-            if math.hypot(c.x - task.x, c.y - task.y) <= SAME_TASK_RADIUS + 100.0:
+            if math.hypot(c.x - task.x, c.y - task.y) <= self.p.same_task_radius + 100.0:
                 best = max(best or (c.bid, -origin), (c.bid, -origin))
         return best
 
@@ -214,7 +209,7 @@ class Policy:
             self._task = None  # a nearer drone has it: let my lease lapse
             d.events.append({"t": round(t, 2), "kind": "outbid", "drone": self.me})
             return
-        if not self._settled and t - self._claimed_at >= SETTLE:
+        if not self._settled and t - self._claimed_at >= self.p.settle:
             self._settled = True
             d.events.append(self._event(t, "dispatch"))
         if t - self._last_claim >= RENEW:
@@ -222,15 +217,16 @@ class Policy:
 
     def _drifted(self, task: _Task, tasks) -> _Task | None:
         same = [x for x in tasks.values() if task_kind(x.tid) == task.kind
-                and math.hypot(x.x - task.x, x.y - task.y) <= SAME_TASK_RADIUS]
+                and math.hypot(x.x - task.x, x.y - task.y) <= self.p.same_task_radius]
         return min(same, key=lambda x: math.hypot(x.x - task.x, x.y - task.y), default=None)
 
     def _held(self, task: _Task, tracks) -> _Task | None:
         """A task once claimed lasts while its Suspicion does, below the strength gate too:
         strengths hover around the gate, and a claim dropped before it settles flies nobody."""
         same = [tr for tr in tracks if tr.cls == TargetClass.DRONE
-                and tr.status == TrackStatus.SUSPECTED and tr.confidence >= VERIFY_MIN_CONFIDENCE
-                and math.hypot(tr.x - task.x, tr.y - task.y) <= SAME_TASK_RADIUS]
+                and tr.status == TrackStatus.SUSPECTED
+                and tr.confidence >= self.p.verify_min_confidence
+                and math.hypot(tr.x - task.x, tr.y - task.y) <= self.p.same_task_radius]
         tr = min(same, key=lambda tr: math.hypot(tr.x - task.x, tr.y - task.y), default=None)
         return None if tr is None else _Task(task.tid, task.kind, tr.x, tr.y, tr, (tr.x, tr.y))
 
@@ -242,9 +238,10 @@ class Policy:
             self._release(t, d, "confirmed", confirmed)
             return
         dist = math.hypot(task.target[0] - s.x, task.target[1] - s.y)
-        if self._settled and dist <= ARRIVE and self._arrived_at is None:
+        if self._settled and dist <= self.p.arrive and self._arrived_at is None:
             self._arrived_at = t
-        if current is None and self._arrived_at is not None and t - self._arrived_at >= DISMISS_AFTER:
+        if (current is None and self._arrived_at is not None
+                and t - self._arrived_at >= self.p.dismiss_after):
             self._release(t, d, "dismissed")
         elif current is None and not self._settled:
             self._release(t, d, "obsolete")

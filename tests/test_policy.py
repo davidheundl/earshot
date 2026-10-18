@@ -53,3 +53,20 @@ def test_only_the_nearest_drone_verifies_and_the_others_hold(far_first):
     assert last[0].mode == Mode.VERIFY
     for far in (1, 2):
         assert last[far].mode == Mode.LISTEN and last[far].perch_site is not None
+
+
+def test_policy_params_override_the_hand_tuned_thresholds():
+    from earshot.state import PolicyParams
+
+    assert PolicyParams.from_dict({}) == PolicyParams()
+    with pytest.raises(ValueError):
+        PolicyParams.from_dict({"no_such_knob": 1})
+    gate = PolicyParams.from_dict({"verify_min_strength": 100.0})  # above any Suspicion
+    swarm = SwarmConfig.from_specs([DroneSpec(0, -300.0, -300.0, home=(-300.0, -300.0))],
+                                   params=gate)
+    p = Policy(0, CITY, swarm)
+    claims = []
+    for k in range(60):
+        t = k * 0.1
+        claims += p.decide(t, _perched(p, t), [SUSPICION], Belief(CITY), {}).claims
+    assert claims == []  # the default gate (4) lets this strength-9 Suspicion through

@@ -39,11 +39,12 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 - Evaluation: section 17 metrics, random scenarios, baselines "nearest drone always flies" and "no perching".
 - Dashboard: probability-map heatmap, Suspicions, tasks, sectors, decision log, camera panel.
 - Live arrays: SRP-PHAT bearing, array sensor, fixed drones.
+- Policy tuning: the decision thresholds as `PolicyParams` (scenario `params:`, `--params`), `earshot tune` (CMA-ES over seeded random worlds, paired check on held-out seeds).
 - Agent hot path cached between changes (merged Tracks, telemetry, summary; cheap overlap reject): no behaviour change, eval identical bit for bit.
 
 ## Third-party
 
-- Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`.
+- Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`; `cma` (pycma, BSD-3) for `earshot tune`.
 - Munich Airport map data: buildings (LoD2) and aerial photo (DOP) © Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0; © OpenStreetMap contributors, ODbL. Both need this attribution on the slide.
 - Planned: EfficientAT (MIT), DroneAudioset (MIT).
 

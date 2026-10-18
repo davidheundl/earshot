@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pillow>=12.3.0",
+    "cma>=4.5.0",
 ]
 
 [project.scripts]

@@ -48,6 +48,8 @@ def cmd_fast(a) -> None:
     t0 = time.time()
     for k in range(a.runs):
         sc = Scenario.load(a.scenario, seed=a.seed + k)
+        if a.params:
+            sc.params = {**sc.params, **_params(a)}
         if a.duration:
             sc.duration = a.duration
         if a.events:  # replay a recorded live session on top of the scenario
@@ -124,6 +126,15 @@ def _audio(a, sc):
 # -- eval ---------------------------------------------------------------------------------
 
 
+def _params(a) -> dict | None:
+    """--params FILE: a JSON object of state.PolicyParams overrides (`earshot tune` writes
+    best.json with them under "params")."""
+    if not a.params:
+        return None
+    d = json.loads(Path(a.params).read_text())
+    return d.get("params", d)
+
+
 def cmd_eval(a) -> None:
     from earshot.eval import as_json, evaluate, summarize
 
@@ -132,7 +143,7 @@ def cmd_eval(a) -> None:
     combos = [(p, s) for p in a.policy for s in (a.scheme or [None])]
     for policy, scheme in combos:
         label = policy + (f"/{scheme}" if scheme else "") + (f"/{a.bw:g}kHz" if a.bw else "")
-        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw)
+        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw, _params(a))
         raw[label] = as_json(rows)
         table.append(summarize(rows, label))
     cols = list(table[0])
@@ -144,6 +155,13 @@ def cmd_eval(a) -> None:
           "  (median [min-max] over seeds)")
     if a.out:
         Path(a.out).write_text(json.dumps({"summary": table, "runs": raw}, indent=1))
+
+
+def cmd_tune(a) -> None:
+    from earshot.tune import tune
+
+    tune(a.scenario, a.gens, a.pop, a.train, a.holdout, a.workers, a.sigma,
+         out=Path(a.out) if a.out else None)
 
 
 # -- live ---------------------------------------------------------------------------------
@@ -301,6 +319,7 @@ def main(argv=None) -> None:
                    help="recordings per class: <dir>/<class>/*.wav (else synthetic)")
     f.add_argument("--classifier", metavar="MOD:ATTR",
                    help="a trained sound classifier decides the class probabilities")
+    f.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
     f.set_defaults(fn=cmd_fast)
 
     lv = sub.add_parser("live", help="multi-process run with radio, agents and dashboard")
@@ -333,7 +352,20 @@ def main(argv=None) -> None:
     ev.add_argument("--scheme", nargs="+", choices=["ours", "flood", "unicast3"])
     ev.add_argument("--bw", type=float, help="LoRa bandwidth in kHz (default: scenario's)")
     ev.add_argument("--out", help="write all metrics as JSON")
+    ev.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
     ev.set_defaults(fn=cmd_eval)
+
+    tu = sub.add_parser("tune", help="CMA-ES over the policy parameters, judged on held-out seeds")
+    tu.add_argument("--scenario", default="random",
+                    help="a scenario YAML, or 'random' for a generated world per seed")
+    tu.add_argument("--gens", type=int, default=30)
+    tu.add_argument("--pop", type=int, default=12, help="candidates per generation")
+    tu.add_argument("--train", type=int, default=10, help="training seeds per candidate")
+    tu.add_argument("--holdout", type=int, default=20, help="held-out seeds for the final check")
+    tu.add_argument("--workers", type=int, help="processes (default: all cores)")
+    tu.add_argument("--sigma", type=float, default=0.25, help="CMA-ES step size in [0, 1] units")
+    tu.add_argument("--out", help="output directory (default: runs/tune-<time>)")
+    tu.set_defaults(fn=cmd_tune)
 
     ar = sub.add_parser("arrays", help="list microphone arrays (inputs with 4+ channels)")
     ar.set_defaults(fn=cmd_arrays)

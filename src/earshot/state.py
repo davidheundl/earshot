@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from earshot.messages import Mode, Sensor
 
@@ -64,6 +64,30 @@ class DroneSpec:
 
 
 @dataclass(frozen=True)
+class PolicyParams:
+    """The decision layer's tunable numbers (agent/policy.py), the same on every drone.
+    Defaults are the hand-tuned values; `earshot tune` searches them, `--params` loads them."""
+
+    verify_min_strength: float = 4.0  # log-odds; 8 waited ~4x as long to confirm, 0 floods
+    verify_min_confidence: float = 0.5
+    top_suspicions: int = 2  # only the strongest Suspicions spawn tasks; ghosts rank below
+    confirmed_shadow: float = 200.0  # m: Suspicions this close to a confirmed drone are side lobes
+    settle: float = 3.0  # s, > typical 3-hop Claim latency, so rival bids arrive before anyone flies
+    same_task_radius: float = 200.0  # m: a Claim of the same kind this close covers a drifted one
+    arrive: float = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
+    dismiss_after: float = 8.0  # s at the target with no Suspicion left -> dismissed
+
+    @classmethod
+    def from_dict(cls, d: dict | None) -> PolicyParams:
+        d = d or {}
+        unknown = set(d) - set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f"unknown policy params: {sorted(unknown)}")
+        p = cls(**d)
+        return replace(p, top_suspicions=int(p.top_suspicions))
+
+
+@dataclass(frozen=True)
 class SwarmConfig:
     """What every Agent knows before take-off: the swarm's homes and default Modes."""
 
@@ -73,10 +97,12 @@ class SwarmConfig:
     radio_scheme: str = "ours"  # "ours" | "flood" | "unicast3" (agent/store.py)
     fixed: frozenset = frozenset()  # drones that never leave their home roof
     map_cell: float = 20.0  # m, Probability Map cell
+    params: PolicyParams = field(default_factory=PolicyParams)
 
     @classmethod
     def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
-                   radio_scheme: str = "ours", map_cell: float = 20.0) -> SwarmConfig:
+                   radio_scheme: str = "ours", map_cell: float = 20.0,
+                   params: PolicyParams | None = None) -> SwarmConfig:
         return cls(
             homes={d.id: d.home or (d.x, d.y) for d in specs},
             defaults={d.id: d.default for d in specs},
@@ -84,4 +110,5 @@ class SwarmConfig:
             radio_scheme=radio_scheme,
             fixed=frozenset(d.id for d in specs if d.fixed),
             map_cell=map_cell,
+            params=params or PolicyParams(),
         )
