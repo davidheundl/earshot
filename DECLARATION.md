@@ -41,6 +41,7 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 - Live arrays: SRP-PHAT bearing, array sensor, fixed drones.
 - Policy tuning: the decision thresholds as `PolicyParams` (scenario `params:`, `--params`), `earshot tune` (CMA-ES over seeded random worlds, paired check on held-out seeds); a first tuned set (`scenarios/params/tuned-2026-10-18.json`, notes in `docs/tune-2026-10-18.md`) and the `two_drones` scenario.
 - Agent hot path cached between changes (merged Tracks, telemetry, summary; cheap overlap reject): no behaviour change, eval identical bit for bit.
+- Second-drone blind spot: a confirmed drone follows one map peak per update at most 15 m/s (no hopping from peak to peak), other peaks beside it are Explained side lobes, Confirmed Tracks merge only with Confirmed ones; `scenario_gen` adds a second intruder 250-500 m from the first in 30 % of random worlds (own random stream, other worlds unchanged).
 
 ## Third-party
 

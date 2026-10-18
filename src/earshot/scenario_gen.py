@@ -5,7 +5,10 @@
 The swarm (drone homes, default modes, radio) comes from a base scenario; per seed the
 generator places: one intruder (small or larger drone, 80 % with an RF link) loitering at a
 random spot away from rail and roads, 1-2 trains, 2-3 vehicles, 1-2 Nuisances next to random
-roofs, and in half the runs a Jam Zone over the intruder area.
+roofs, and in half the runs a Jam Zone over the intruder area. In SECOND_SHARE of the worlds a
+second intruder loiters 250-500 m from the first and arrives 30-150 s after it, so a policy
+that treats everything near a confirmed drone as its side lobe pays for it (`earshot tune`).
+It is drawn from its own random stream: the rest of each world stays as it was.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ import numpy as np
 from earshot.city import City
 from earshot.messages import TargetClass
 from earshot.scenario import JamZone, Scenario, Source
+
+SECOND_SHARE = 0.3  # worlds with a second intruder
 
 
 def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
@@ -73,4 +78,29 @@ def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
     if rng.random() < 0.5:
         t0 = start + float(rng.uniform(40, 120))
         sc.jamming.append(JamZone(t0, t0 + 40.0, (cx, cy), 350.0))
+
+    second = _second_intruder(np.random.default_rng(20_000 + seed), city, (cx, cy), start,
+                              base.duration)
+    if second is not None:
+        sc.sources.append(second)
     return sc
+
+
+def _second_intruder(rng, city: City, first: tuple[float, float], start: float,
+                     duration: float) -> Source | None:
+    if rng.random() >= SECOND_SHARE:
+        return None
+    x0, y0, x1, y1 = city.bounds
+    for _ in range(1000):
+        r, a = rng.uniform(250, 500), rng.uniform(0, 2 * math.pi)
+        cx, cy = first[0] + r * math.cos(a), first[1] + r * math.sin(a)
+        if (x0 + 200 <= cx <= x1 - 200 and y0 + 200 <= cy <= y1 - 400
+                and city.distance_to_rail(cx, cy) > 200 and city.distance_to_road(cx, cy) > 60):
+            break
+    else:
+        return None
+    t0 = min(duration - 120, start + float(rng.uniform(30, 150)))
+    loiter = [(cx + rng.uniform(-60, 60), cy + rng.uniform(-60, 60)) for _ in range(5)]
+    return Source("intruder2", TargetClass.DRONE, t0, min(duration - 5, t0 + rng.uniform(150, 220)),
+                  loiter, float(rng.choice([82.0, 89.0], p=[0.3, 0.7])),
+                  ("2g4",) if rng.random() < 0.8 else ())

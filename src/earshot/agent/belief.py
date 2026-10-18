@@ -70,6 +70,7 @@ MAX_TRACKS = 6
 EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained
 CONFIRM_RADIUS = 80.0  # a drone Track this close to a camera confirmation is Confirmed
 CONFIRM_FOLLOW = 150.0  # m a confirmed drone may move between Track updates and stay Confirmed
+CONFIRM_SPEED = 15.0  # m/s a confirmed point moves at most: it follows the drone, not ghosts
 FAULT_WINDOW = 30.0  # s of an origin's bearings that are checked
 FAULT_MIN_CHECKS = 8  # bearings needed in the window before judging
 FAULT_STRONG = 8.0  # threat log-odds the others reach on their own; ghosts stay at 3-7
@@ -134,8 +135,10 @@ def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
     mean of their positions (weight exp(log-odds)), the most likely place to find it: zones
     of similar strength average evenly, a clearly weaker Ghost barely pulls (the peak
     probability saturates near 1 for the truth and Ghosts alike, so it cannot rank them).
-    The merged ellipse is the strongest member's, moved to the mean; it is CONFIRMED if any
-    member is. Other Tracks pass unchanged; a merged one takes its first member's place."""
+    The merged ellipse is the strongest member's, moved to the mean. A Confirmed Track merges
+    only with Confirmed ones: a Suspicion beside it may be a second drone, and the policy's
+    confirmed_shadow decides whether it is a side lobe. Other Tracks pass unchanged; a merged
+    one takes its first member's place."""
     idx = [i for i, tr in enumerate(tracks) if mergeable(tr)]
     root = {i: i for i in idx}
 
@@ -145,7 +148,7 @@ def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
         return i
 
     for a, b in combinations(idx, 2):
-        if _overlap(tracks[a], tracks[b]):
+        if _confirmed(tracks[a]) == _confirmed(tracks[b]) and _overlap(tracks[a], tracks[b]):
             ra, rb = find(a), find(b)
             root[max(ra, rb)] = min(ra, rb)
     groups: dict[int, list[TrackEst]] = {}
@@ -162,6 +165,17 @@ def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
 
 def mergeable(tr: TrackEst) -> bool:
     return tr.cls == TargetClass.DRONE and tr.status != TrackStatus.EXPLAINED
+
+
+def _toward(x: float, y: float, gx: float, gy: float, t0: float, t1: float):
+    """(x, y) moved toward (gx, gy) by at most CONFIRM_SPEED over t1 - t0 (at least 1 s)."""
+    d = math.hypot(gx - x, gy - y)
+    step = min(d, CONFIRM_SPEED * max(1.0, t1 - t0))
+    return (x, y) if d == 0 else (x + (gx - x) * step / d, y + (gy - y) * step / d)
+
+
+def _confirmed(tr: TrackEst) -> bool:
+    return tr.status == TrackStatus.CONFIRMED
 
 
 def _reach(tr: TrackEst, theta: float) -> float:
@@ -188,11 +202,9 @@ def _merged(group: list[TrackEst], bounds) -> TrackEst:
     x = sum(wi * tr.x for wi, tr in zip(w, group, strict=True)) / sum(w)
     y = sum(wi * tr.y for wi, tr in zip(w, group, strict=True)) / sum(w)
     best = max(group, key=lambda tr: tr.strength)
-    confirmed = any(tr.status == TrackStatus.CONFIRMED for tr in group)
     return replace(best, track_id=cell_id(x, y, bounds), x=x, y=y,
                    confidence=max(tr.confidence for tr in group),
-                   origins=max(tr.origins for tr in group),
-                   status=TrackStatus.CONFIRMED if confirmed else best.status)
+                   origins=max(tr.origins for tr in group))
 
 
 _PRIORS: tuple[City, float, np.ndarray] | None = None  # the last (City, cell)'s priors
@@ -344,15 +356,17 @@ class Belief:
     def set_track(self, track: Track) -> None:
         self._tracks_rx[(track.header.origin, track.track_id)] = track
         if track.status == TrackStatus.CONFIRMED:
-            self._confirm(track.x, track.y, track.t)
+            self._confirm(track.x, track.y, track.t, seen=False)
 
-    def _confirm(self, x: float, y: float, t: float) -> None:
+    def _confirm(self, x: float, y: float, t: float, seen: bool = True) -> None:
         """Remember a camera-confirmed drone. A report near a known one moves it along (the
-        drone flies on); it never seeds a second point, so 'confirmed' cannot spread."""
+        drone flies on); it never seeds a second point, so 'confirmed' cannot spread. A
+        neighbour's Confirmed Track (not `seen` by a camera) moves it no faster than
+        CONFIRM_SPEED: its Track is a map peak, which can sit on a Ghost."""
         for i, (cx, cy, ct) in enumerate(self._confirmed):
             if math.hypot(cx - x, cy - y) <= CONFIRM_FOLLOW:
                 if t >= ct:
-                    self._confirmed[i] = (x, y, t)
+                    self._confirmed[i] = (x, y, t) if seen else (*_toward(cx, cy, x, y, ct, t), t)
                 return
         self._confirmed.append((x, y, t))
 
@@ -523,22 +537,45 @@ class Belief:
                 track_id=cell_id(mx, my, self.city.bounds), x=float(mx), y=float(my),
                 semi_major=a, semi_minor=b, angle=ang, cls=cls,
                 confidence=float(post[ci][iy, ix]),
-                status=self._status(cls, mx, my, t_now), origins=origins,
+                status=self._status(cls, mx, my), origins=origins,
                 strength=float(zt[iy, ix]),
                 support=by_sensor + ((-2, "prior", prior),),
             ))
             alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
+        out = self._follow_confirmed(out, t_now)
         self._track_cache = out  # raw peaks: the Faulty Sensor check wants tight ellipses
         return merge_overlapping(out, self.city.bounds)
 
-    def _status(self, cls: TargetClass, x: float, y: float, t_now: float) -> TrackStatus:
+    def _follow_confirmed(self, peaks: list[TrackEst], t_now: float) -> list[TrackEst]:
+        """A confirmed drone stays confirmed as it flies on: each confirmed point takes the
+        nearest drone peak within CONFIRM_FOLLOW, once per extraction, and moves toward it
+        (at most CONFIRM_SPEED). That peak is CONFIRMED; other drone peaks that close to a
+        confirmed point are its side lobes, Explained. So the point cannot hop from peak to
+        peak onto a second drone, and side lobes are not broadcast as Confirmed."""
+        self.confirmed_near(0.0, 0.0, t_now)  # drop expired points
+        out = list(peaks)
+        taken: set[int] = set()
+        for i, (cx, cy, ct) in enumerate(list(self._confirmed)):
+            near = [(math.hypot(tr.x - cx, tr.y - cy), j) for j, tr in enumerate(out)
+                    if j not in taken and tr.cls == TargetClass.DRONE
+                    and tr.status == TrackStatus.SUSPECTED
+                    and math.hypot(tr.x - cx, tr.y - cy) <= CONFIRM_FOLLOW]
+            if not near:
+                continue
+            _, j = min(near)
+            taken.add(j)
+            out[j] = replace(out[j], status=TrackStatus.CONFIRMED)
+            self._confirmed[i] = (*_toward(cx, cy, out[j].x, out[j].y, ct, t_now), t_now)
+        return [replace(tr, status=TrackStatus.EXPLAINED)
+                if tr.cls == TargetClass.DRONE and tr.status == TrackStatus.SUSPECTED
+                and self.confirmed_near(tr.x, tr.y, t_now, radius=CONFIRM_FOLLOW) else tr
+                for tr in out]
+
+    def _status(self, cls: TargetClass, x: float, y: float) -> TrackStatus:
         if cls == TargetClass.TRAIN and self.city.distance_to_rail(x, y) <= EXPLAIN_DISTANCE:
             return TrackStatus.EXPLAINED
         if cls == TargetClass.VEHICLE and self.city.distance_to_road(x, y) <= EXPLAIN_DISTANCE:
             return TrackStatus.EXPLAINED
-        if cls == TargetClass.DRONE and self.confirmed_near(x, y, t_now, radius=CONFIRM_FOLLOW):
-            self._confirm(x, y, t_now)  # a confirmed drone stays confirmed as it flies on
-            return TrackStatus.CONFIRMED
         return TrackStatus.SUSPECTED
 
     def received_tracks(self, t_now: float, max_age: float = 15.0) -> list[Track]:

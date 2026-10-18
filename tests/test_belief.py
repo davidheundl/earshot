@@ -5,7 +5,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from earshot.agent.belief import TAU, Belief, TrackEst, cell_id, merge_overlapping
+from earshot.agent.belief import (
+    CONFIRM_SPEED,
+    TAU,
+    Belief,
+    TrackEst,
+    cell_id,
+    merge_overlapping,
+)
 from earshot.city import City
 from earshot.messages import Header, Mode, Observation, Sensor, TargetClass, TrackStatus
 
@@ -166,7 +173,22 @@ def test_zones_that_only_touch_end_to_end_overlap_and_side_by_side_ones_do_not()
     assert len(merge_overlapping([_zone(0, 0), _zone(0, 130)], CITY.bounds)) == 2
 
 
-def test_a_confirmed_zone_confirms_the_merged_one():
-    out = merge_overlapping([_zone(0, 0), _zone(100, 0, status=TrackStatus.CONFIRMED)],
+def test_a_suspicion_beside_a_confirmed_zone_stays_its_own():
+    # it may be a second drone: the policy's confirmed_shadow decides, the merge does not hide it
+    confirmed = _zone(100, 0, status=TrackStatus.CONFIRMED)
+    out = merge_overlapping([_zone(0, 0), confirmed, _zone(150, 0, status=TrackStatus.CONFIRMED)],
                             CITY.bounds)
-    assert len(out) == 1 and out[0].status == TrackStatus.CONFIRMED
+    assert [tr.status for tr in out] == [TrackStatus.SUSPECTED, TrackStatus.CONFIRMED]
+    assert out[1].x == pytest.approx(125.0)
+
+
+def test_a_confirmed_point_follows_one_peak_and_never_hops_on():
+    b = Belief(CITY)
+    b._confirmed = [(0.0, 0.0, 10.0)]
+    near, lobe, next_one = _zone(100, 0), _zone(-20, 130), _zone(220, 0)
+    out = b._follow_confirmed([near, lobe, next_one], 11.0)
+    # the nearest peak is the drone; a peak beside it is its side lobe; one beyond is not its
+    assert [tr.status for tr in out] == [TrackStatus.CONFIRMED, TrackStatus.EXPLAINED,
+                                         TrackStatus.SUSPECTED]
+    (x, y, t), = b._confirmed
+    assert (x, y, t) == (pytest.approx(CONFIRM_SPEED), pytest.approx(0.0), 11.0)
