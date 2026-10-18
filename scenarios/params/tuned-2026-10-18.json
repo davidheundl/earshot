@@ -1,0 +1,13 @@
+{
+ "params": {
+  "verify_min_strength": 4.930061565445256,
+  "verify_min_confidence": 0.20728424577174445,
+  "top_suspicions": 3,
+  "confirmed_shadow": 358.9921248801305,
+  "settle": 5.088063855046238,
+  "same_task_radius": 286.7771964279772,
+  "arrive": 45.06012730144731,
+  "dismiss_after": 12.329056397927006
+ },
+ "note": "earshot tune 2026-10-18: 30 gens x 12 x 10 random-world seeds; train cost 357 -> 182"
+}

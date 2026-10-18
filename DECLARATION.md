@@ -39,7 +39,7 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 - Evaluation: section 17 metrics, random scenarios, baselines "nearest drone always flies" and "no perching".
 - Dashboard: probability-map heatmap, Suspicions, tasks, sectors, decision log, camera panel.
 - Live arrays: SRP-PHAT bearing, array sensor, fixed drones.
-- Policy tuning: the decision thresholds as `PolicyParams` (scenario `params:`, `--params`), `earshot tune` (CMA-ES over seeded random worlds, paired check on held-out seeds).
+- Policy tuning: the decision thresholds as `PolicyParams` (scenario `params:`, `--params`), `earshot tune` (CMA-ES over seeded random worlds, paired check on held-out seeds); a first tuned set (`scenarios/params/tuned-2026-10-18.json`, notes in `docs/tune-2026-10-18.md`) and the `two_drones` scenario.
 - Agent hot path cached between changes (merged Tracks, telemetry, summary; cheap overlap reject): no behaviour change, eval identical bit for bit.
 
 ## Third-party
