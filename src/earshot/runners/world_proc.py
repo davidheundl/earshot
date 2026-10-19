@@ -30,6 +30,7 @@ from earshot import config
 from earshot.city import City
 from earshot.runners.wire import command_from_dict, pack, sensed_to_dict, topic, unpack
 from earshot.scenario import Scenario
+from earshot.sensors import build_perception
 from earshot.world import World
 
 SAME_INTRUDER_M = 150.0  # Confirmed points this close count as one intruder (belief's follow radius)
@@ -74,9 +75,9 @@ class VerifyCounts:
 
 def make_backend(name: str, city: City, scenario: Scenario):
     if name == "twin2d":
-        from earshot.backend.twin2d import Twin2D
+        from earshot.backend.twin2d import Kinematics, Twin2D
 
-        return Twin2D(city, scenario.drones), True
+        return Twin2D(city, scenario.drones, Kinematics.for_scenario(scenario)), True
     if name == "webots":
         from earshot.backend.webots import WebotsBackend
 
@@ -98,8 +99,12 @@ def main(argv=None) -> None:
                     help="stop after this many sim seconds (default: run until stopped; the "
                          "scripted Scenario ends on time and the swarm keeps going)")
     ap.add_argument("--audio", action="store_true", help="render sound as waveforms")
-    ap.add_argument("--sounds", default="data/sounds", help="recordings: <dir>/<class>/*.wav")
-    ap.add_argument("--classifier", metavar="MOD:ATTR", help="trained sound classifier")
+    ap.add_argument("--sounds", help="recordings: <dir>/<class>/*.wav (default: the "
+                    "Scenario's audio.sounds, else data/sounds)")
+    ap.add_argument("--classifier", metavar="MOD:ATTR",
+                    help="trained sound classifier (default: the Scenario's; 'none' for off)")
+    ap.add_argument("--camera", choices=["yolo", "truth"],
+                    help="Verifier camera (default: the Scenario's; webots only)")
     a = ap.parse_args(argv)
 
     scenario = Scenario.load(a.scenario)
@@ -111,14 +116,15 @@ def main(argv=None) -> None:
         scenario.events = sorted(scenario.events + replay, key=lambda e: e["t"])
     city = City.load(Path(scenario.city))
     backend, self_paced = make_backend(a.backend, city, scenario)
-    audio = None
-    if a.audio or a.classifier:
-        from earshot.sensors import Audio
-        from earshot.sensors import waveform as wf
-
-        audio = Audio(wf.Mixer(wf.ClipBank(Path(a.sounds))),
-                      wf.load_classifier(a.classifier) if a.classifier else None)
-    world = World(scenario, city, backend, audio)
+    audio, camera = build_perception(scenario, classifier=a.classifier, sounds=a.sounds,
+                                     audio=a.audio, camera=a.camera,
+                                     renders=a.backend == "webots",
+                                     log=lambda m: print(m, flush=True))
+    if audio is not None and audio.classifier is not None:
+        print(f"[world] sound: {a.classifier or scenario.audio['classifier']}", flush=True)
+    if camera is not None:
+        print(f"[world] camera: YOLO {Path(camera.weights).name} on {camera.device}", flush=True)
+    world = World(scenario, city, backend, audio, camera)
 
     ctx = zmq.Context.instance()
     ctx.setsockopt(zmq.LINGER, 0)  # never block exit on unsent messages

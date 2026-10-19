@@ -1,0 +1,163 @@
+"""Verifier camera detector: a trained YOLO model on the rendered Verifier view.
+
+World side only: the World feeds it the Verifier's camera images (Webots renders them) and
+turns its verdicts into CAMERA SensorReadings; Agents never see an image (ADR 0001).
+
+    det = YoloDetector()                 # lazy: ultralytics loads on the first frame
+    det.observe(frame)                   # every rendered tick: {"bgra", "w", "h", "fov", "yaw", "pitch"}
+    det.verdict() -> CameraVerdict       # once per 1 s sensor window
+
+Verification is multi-frame, as in Nikolas' tools/cv_demos.py: a box counts once ByteTrack has
+followed the same quadcopter for `confirm_frames` consecutive processed frames at
+`verify_conf` or more. "Nothing here" is only said after `clear_windows` windows without any
+quadcopter box, and only for `clear_radius`, the range the model actually sees a drone at
+(data/cv/verifier-highres-20261015/REPORT.md). Anything in between is inconclusive: no reading.
+
+The model is TomSmail/drone-yolo-v1 (YOLOv8n, classes quadcopter / fixed-wing, CC BY 4.0),
+fetched by Nikolas into data/cv/verifier-demo-20261015/evaluation/. Needs `uv sync --group cv`.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+DEFAULT_WEIGHTS = (Path(__file__).resolve().parents[3]
+                   / "data/cv/verifier-demo-20261015/evaluation/drone-best.pt")
+TARGET = "quadcopter"
+MIN_SIGMA_DEG = 2.0
+
+
+@dataclass(frozen=True)
+class CameraVerdict:
+    hits: list[tuple[float, float, float]]  # (bearing deg, sigma deg, confidence), verified tracks
+    clear_radius: float | None  # m looked at and empty; None = inconclusive
+
+
+def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, float]:
+    """Bearing (deg, 0 = north, clockwise) and sigma of a box centre in a camera pitched down.
+
+    Camera axes: x right, y down, z forward; `fov` is horizontal (Webots fieldOfView, rad),
+    `pitch` positive down (rad), `yaw` the camera heading in degrees."""
+    w, h = frame["w"], frame["h"]
+    f = w / (2.0 * math.tan(frame["fov"] / 2.0))
+    xc, yc = (cx - w / 2.0) / f, (cy - h / 2.0) / f
+    p = frame.get("pitch", 0.0)
+    off = math.degrees(math.atan2(xc, math.cos(p) - yc * math.sin(p)))
+    sigma = max(MIN_SIGMA_DEG, math.degrees(math.atan2(bw / 2.0, f)))
+    return (frame["yaw"] + off) % 360.0, sigma
+
+
+@dataclass
+class YoloDetector:
+    weights: str | Path = DEFAULT_WEIGHTS
+    conf: float = 0.25  # a box at all
+    verify_conf: float = 0.6  # a box that counts towards a track's streak (0.75 never confirmed
+    #                           the 15 m video; 0.6 did by frame 3 with no false confirm)
+    confirm_frames: int = 3
+    clear_windows: int = 3
+    clear_radius: float = 40.0
+    imgsz: int | None = None  # default: the image width
+    every: int = 1  # process every n-th rendered frame (inference cost vs. streak speed)
+    device: str | None = None  # default: EARSHOT_CV_DEVICE, else mps when available, else cpu
+    model: object | None = None  # injected in tests; else loaded on first use
+
+    _streaks: dict[int, int] = field(default_factory=dict)
+    _window_hits: dict[int, tuple[float, float, float]] = field(default_factory=dict)
+    _window_boxes: int = 0
+    _empty_windows: int = 0
+    _frames: int = 0
+    _fresh: bool = True  # next track call re-initialises ByteTrack
+    infer_ms: list[float] = field(default_factory=list)
+
+    def reset(self) -> None:
+        """A new Verifier, or the camera went off: forget tracks and streaks."""
+        self._streaks.clear()
+        self._window_hits.clear()
+        self._window_boxes = 0
+        self._empty_windows = 0
+        self._frames = 0
+        self._fresh = True
+
+    def observe(self, frame: dict) -> None:
+        if not frame.get("bgra"):
+            return
+        self._frames += 1
+        if (self._frames - 1) % self.every:
+            return
+        img = np.frombuffer(frame["bgra"], np.uint8).reshape(frame["h"], frame["w"], 4)[..., :3]
+        model = self._model()
+        res = model.track(np.ascontiguousarray(img), persist=not self._fresh, conf=self.conf,
+                          imgsz=self.imgsz or frame["w"], tracker="bytetrack.yaml",
+                          device=self._device(), verbose=False)[0]
+        self._fresh = False
+        speed = getattr(res, "speed", None) or {}
+        if "inference" in speed:
+            self.infer_ms.append(float(speed["inference"]))
+        names = {int(k): str(v).lower() for k, v in model.names.items()}
+        current: dict[int, int] = {}
+        for box in res.boxes:
+            if names.get(int(box.cls[0])) != TARGET:
+                continue
+            self._window_boxes += 1
+            score = float(box.conf[0])
+            if box.id is None or score < self.verify_conf:
+                continue
+            key = int(box.id[0])
+            current[key] = self._streaks.get(key, 0) + 1
+            if current[key] >= self.confirm_frames:
+                x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
+                b, s = box_bearing((x1 + x2) / 2.0, (y1 + y2) / 2.0, x2 - x1, frame)
+                self._window_hits[key] = (b, s, score)
+        self._streaks = current  # a missed frame resets a track's streak
+
+    def verdict(self) -> CameraVerdict:
+        hits = list(self._window_hits.values())
+        self._empty_windows = 0 if self._window_boxes else self._empty_windows + 1
+        clear = self.clear_radius if self._empty_windows >= self.clear_windows else None
+        self._window_hits.clear()
+        self._window_boxes = 0
+        return CameraVerdict(hits, clear)
+
+    def warm(self) -> None:
+        """Load the model now (and fail now) rather than on the first Verifier frame."""
+        self._model()
+        self._device()
+
+    def _device(self) -> str:
+        if self.device is None:
+            self.device = os.environ.get("EARSHOT_CV_DEVICE") or _best_device()
+        return self.device
+
+    def _model(self):
+        if self.model is None:
+            try:
+                from ultralytics import YOLO
+            except ImportError as exc:  # pragma: no cover - depends on the environment
+                raise RuntimeError("the camera detector needs `uv sync --group cv`") from exc
+            if not Path(self.weights).exists():
+                raise FileNotFoundError(f"camera detector weights not found: {self.weights}")
+            self.model = YOLO(str(self.weights))
+        return self.model
+
+
+def _best_device() -> str:
+    try:
+        import torch
+
+        return "mps" if torch.backends.mps.is_available() else "cpu"
+    except ImportError:  # pragma: no cover
+        return "cpu"
+
+
+def load_detector(spec: dict | None) -> YoloDetector | None:
+    """`camera:` from a Scenario or the CLI: {"detector": "yolo", ...YoloDetector fields}.
+    Anything else (absent, "truth") keeps the ground-truth stand-in."""
+    if not spec or spec.get("detector", "truth") != "yolo":
+        return None
+    kw = {k: v for k, v in spec.items() if k not in ("detector", "standoff", "resolution")}
+    return YoloDetector(**kw)

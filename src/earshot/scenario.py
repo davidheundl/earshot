@@ -163,6 +163,8 @@ class Scenario:
     policy: str = "earshot"  # see state.SwarmConfig
     map_cell: float = 20.0  # m, Probability Map cell
     params: dict = field(default_factory=dict)  # state.PolicyParams overrides
+    audio: dict = field(default_factory=dict)  # {classifier: "mod:attr", sounds: dir}
+    camera: dict = field(default_factory=dict)  # {detector: yolo, ...}: sensors/camera.py
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     _live_count: int = 0
@@ -201,6 +203,8 @@ class Scenario:
             policy=d.get("policy", "earshot"),
             map_cell=float(d.get("map_cell", 20.0)),
             params=dict(d.get("params") or {}),
+            audio=dict(d.get("audio") or {}),
+            camera=dict(d.get("camera") or {}),
             sources=[
                 Source(
                     id=s["id"],

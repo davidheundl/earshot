@@ -162,19 +162,17 @@ def cmd_arrays(_a) -> None:
 
 
 def _audio(a, sc):
-    """(sensors.Audio, sensors.export.AudioExport) as the flags ask, or Nones."""
-    if not (a.audio or a.classifier):
-        return None, None
-    from earshot.sensors import Audio
-    from earshot.sensors import waveform as wf
+    """(sensors.Audio, sensors.export.AudioExport) as the flags and the Scenario's `audio:`
+    ask, or Nones. Fast mode renders no images, so the camera stays the stand-in."""
+    from earshot.sensors import build_perception
     from earshot.sensors.export import AudioExport
 
-    mixer = wf.Mixer(wf.ClipBank(Path(a.sounds)))
-    clf = wf.load_classifier(a.classifier) if a.classifier else None
+    audio, _ = build_perception(sc, classifier=a.classifier, sounds=a.sounds,
+                                audio=bool(a.audio))
     out = None
-    if a.audio:
-        out = AudioExport(Path(a.audio) / f"{sc.name}-seed{sc.seed}", mixer, a.audio_beams)
-    return Audio(mixer, clf), out
+    if a.audio and audio is not None:
+        out = AudioExport(Path(a.audio) / f"{sc.name}-seed{sc.seed}", audio.mixer, a.audio_beams)
+    return audio, out
 
 
 # -- eval ---------------------------------------------------------------------------------
@@ -357,6 +355,8 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
         extra = ["--array", arrays[str(d.id)]] if str(d.id) in arrays else []
         if extra and a.classifier:
             extra += ["--classifier", a.classifier]
+        if a.params:
+            extra += ["--params", a.params]
         spawn(["earshot.runners.agent_proc", "--id", str(d.id), "--scenario", a.scenario, *extra])
     if not a.no_dashboard:
         spawn(["earshot.dashboard.server", "--scenario", a.scenario])
@@ -369,9 +369,13 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
     if a.duration:
         world_args += ["--duration", str(a.duration)]
     if a.audio:
-        world_args += ["--audio", "--sounds", a.sounds]
+        world_args += ["--audio"]
+    if a.sounds:
+        world_args += ["--sounds", a.sounds]
     if a.classifier:
         world_args += ["--classifier", a.classifier]
+    if a.camera:
+        world_args += ["--camera", a.camera]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
     world, reported = procs[-1], set()
@@ -464,8 +468,9 @@ def main(argv=None) -> None:
                    help="render sound as waveforms and write them to DIR/<name>-seed<k>/")
     f.add_argument("--audio-beams", action="store_true",
                    help="with --audio, also write each Source's beam (what a classifier gets)")
-    f.add_argument("--sounds", default="data/sounds",
-                   help="recordings per class: <dir>/<class>/*.wav (else synthetic)")
+    f.add_argument("--sounds",
+                   help="recordings per class: <dir>/<class>/*.wav (default: the Scenario's "
+                        "audio.sounds, else data/sounds; synthetic when empty)")
     f.add_argument("--classifier", metavar="MOD:ATTR",
                    help="a trained sound classifier decides the class probabilities")
     f.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
@@ -484,10 +489,16 @@ def main(argv=None) -> None:
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
     lv.add_argument("--audio", action="store_true",
                     help="render sound as waveforms; the dashboard's Listen button plays them")
-    lv.add_argument("--sounds", default="data/sounds",
-                    help="recordings per class: <dir>/<class>/*.wav (else synthetic)")
+    lv.add_argument("--sounds",
+                    help="recordings per class: <dir>/<class>/*.wav (default: the Scenario's "
+                         "audio.sounds, else data/sounds; synthetic when empty)")
     lv.add_argument("--classifier", metavar="MOD:ATTR",
-                    help="a trained sound classifier decides the class probabilities")
+                    help="a trained sound classifier decides the class probabilities "
+                         "(default: the Scenario's audio.classifier; 'none' for the stand-in)")
+    lv.add_argument("--camera", choices=["yolo", "truth"],
+                    help="Verifier camera: the trained detector or the ground-truth stand-in "
+                         "(default: the Scenario's camera.detector; yolo needs --backend webots)")
+    lv.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
     lv.add_argument("--no-webots-view", action="store_true",
                     help="don't draw Webots' own 3D window (the drone cameras still render)")
     lv.add_argument("--no-gazebo-view", action="store_true",

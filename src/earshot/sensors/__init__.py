@@ -25,6 +25,7 @@ from earshot.scenario import Scenario
 from earshot.sensors import acoustics as ac
 from earshot.sensors import rf
 from earshot.sensors import waveform as wf
+from earshot.sensors.camera import YoloDetector
 from earshot.state import DroneState, SensorReading
 
 WINDOW_S = 1.0
@@ -35,6 +36,7 @@ MASKING_OFFSET_DB = wf.MASKING_OFFSET_DB
 LEVEL_NOISE_DB = 2.0
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
 CAMERA_P_DETECT = 0.9
+CAMERA_MATCH_DEG = 5.0  # a detector bearing this close to a Source is that Source (truth only)
 
 # Placeholder for the EfficientAT head: true class -> predicted class weights. The fan
 # (NOTHING) is mistaken for a drone unless trained as a negative (section 5.1).
@@ -71,19 +73,26 @@ class Detection:
 
 class SensorSuite:
     def __init__(self, city: City, scenario: Scenario, rng: np.random.Generator,
-                 audio: Audio | None = None):
+                 audio: Audio | None = None, camera: YoloDetector | None = None):
         self.city = city
         self.scenario = scenario
         self.rng = rng
         self.audio = audio
+        self.camera = camera  # a trained detector on rendered frames; else the stand-in
         self.windows: list[wf.AudioWindow] = []  # rendered audio, collected by the World
         self._window: dict[int, int] = {}
+        self._cam_drone: int | None = None
 
     def sense(self, s: DroneState, t: float, frame: dict | None = None) -> list[Detection]:
         """`frame`: the Verifier's camera frame when a renderer exists (Webots); its
         recognised objects then decide what the camera sees."""
         faults = {f.kind for f in self.scenario.faults_for(s.id, t)}
         out: list[Detection] = []
+        if self.camera is not None and s.camera_on and frame is not None and "bgra" in frame:
+            if self._cam_drone != s.id:  # a new Verifier: its view starts from scratch
+                self.camera.reset()
+                self._cam_drone = s.id
+            self.camera.observe(frame)  # every rendered tick; the verdict comes per window
         if not self._new_window(s.id, t):
             return out
         sources = self.scenario.active_sources(t)
@@ -190,6 +199,8 @@ class SensorSuite:
     # -- camera (ground-truth stand-in for the Webots detector, with an error rate) ------
 
     def _camera(self, s: DroneState, sources, frame: dict | None = None) -> list[Detection]:
+        if self.camera is not None and frame is not None and "bgra" in frame:
+            return self._detected(s, sources)
         out = []
         seen = None
         if frame is not None and "objects" in frame:
@@ -211,3 +222,64 @@ class SensorSuite:
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing, 0.0),
                                  None, 0.0))
         return out
+
+    def _detected(self, s: DroneState, sources) -> list[Detection]:
+        """The trained detector's verdict for this window: verified tracks as drone bearings,
+        "nothing" with the radius it really cleared, or no reading when inconclusive. Truth
+        (logs and metrics only) is the active Source nearest in bearing, within 5 deg."""
+        v = self.camera.verdict()
+        out = []
+        for b, sigma, _ in v.hits:
+            truth, best = None, CAMERA_MATCH_DEG
+            for src, (sx, sy) in sources:
+                d = math.hypot(sx - s.x, sy - s.y)
+                err = abs((math.degrees(math.atan2(sx - s.x, sy - s.y)) - b + 180.0) % 360.0
+                          - 180.0)
+                if d <= CAMERA_RANGE and err <= best:
+                    truth, best = src.id, err
+            probs = tuple(0.95 if c == TargetClass.DRONE else 0.05 / 3 for c in TargetClass)
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0), truth, 99.0))
+        if not out and v.clear_radius is not None:
+            nothing = (0.0, 0.0, 0.0, 1.0)
+            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
+                                               v.clear_radius), None, 0.0))
+        return out
+
+
+def build_perception(scenario: Scenario, *, classifier: str | None = None,
+                     sounds: str | None = None, audio: bool = False,
+                     camera: str | None = None, renders: bool = False,
+                     log=print) -> tuple[Audio | None, YoloDetector | None]:
+    """The trained models a run uses: the Scenario's `audio:` and `camera:`, overridden by the
+    command line (`classifier` "none" and `camera` "truth" turn them off). The camera detector
+    needs rendered images (`renders`: Webots). A model that cannot load (no torch or
+    ultralytics, missing weights) is reported and replaced by its stand-in, never fatal."""
+    clf_spec = classifier if classifier is not None else scenario.audio.get("classifier")
+    clf_spec = None if clf_spec in (None, "", "none") else clf_spec
+    clf = None
+    if clf_spec:
+        try:
+            clf = wf.load_classifier(clf_spec)
+        except (ImportError, OSError, RuntimeError, AttributeError) as e:
+            log(f"[sensors] sound classifier {clf_spec} unavailable ({e}); CONFUSION stand-in")
+    snd = None
+    if audio or clf is not None:
+        from pathlib import Path
+
+        root = sounds or scenario.audio.get("sounds", "data/sounds")
+        snd = Audio(wf.Mixer(wf.ClipBank(Path(root))), clf)
+
+    spec = dict(scenario.camera)
+    if camera is not None:
+        spec["detector"] = camera
+    det = None
+    if renders and spec.get("detector") == "yolo":
+        from earshot.sensors.camera import load_detector
+
+        det = load_detector(spec)
+        try:
+            det.warm()
+        except (ImportError, OSError, RuntimeError) as e:
+            log(f"[sensors] camera detector unavailable ({e}); ground-truth stand-in")
+            det = None
+    return snd, det

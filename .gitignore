@@ -18,6 +18,7 @@ webots/worlds/.*.wbproj
 webots/worlds/*_assets/
 webots/worlds/valley.wbt
 webots/worlds/muc.wbt
+webots/worlds/muc_full.wbt
 
 # real recordings dropped in by tools/fetch_sound_data.py (dataset licences: not redistributed)
 data/sounds/*/

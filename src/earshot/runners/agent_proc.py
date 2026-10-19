@@ -8,6 +8,7 @@ Talks to nobody but the world (sensing, commands) and the radio (frames).
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import zmq
@@ -38,6 +39,7 @@ def main(argv=None) -> None:
                     "optionally @rotation_deg, instead of the simulated sound sensor")
     ap.add_argument("--classifier", metavar="MOD:ATTR",
                     help="with --array, a trained sound classifier decides the class")
+    ap.add_argument("--params", help="PolicyParams JSON over the Scenario's (earshot tune)")
     a = ap.parse_args(argv)
     array = None
     if a.array:
@@ -53,9 +55,13 @@ def main(argv=None) -> None:
                             classifier=clf)
         print(f"[agent {a.id}] sound from array {dev!r}, rotation {rot or 0} deg", flush=True)
     scenario = Scenario.load(a.scenario)
+    params = dict(scenario.params)
+    if a.params:  # earshot live --params FILE: over the Scenario's own
+        d = json.loads(Path(a.params).read_text())
+        params.update(d.get("params", d))
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
                                    scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(scenario.params))
+                                   PolicyParams.from_dict(params))
     agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()

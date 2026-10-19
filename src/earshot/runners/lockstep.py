@@ -15,7 +15,7 @@ import numpy as np
 
 from earshot import config
 from earshot.agent import Agent
-from earshot.backend.twin2d import Twin2D
+from earshot.backend.twin2d import Kinematics, Twin2D
 from earshot.city import City
 from earshot.radio.medium import RadioConfig, RadioMedium
 from earshot.scenario import Scenario
@@ -40,7 +40,7 @@ class RunResult:
 
 def build(scenario: Scenario, root: Path = Path("."), audio=None):
     city = City.load(root / scenario.city)
-    backend = Twin2D(city, scenario.drones)
+    backend = Twin2D(city, scenario.drones, Kinematics.for_scenario(scenario))
     world = World(scenario, city, backend, audio)
     radio = RadioMedium(
         RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)

@@ -27,7 +27,7 @@ import time
 from collections.abc import Mapping
 
 from earshot import config
-from earshot.backend.twin2d import Twin2D
+from earshot.backend.twin2d import Kinematics, Twin2D
 from earshot.backend.webots import (
     CHASE,
     CHASE_PERCHED,
@@ -113,7 +113,7 @@ class GazeboBackend:
             raise RuntimeError(f"Gazebo world lacks {missing}; regenerate it")
         self.basic_ms = int(hello.get("basic_ms", BASIC_MS))
         self.scenario = scenario
-        self.twin = Twin2D(city, scenario.drones)
+        self.twin = Twin2D(city, scenario.drones, Kinematics.for_scenario(scenario))
         self._models = set(hello.get("models", []))
         self._verifier: int | None = None
         self._objects: list[str] = []  # Source classes the Verifier camera boxes, last step

@@ -1543,6 +1543,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         parts += source_nodes(sid, cls, markers)
     # the RIG stays at the origin; its child Solids carry the cameras and are moved by the
     # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
+    # a trained detector needs pixels: the Scenario's camera.resolution (1280x768 sees a drone
+    # at 30-60 m, data/cv/verifier-highres-20261015/REPORT.md); 400x240 is enough to recognise
+    rig_w, rig_h = sc.camera.get("resolution", (400, 240))
     views = " ".join(
         f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
         f'width {854 if k == 0 else 384} height {480 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
@@ -1551,7 +1554,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts.append(
         'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
         'children [ DEF CAMV Solid { translation 0 0 -100 name "camv" children [ Camera { name "camera" '
-        "width 400 height 240 fieldOfView 1.0 far 3000 recognition Recognition { maxRange 100 "
+        f"width {rig_w} height {rig_h} fieldOfView 1.0 far 3000 recognition Recognition {{ maxRange 100 "
         f"segmentation TRUE }} }} ] }} {views} ] }}"
     )
     out.write_text("\n".join(parts) + "\n")

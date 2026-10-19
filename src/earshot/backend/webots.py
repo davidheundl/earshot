@@ -25,7 +25,7 @@ import re
 import time
 from collections.abc import Mapping
 
-from earshot.backend.twin2d import Twin2D
+from earshot.backend.twin2d import Kinematics, Twin2D
 from earshot.city import City
 from earshot.scenario import Scenario, _target_class
 from earshot.state import Command, DroneState
@@ -89,6 +89,7 @@ N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
 VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
+VERIFY_PITCH_DEG = 14.0  # the Verifier camera looks this far down (atan(10 m / 40 m standoff))
 PILOT = {"ahead": 0.6, "up": -0.15, "pitch": 10.0}  # just ahead of the props
 CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills the lower third
 CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
@@ -101,7 +102,7 @@ class WebotsBackend:
         self.sup = Supervisor()
         self.basic_ms = int(self.sup.getBasicTimeStep())
         self.scenario = scenario
-        self.twin = Twin2D(city, scenario.drones)
+        self.twin = Twin2D(city, scenario.drones, Kinematics.for_scenario(scenario))
         self._drones = {}
         for d in scenario.drones:
             node = self.sup.getFromDef(f"DRONE_{d.id}")
@@ -114,6 +115,8 @@ class WebotsBackend:
         self._camv = self._node("CAMV")
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
+        self._verifier_heading = 0.0
+        self.detector_frames = False  # set by the World when a trained detector reads images
         ids = [d.id for d in scenario.drones]
         self.views: list[list] = [[ids[k % len(ids)], "chase" if k == 0 else "pilot"]
                                   for k in range(N_VIEWS)]
@@ -245,12 +248,16 @@ class WebotsBackend:
         return None
 
     def camera_frame(self, drone_id: int) -> object | None:
-        """{"w", "h", "objects"}: what the Verifier recognises. The image is copied only on
-        request (`camera_image`, the dashboard preview); the sensors need just the objects."""
+        """{"w", "h", "objects"}: what the Verifier recognises. With `detector_frames` (a trained
+        detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad)}; else
+        the image is copied only on request (`camera_image`, the dashboard preview)."""
         if self._quit or drone_id != self._verifier:
             return None
         c = self.camera
         frame = {"w": c.getWidth(), "h": c.getHeight()}
+        if self.detector_frames:
+            frame.update(bgra=c.getImage(), fov=c.getFov(), yaw=self._verifier_heading,
+                         pitch=math.radians(VERIFY_PITCH_DEG))
         if c.hasRecognition():
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
@@ -345,6 +352,7 @@ class WebotsBackend:
                 self._camv[0].setSFVec3f(PARKED)
             else:
                 s = states[verifier]
+                self._verifier_heading = s.heading
                 self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
-                self._camv[1].setSFRotation(look_rotation(s.heading, 14.0))
+                self._camv[1].setSFRotation(look_rotation(s.heading, VERIFY_PITCH_DEG))
         self._place_views(states)

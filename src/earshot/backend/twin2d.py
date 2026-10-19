@@ -31,6 +31,12 @@ class Kinematics:
         default = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}
         return (self.speed or default)[mode]
 
+    @classmethod
+    def for_scenario(cls, scenario) -> Kinematics:
+        """A Scenario's `camera: {standoff: m}` brings the Verifier closer: a real detector
+        sees a drone at 30-60 m, not at the stand-in's 100 m."""
+        return cls(standoff=float(scenario.camera.get("standoff", cls.standoff)))
+
 
 class _Body:
     def __init__(self, spec: DroneSpec, z: float):

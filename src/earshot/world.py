@@ -22,13 +22,14 @@ from earshot.backend import Backend
 from earshot.city import City
 from earshot.scenario import Scenario
 from earshot.sensors import Audio, SensorSuite
+from earshot.sensors.camera import YoloDetector
 from earshot.sensors.waveform import spectrum
 from earshot.state import Command, DroneState, Sensed
 
 
 class World:
     def __init__(self, scenario: Scenario, city: City, backend: Backend,
-                 audio: Audio | None = None):
+                 audio: Audio | None = None, camera: YoloDetector | None = None):
         self.scenario = scenario
         self.city = city
         self.backend = backend
@@ -41,7 +42,9 @@ class World:
         self._pending: list[dict] = []
         self._recent: list[dict] = []  # last few seconds of sound bearings, for the dashboard
         self.sensors = SensorSuite(city, scenario, np.random.default_rng(scenario.seed + 1),
-                                   audio)
+                                   audio, camera)
+        if camera is not None and hasattr(backend, "detector_frames"):
+            backend.detector_frames = True  # the detector reads every Verifier image
         self.audio: list = []  # sensors.waveform.AudioWindow rendered this step
         self._spectra: dict[int, list[int]] = {}  # drone -> its newest window's spectrum
 
