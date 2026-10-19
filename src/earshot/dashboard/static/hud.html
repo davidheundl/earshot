@@ -4,8 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Earshot</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   /* Avionics colour semantics: colour always means something, never decoration. */
   :root {
@@ -17,8 +15,9 @@
     --caution: #f5b53b;   /* suspicion, vehicles */
     --warn: #ff5a52;      /* confirmed intruder, faults */
     --train: #c9a86a; --nothing: #8fa3b8;
-    --sans: "B612", "Helvetica Neue", Arial, sans-serif;
-    --mono: "B612 Mono", ui-monospace, Menlo, monospace;
+    /* no web fonts (works offline): B612 if installed, else the system's own */
+    --sans: "B612", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "B612 Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--sky); color: var(--text); font: 13px/1.35 var(--sans); }
@@ -27,7 +26,7 @@
   .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .muted { color: var(--muted); }
 
-  #app { display: grid; grid-template-rows: 46px minmax(0, 1fr) 30px; height: 100vh; }
+  #app { display: grid; grid-template-rows: 46px minmax(0, 1fr) 70px; height: 100vh; }
   header { display: flex; align-items: center; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--rule); background: var(--panel); }
   header h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: .01em; }
   header .clock { font-size: 15px; }
@@ -67,9 +66,19 @@
   .drone canvas.sig { display: block; width: 100%; height: 30px; margin-top: 3px; }
 
   /* map */
-  #scope { position: relative; border-bottom: 1px solid var(--rule); }
+  #scope { display: grid; grid-template-rows: minmax(0, 1fr) auto; border-bottom: 1px solid var(--rule); min-height: 0; }
+  #scope .mapbox { position: relative; min-height: 0; }
   #scope canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
   #scope .legend { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: var(--muted); }
+  #suspicion { padding: 6px 10px; font-size: 13px; background: var(--panel); border-top: 1px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #suspicion b { font-family: var(--mono); }
+  body.evidence #suspicion { display: none; }
+  /* no camera images for a while (twin2d, or Webots gone): the map takes the main view */
+  body.mapfirst #mainview, body.mapfirst #tiles { display: none; }
+  body.mapfirst #left { grid-template-rows: minmax(0, 1fr) 108px; }
+  body.mapfirst #right { grid-template-rows: minmax(0, 1fr); }
+  body.mapfirst #scope { border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  body.mapfirst #suspicion { font-size: 15px; padding: 8px 12px; }
 
   /* the ear: selected drone's senses */
   #ear { padding: 10px 14px; overflow: auto; }
@@ -114,11 +123,14 @@
   .pipeline b { font-family: var(--mono); font-weight: 400; margin-left: 4px; }
 
   /* footer ticker and alerts */
-  footer { display: flex; align-items: center; gap: 22px; padding: 0 16px; border-top: 1px solid var(--rule); background: var(--panel); overflow: hidden; white-space: nowrap; font-size: 12px; }
+  footer { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0 16px; border-top: 1px solid var(--rule); background: var(--panel); overflow: hidden; white-space: nowrap; font-size: 14px; line-height: 1.4; }
+  footer .ev { overflow: hidden; text-overflow: ellipsis; }
+  footer .ev:not(:first-child) { color: var(--muted); }
   footer .ev .k { color: var(--task); }
+  #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 14px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 5; }
   #banner { position: fixed; top: 58px; left: 50%; transform: translate(-50%, -140%); background: var(--warn); color: #1a0c0c; font-weight: 700; padding: 10px 18px; border-radius: 6px; transition: transform .45s cubic-bezier(.2, .9, .3, 1.2), opacity .3s; z-index: 5; opacity: 0; pointer-events: none; }
   #banner.show { transform: translate(-50%, 0); opacity: 1; }
-  #help { position: fixed; right: 16px; bottom: 40px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; font-size: 12px; display: none; z-index: 4; }
+  #help { position: fixed; right: 16px; bottom: 80px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; font-size: 12px; display: none; z-index: 4; }
   #help.show { display: block; }
   #help kbd { font-family: var(--mono); background: var(--panel-2); border-radius: 3px; padding: 0 5px; }
   #help table td { padding: 2px 8px 2px 0; }
@@ -128,6 +140,8 @@
     #right { border-left: 0; border-top: 1px solid var(--rule); grid-template-rows: 360px auto; }
     #swarm { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     #left { grid-template-rows: 56vw 22vw auto; }
+    body.mapfirst #left { grid-template-rows: 80vw auto; }
+    body.mapfirst #right { grid-template-rows: auto; }
     body.evidence #evidence { grid-template-columns: 1fr; }
   }
 </style>
@@ -189,7 +203,10 @@
       <div id="swarm"></div>
     </section>
     <aside id="right">
-      <div id="scope"><canvas id="map"></canvas><div class="legend" id="maplegend"></div></div>
+      <div id="scope">
+        <div class="mapbox"><canvas id="map"></canvas><div class="legend" id="maplegend"></div></div>
+        <div id="suspicion" aria-live="polite"></div>
+      </div>
       <div id="ear">
         <h2 id="ear-title">Drone 0</h2>
         <div class="sub" id="ear-sub"></div>
@@ -208,6 +225,7 @@
   <footer id="ticker"><span class="muted">Waiting for the swarm.</span></footer>
 </div>
 <div id="banner" role="status" aria-live="polite"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <div id="help">
   <table>
     <tr><td><kbd>0</kbd>-<kbd>9</kbd></td><td>Show that drone in the main view</td></tr>
@@ -250,6 +268,8 @@ const heat = {};      // drone -> last heatmap (the server sends one only when i
 const seen = new Map(); // reading key -> t, so readings replayed after a reconnect count once
 const rkey = r => `${r.t}|${r.drone}|${r.sensor}|${r.bearing}|${r.level}`;
 let wsOpen = false, pumpUp = true, lastData = 0, lastT = -Infinity;
+const CAM_STALE_MS = 3000;  // no camera frame this long: drop the last one, the map takes the main view
+let lastCam = performance.now(), camStale = false;  // counted from page load, so a twin run flips once
 
 /* ---------- motion: drones glide between states ---------- */
 // States arrive at 10 Hz (slower when the sim lags). Each one starts a glide from where a drone
@@ -350,7 +370,30 @@ function connectCams() {
     $(`cam${f.k}`).src = `data:image/jpeg;base64,${f.jpeg}`;
     if (f.k > 0) $(`tag${f.k}`).textContent = `Drone ${f.drone}, ${f.mode} view`;
     $("nocam").hidden = true;
+    lastCam = performance.now();
+    if (camStale) checkCams();
   };
+}
+function checkCams() {
+  // Webots gone or never there: a frozen frame with a blinking REC would lie, so clear it
+  const stale = performance.now() - lastCam > CAM_STALE_MS;
+  if (stale === camStale) return;
+  camStale = stale;
+  if (stale) {
+    for (const k of [0, 1, 2, 3]) { delete frames[k]; $(`cam${k}`).removeAttribute("src"); if (k) $(`tag${k}`).textContent = ""; }
+    $("nocam").hidden = false;
+  }
+  layout();
+}
+setInterval(checkCams, 500);
+function layout() {
+  // map-first: no camera images, live view; the map (and its Suspicion line) moves into the main area
+  document.body.classList.toggle("nocam", camStale);
+  const mapFirst = camStale && !evidence;
+  document.body.classList.toggle("mapfirst", mapFirst);
+  const home = mapFirst ? $("left") : $("right");
+  if ($("scope").parentElement !== home) home.prepend($("scope"));
+  schedule();
 }
 function post(path, body) {
   return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -411,8 +454,8 @@ function render(ts) {
   if (!last || !city) return;
   const panels = dirty && ts - lastPanels >= 80;  // at most ~12 Hz, as before
   if (panels) { dirty = false; lastPanels = ts; $("clock").textContent = fmtTime(last.state.t); }
-  for (const f of [drawMap, ...(evidence ? [] : [drawPFD]),
-    ...(panels ? [drawSwarm, drawEar, drawTicker, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
+  for (const f of [drawMap, ...(evidence || document.body.classList.contains("mapfirst") ? [] : [drawPFD]),
+    ...(panels ? [drawSwarm, drawEar, drawTicker, drawSuspicion, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
     try { f(ts); } catch (err) { console.error(err); }  // one broken panel must not stop the others
   }
   if (!document.hidden) { pending = true; requestAnimationFrame(render); }
@@ -547,7 +590,7 @@ function tape(ctx, x, cy, hgt, value, step, labelEvery, side, fmt) {
 function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
   const d = shownDrones(now).find(x => x.id === selected); if (!d) return;
-  const f = frames[0];
+  const f = camStale ? null : frames[0];
   if (!f) $("nocam").hidden = false;
   const heading = d.heading, st = last.state, k = kin[d.id] || { vx: 0, vy: 0, vs: 0 };
   const gs = Math.hypot(k.vx, k.vy), agl = d.agl ?? d.z, cx = w / 2, cy = h / 2;
@@ -876,27 +919,44 @@ function drawSpectro() {
     ctx.fillRect(w - (cols.length - i) * cw, h - (j + 1) * ch, cw + 0.5, ch + 0.5);
   }));
 }
-function drawTrace(d) {
+// a saturated belief reads 1.0; "100 %" would claim certainty, the log-odds say how much evidence
+const pct = p => p >= 0.995 ? ">99 %" : `${Math.round(p * 100)} %`;
+function topSuspicion(d) {
+  // the strongest drone Suspicion (or Confirmed) on this drone's map, and the drone that has it as a task
   const tracks = (d?.telemetry?.tracks || []).filter(tr => tr.cls === "DRONE" || tr.status === "CONFIRMED");
   const tr = tracks.sort((a, b) => b.strength - a.strength)[0];
+  const claim = tr && drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
+  return { tr, claim };
+}
+const actionText = (tr, claim) => claim ? `drone ${claim.id} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}`
+  : tr.status === "CONFIRMED" ? "handed to operators" : "waiting for a better fix";
+function drawSuspicion() {
+  if (evidence) return;
+  const { tr, claim } = topSuspicion(droneById(selected));
+  if (!tr) { setHTML($("suspicion"), `<span class="muted">No drone Suspicion on drone ${selected}'s map.</span>`); return; }
+  const col = css(tr.status === "CONFIRMED" ? "--warn" : "--caution");
+  setHTML($("suspicion"), `<span style="color:${col}">${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</span>`
+    + ` · ±<b>${tr.a}</b> m · evidence <b>${tr.strength.toFixed(1)}</b> log-odds (${pct(tr.conf)})`
+    + ` · <span style="color:${css(claim ? "--task" : "--muted")}">${actionText(tr, claim)}</span>`);
+}
+function drawTrace(d) {
+  const { tr, claim } = topSuspicion(d);
   const st = last.state, c = st.counts || {};
   const readings30 = Object.values(hist).flat().filter(r => st.t - r.t <= 30).length;
   setHTML($("pipeline"), [["Readings, 30 s", readings30], ["Suspicions", (d?.telemetry?.tracks || []).filter(x => x.status !== "EXPLAINED").length],
-    ["Verify flights", c.dispatch ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join(""));
+    ["Verifications", c.verified ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join(""));
   if (!tr) { setHTML($("trace"), `<p class="muted">No drone suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks) stay off this list.</p>`); return; }
   const sup = tr.support || [], maxAbs = Math.max(1, ...sup.map(s => Math.abs(s[2])));
   const name = ([o, fam]) => fam === "prior" ? "map prior" : fam === "camera" ? "camera" : `drone ${o} ${fam === "rf" ? "RF" : "sound"}`;
   const rows = sup.map(s => { const v = s[2], wpc = Math.abs(v) / maxAbs * 50, left = v >= 0 ? 50 : 50 - wpc;
     const col = s[1] === "prior" ? css("--muted") : v >= 0 ? css("--own") : css("--warn");
     return `<span>${name(s)}</span><span class="track"><span class="zero" style="left:50%"></span><i style="left:${left}%;width:${wpc}%;background:${col}"></i></span><span class="num">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`; }).join("");
-  const claim = drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
   setHTML($("trace"), `
     <dl class="kv" style="margin-bottom:10px">
       <dt>Suspicion</dt><dd>${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</dd>
-      <dt>Probability</dt><dd class="num">${Math.round(tr.conf * 100)} %</dd>
+      <dt>Evidence</dt><dd class="num" style="font-size:15px"><b>${tr.strength.toFixed(1)} log-odds</b> · ${pct(tr.conf)}</dd>
       <dt>Located within</dt><dd class="num">±${tr.a} m</dd>
-      <dt>Evidence total</dt><dd class="num">${tr.strength.toFixed(1)} log-odds</dd>
-      <dt>Action</dt><dd>${claim ? `drone ${claim.id} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}` : tr.status === "CONFIRMED" ? "handed to operators" : "waiting for a better fix"}</dd>
+      <dt>Action</dt><dd>${actionText(tr, claim)}</dd>
     </dl>
     <div class="sub">Each reading adds or removes evidence (log-odds) at the suspicion. Green raises it, red lowers it.</div>
     <div class="support">${rows}</div>`);
@@ -905,7 +965,7 @@ function drawTrace(d) {
 /* ---------- ticker and alerts ---------- */
 function drawTicker() {
   const st = last.state, items = [...(st.decisions || []).map(e => ({ t: e.t, txt: decisionText(e) })), ...(st.events || []).map(e => ({ t: e.t, txt: e.note }))]
-    .sort((a, b) => b.t - a.t).slice(0, 8);
+    .sort((a, b) => b.t - a.t).slice(0, 3);  // newest on top
   setHTML($("ticker"), items.length ? items.map(i => `<span class="ev"><span class="num muted">${fmtTime(i.t)}</span> ${i.txt}</span>`).join("") : `<span class="muted">Waiting for the swarm.</span>`);
 }
 function decisionText(e) {
@@ -930,7 +990,7 @@ map.addEventListener("click", e => {
   if (best) select(best.id);
 });
 document.querySelectorAll("#tiles .view").forEach(v => v.onclick = () => { const f = frames[+v.dataset.k]; if (f) select(f.drone); });
-function setEvidence(on) { evidence = on; document.body.classList.toggle("evidence", on); $("btn-live").setAttribute("aria-pressed", !on); $("btn-evidence").setAttribute("aria-pressed", on); if (!on) chooseViews(); schedule(); }
+function setEvidence(on) { evidence = on; document.body.classList.toggle("evidence", on); $("btn-live").setAttribute("aria-pressed", !on); $("btn-evidence").setAttribute("aria-pressed", on); if (!on) chooseViews(); layout(); }
 $("btn-live").onclick = () => setEvidence(false); $("btn-evidence").onclick = () => setEvidence(true);
 $("btn-help").onclick = () => $("help").classList.toggle("show");
 $("btn-listen").onclick = () => setListen(!listen);
@@ -945,7 +1005,7 @@ addEventListener("keydown", e => {
   if (e.key === "l") { setListen(!listen); return; }
   if (e.key === "?") { $("help").classList.toggle("show"); return; }
   const env = last?.state.environment || {};
-  if ("dvnjf".includes(e.key) && !mouse) return;
+  if ("dvnjf".includes(e.key) && !mouse) { toast("move the mouse over the map first"); return; }
   const [x, y] = mouse || [0, 0];
   const near = () => drones().reduce((b, d) => (!b || Math.hypot(d.x - x, d.y - y) < Math.hypot(b.x - x, b.y - y)) ? d : b, null);
   const ops = { d: () => ({ op: "add_source", cls: "drone", x, y }), v: () => ({ op: "add_source", cls: "vehicle", x, y, to: [x + 400, y], duration: 60 }),
@@ -954,9 +1014,22 @@ addEventListener("keydown", e => {
     b: () => ({ op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }), e: () => ({ op: "set_env", ego_filter: !env.ego_filter }) };
   if (e.repeat && e.key in ops) { e.preventDefault(); return; }  // holding a key adds one source, not thirty a second
   const op = ops[e.key]?.();
-  if (op) { e.preventDefault(); post("/control", op); }
+  if (op) { e.preventDefault(); sendOp(op); }
 });
 addEventListener("resize", schedule);
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 2000);
+}
+function opText(op) {
+  return { add_source: `add a ${op.cls === "nuisance" ? "fan" : op.cls === "vehicle" ? "truck" : op.cls}`, jam: "jam here", clear_jam: "clear jamming",
+    fault: `stick drone ${op.drone}'s microphone`, clear_faults: "clear sensor faults",
+    set_env: "background_db" in op ? (op.background_db <= 45 ? "night" : "day") : `ego-noise filter ${op.ego_filter ? "on" : "off"}` }[op.op] || op.op;
+}
+function sendOp(op) {
+  post("/control", op).then(r => r.json()).then(j => toast(j.error ? `not sent: ${j.error}` : `sent: ${opText(op)}`))
+    .catch(() => toast("the dashboard cannot reach the world"));
+}
 
 /* ---------- start ---------- */
 function loadStatic(again) {

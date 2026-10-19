@@ -224,16 +224,16 @@ function panels() {
   document.getElementById("maptitle").textContent = `Map of drone ${me?.id ?? "-"} (keys 0-5)`;
   rows(document.getElementById("tracks"), (me?.telemetry?.tracks || []).map(tr => [
     `<span style="color:${css(CLS[tr.cls] || "--muted")}">${tr.cls.toLowerCase()}</span>`, STATUS[tr.status] || tr.status,
-    `${Math.round(tr.conf * 100)}%`, `±${tr.a} m`]));
+    tr.conf >= 0.995 ? ">99%" : `${Math.round(tr.conf * 100)}%`, `${tr.strength?.toFixed(1) ?? "–"} log-odds`, `±${tr.a} m`]));
   const c = st.counts || {};
-  rows(document.getElementById("decisions"), [[`verify flights ${c.dispatch ?? 0}`, `confirmed ${c.confirmed ?? 0}`, `dismissed ${c.dismissed ?? 0}`]]
+  rows(document.getElementById("decisions"), [[`verifications ${c.verified ?? 0}`, `confirmed ${c.confirmed ?? 0}`, `dismissed ${c.dismissed ?? 0}`]]
     .concat((st.decisions || []).slice().reverse().map(e => [`${e.t.toFixed(0)} s`, `drone ${e.drone}`, e.kind, e.task || ""])));
   rows(document.getElementById("events"), (st.events || []).slice().reverse().map(e => [`${e.t.toFixed(0)} s`, e.note]));
   rows(document.getElementById("truth"), st.truth.map(t => [t.id, t.cls.toLowerCase(), `${t.x.toFixed(0)}, ${t.y.toFixed(0)}`]));
 }
 
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const ws = new WebSocket(`ws://${location.host}/ws?camera=1`);  // only this page shows the Verifier preview
   ws.onopen = () => { link.open = true; linkStatus(); };
   ws.onclose = () => { link.open = false; linkStatus(); setTimeout(connect, 1000); };
   ws.onmessage = e => {

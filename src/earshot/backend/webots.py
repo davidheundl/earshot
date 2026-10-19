@@ -11,6 +11,9 @@ mode (`earshot live --no-webots-view`) our own per-tick work (sensors, publishin
 fits into the slack; in realtime mode Webots spends the full step itself, our work comes on
 top, and the pacing sleeps no longer. The 3D window keeps realtime mode, so it animates evenly.
 
+If Webots quits mid-run (window closed, crash), the run goes on: this adapter says so once
+and keeps stepping its own twin at wall-clock pace, without camera images.
+
 Must run inside a Webots extern-controller environment (see `earshot live --backend webots`).
 Frames: City x = east, y = north, metres  ==  Webots ENU world (z up).
 """
@@ -24,7 +27,7 @@ from collections.abc import Mapping
 
 from earshot.backend.twin2d import Twin2D
 from earshot.city import City
-from earshot.scenario import Scenario
+from earshot.scenario import Scenario, _target_class
 from earshot.state import Command, DroneState
 
 PARKED = [0.0, 0.0, -100.0]
@@ -32,7 +35,10 @@ PARKED = [0.0, 0.0, -100.0]
 SOURCE_Z = {"DRONE": 30.0, "VEHICLE": 0.5, "TRAIN": 0.45, "NOTHING": 0.7}
 TRAIN_WAGONS = 9  # locomotive + 8 container wagons, nodes SRC_<id>_w<k>
 WAGON_PITCH = 21.0  # m between wagon centres
-LIVE_SLOTS = 2  # spare SRC nodes per class for sources added by hotkey
+# spare SRC nodes per class for Sources added by hotkey: Webots refuses more (no stealing an
+# earlier one's node); Gazebo (which imports LIVE_SLOTS) keeps 2, as each visual costs it render
+WEBOTS_LIVE_SLOTS = 4
+LIVE_SLOTS = 2
 CATCH_UP_S = 0.25  # further behind the wall clock than this: start over instead of sprinting
 
 
@@ -40,21 +46,27 @@ def live_slot(cls_name: str, k: int) -> str:
     return f"live_{cls_name.lower()}_slot{k}"
 
 
-def def_names(sources) -> dict[str, str]:
-    """Source id -> DEF name. Live sources (id live_<cls>_<n>) borrow their class's spare
-    node slots in turn: the k-th live source of a class takes slot k % LIVE_SLOTS (`n` counts
-    across all classes, so it cannot pick the slot). Sources are only ever appended, so an
-    assignment never changes once made."""
+def def_names(sources, slots: int = LIVE_SLOTS, wrap: bool = True) -> dict[str, str]:
+    """Source id -> DEF name. Live sources (id live_<cls>_<n>) take their class's `slots`
+    spare nodes in turn: the k-th live source of a class takes slot k (`n` counts across all
+    classes, so it cannot pick the slot). Beyond them, with `wrap` it takes slot k % slots
+    (an earlier one's node), else it gets no name (heard, not drawn). Sources are only ever
+    appended, so an assignment never changes once made."""
     names, per_class = {}, {}
     for src in sources:
-        tail = src.id.rsplit("_", 1)[-1]
-        if src.id.startswith("live_") and tail.isdigit():
+        if is_live(src.id):
             k = per_class.get(src.cls.name, 0)
             per_class[src.cls.name] = k + 1
-            names[src.id] = f"SRC_{live_slot(src.cls.name, k % LIVE_SLOTS)}"
+            if wrap or k < slots:
+                names[src.id] = f"SRC_{live_slot(src.cls.name, k % slots)}"
         else:
             names[src.id] = f"SRC_{src.id}"
     return names
+
+
+def is_live(source_id: str) -> bool:
+    """Added by a live Event without an explicit id (scenario.apply names it live_<cls>_<n>)."""
+    return source_id.startswith("live_") and source_id.rsplit("_", 1)[-1].isdigit()
 
 
 def _yaw(heading_deg: float) -> float:
@@ -117,11 +129,12 @@ class WebotsBackend:
         self._view_yaw: dict[int, float] = {}
         self._view_pitch: dict[int, float] = {}  # degrees down, so a HUD can draw the horizon
         self._due: float | None = None  # wall-clock deadline of the next basic step
+        self._quit = False  # Webots went away: the twin alone carries on
         self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
         self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
         for cls in ("DRONE", "VEHICLE", "TRAIN", "NOTHING"):
-            for k in range(LIVE_SLOTS):
+            for k in range(WEBOTS_LIVE_SLOTS):
                 self._def_class[f"SRC_{live_slot(cls, k)}"] = cls
 
     # -- views (the game screen's drone cameras) -------------------------------------------
@@ -149,7 +162,7 @@ class WebotsBackend:
 
         out = {}
         for k in which:
-            if not self._views_on or k >= len(self._view_cams):
+            if self._quit or not self._views_on or k >= len(self._view_cams):
                 continue
             cam, _ = self._view_cams[k]
             raw = cam.getImage()
@@ -206,16 +219,35 @@ class WebotsBackend:
         states = {}
         for i in range(n):
             states = self.twin.step(dt / n, commands if i == 0 else {})
-            self._push(states)
-            if self.sup.step(self.basic_ms) == -1:
-                raise SystemExit("Webots quit")
+            if not self._quit:
+                self._push(states)
+                if self.sup.step(self.basic_ms) == -1:
+                    self._quit = True  # never touch the Supervisor again
+                    self._verifier = None
+                    print("[webots] Webots quit; the run goes on in the 2D twin, without "
+                          "camera images", flush=True)
             self._pace()
         return states
+
+    def refuses(self, op: dict) -> str | None:
+        """Why a live Event cannot be shown, else None: an added Source needs a free spare
+        node of its class (WEBOTS_LIVE_SLOTS), or it would be invisible in the 3D view."""
+        if op.get("op") != "add_source" or op.get("id"):
+            return None
+        try:
+            cls = _target_class(op.get("cls")).name
+        except (ValueError, AttributeError):
+            return None  # scenario.apply rejects it with a better message
+        taken = sum(1 for s in self.scenario.sources if s.cls.name == cls and is_live(s.id))
+        if taken >= WEBOTS_LIVE_SLOTS:
+            return (f"all {WEBOTS_LIVE_SLOTS} spare Webots nodes for {cls.lower()} Sources are "
+                    "taken (WEBOTS_LIVE_SLOTS in backend/webots.py)")
+        return None
 
     def camera_frame(self, drone_id: int) -> object | None:
         """{"w", "h", "objects"}: what the Verifier recognises. The image is copied only on
         request (`camera_image`, the dashboard preview); the sensors need just the objects."""
-        if drone_id != self._verifier:
+        if self._quit or drone_id != self._verifier:
             return None
         c = self.camera
         frame = {"w": c.getWidth(), "h": c.getHeight()}
@@ -227,7 +259,7 @@ class WebotsBackend:
 
     def camera_image(self) -> bytes | None:
         """The Verifier camera's current BGRA image."""
-        return self.camera.getImage() if self._verifier is not None else None
+        return self.camera.getImage() if self._verifier is not None and not self._quit else None
 
     def close(self) -> None:
         pass
@@ -277,9 +309,11 @@ class WebotsBackend:
         placed: dict[str, tuple] = {}  # one pose per node; an active source wins
         ground = self.twin.city.ground
         if len(self._names) != len(self.scenario.sources):  # a Source was added
-            self._names = def_names(self.scenario.sources)
+            self._names = def_names(self.scenario.sources, WEBOTS_LIVE_SLOTS, wrap=False)
         for src in self.scenario.sources:
-            base = self._names[src.id]
+            base = self._names.get(src.id)
+            if base is None:  # a live Source beyond the spare nodes: heard, not drawn
+                continue
             cls = src.cls.name
             names = [f"{base}_w{k}" for k in range(TRAIN_WAGONS)] if cls == "TRAIN" else [base]
             for k, name in enumerate(names):

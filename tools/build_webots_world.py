@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import itertools
 
-from earshot.backend.webots import LIVE_SLOTS, N_VIEWS, TRAIN_WAGONS, live_slot
+from earshot.backend.webots import N_VIEWS, TRAIN_WAGONS, WEBOTS_LIVE_SLOTS, live_slot
 from earshot.city import City
 from earshot.scenario import Scenario
 
@@ -1394,7 +1394,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
                          + b"".join((city_file.parent / f).read_bytes() for f in side)
                          + Path(__file__).read_bytes()  # and the backend's node layout:
-                         + f"{markers}{BUILDER_VERSION}{LIVE_SLOTS}{N_VIEWS}{TRAIN_WAGONS}".encode()).hexdigest()
+                         + f"{markers}{BUILDER_VERSION}{WEBOTS_LIVE_SLOTS}{N_VIEWS}{TRAIN_WAGONS}".encode()).hexdigest()
     stamp = assets / "build.hash"
     if not force and out.exists() and stamp.exists() and stamp.read_text() == key:
         print(f"{out}: up to date")
@@ -1538,7 +1538,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         z = float(city.ground(d.x, d.y)) + 40.0
         parts.append(swarm_drone(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z))
     slots = [(s.id, s.cls.name) for s in sc.sources] + [
-        (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(LIVE_SLOTS)]
+        (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(WEBOTS_LIVE_SLOTS)]
     for sid, cls in slots:
         parts += source_nodes(sid, cls, markers)
     # the RIG stays at the origin; its child Solids carry the cameras and are moved by the

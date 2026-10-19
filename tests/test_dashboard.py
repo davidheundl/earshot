@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 
 from earshot.dashboard.server import QUEUE, Hub, offer
 
@@ -16,12 +17,18 @@ def state(t, p=b"\x01\x02", camera=..., readings=()):
     return msg
 
 
+def camera_hub():
+    hub = Hub()
+    hub.want_camera = True  # a classic page is connected
+    return hub
+
+
 def heat(msg, drone=0):
     return msg["state"]["drones"][drone]["telemetry"].get("heatmap", "absent")
 
 
 def test_heatmap_and_camera_only_when_changed():
-    hub = Hub()
+    hub = camera_hub()
     assert hub.delta_text() is None
     hub.ingest_state(state(0.1, camera={"rgba": b"\xff", "w": 1, "h": 1}, readings=[10]))
     first = json.loads(hub.delta_text())
@@ -41,7 +48,7 @@ def test_heatmap_and_camera_only_when_changed():
 
 
 def test_snapshot_has_everything_and_no_double_readings():
-    hub = Hub()
+    hub = camera_hub()
     hub.ingest_state(state(0.1, camera={"rgba": b"\xff", "w": 1, "h": 1}, readings=[10]))
     hub.delta_text()
     hub.ingest_state(state(0.2, readings=[20]))
@@ -52,14 +59,14 @@ def test_snapshot_has_everything_and_no_double_readings():
 
 
 def test_first_camera_counts_even_when_none():
-    hub = Hub()
+    hub = camera_hub()
     hub.ingest_state(state(0.1, camera=None))
     msg = json.loads(hub.delta_text())
     assert "camera" in msg and msg["camera"] is None
 
 
 def test_new_run_drops_old_readings_and_resends_the_kept_parts():
-    hub = Hub()
+    hub = camera_hub()
     hub.ingest_state(state(50.0, camera=None, readings=[10]))
     hub.delta_text()
     hub.ingest_state(state(0.1, camera=None, readings=[20]))
@@ -75,3 +82,23 @@ def test_lagging_screen_gets_a_fresh_snapshot():
     for i in range(QUEUE + 1):
         offer(q, f"delta {i}", hub)
     assert q.qsize() == 1 and "state" in json.loads(q.get_nowait())
+
+
+def test_camera_only_while_a_classic_page_wants_it():
+    hub = Hub()
+    hub.ingest_state(state(0.1, camera={"rgba": b"\xff", "w": 1, "h": 1}))
+    assert "camera" not in json.loads(hub.delta_text())
+    assert "camera" not in json.loads(hub.snapshot_text())
+    hub.want_camera = True  # a classic page joins: its snapshot carries the camera
+    assert json.loads(hub.snapshot_text())["camera"]["rgba"] == "/w=="
+
+
+def test_nan_and_infinity_become_null():
+    hub = Hub()
+    msg = state(0.1, readings=[math.nan])
+    msg["drones"][1]["telemetry"]["score"] = math.inf
+    hub.ingest_state(msg)
+    out = json.loads(hub.delta_text())  # strict JSON: the browser's JSON.parse rejects NaN
+    assert out["readings"][0]["bearing"] is None
+    assert out["state"]["drones"][1]["telemetry"]["score"] is None
+    assert "NaN" not in hub.snapshot_text()

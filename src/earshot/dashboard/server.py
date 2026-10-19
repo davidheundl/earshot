@@ -17,6 +17,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -80,6 +81,25 @@ QUEUE = 20  # messages per screen (2 s); a screen further behind gets a fresh sn
 HISTORY = 200  # readings a new screen starts with
 
 
+def finite(x):
+    """x with every NaN and infinity replaced by None: JSON has no NaN, and a single one in
+    a state would make the screens' JSON.parse fail on every frame. Bytes pass untouched."""
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: finite(v) for k, v in x.items()}
+    if isinstance(x, list | tuple):
+        return [finite(v) for v in x]
+    return x
+
+
+def dumps(msg) -> str:
+    try:
+        return json.dumps(msg, allow_nan=False)
+    except ValueError:  # rare: pay for the walk only then
+        return json.dumps(finite(msg), allow_nan=False)
+
+
 class Hub:
     """Latest world state for the screens, serialized once per tick for all of them.
 
@@ -87,6 +107,8 @@ class Hub:
     each drone's telemetry.heatmap only when it changed (else the key is absent, the pages
     keep the last one) and "camera" only when it changed (null when it went away).
     A snapshot carries everything and the recent readings, for a new or lagging screen.
+    The Verifier preview ("camera") is big and only the classic page shows it, so it goes
+    out only while `want_camera` (set while a classic page is connected).
     """
 
     def __init__(self):
@@ -102,6 +124,7 @@ class Hub:
         self._heat_v: dict = {}  # drone -> version it last changed
         self._camera_v = 0
         self._sent = (0, 0)  # (version, seq) of the last delta
+        self.want_camera = False
 
     def ingest_state(self, msg: dict) -> None:
         self.version += 1
@@ -146,7 +169,7 @@ class Hub:
             drones.append(d)
         out = {"state": {**self.state, "drones": drones}, "radio": self.radio,
                "readings": [r for s, r in self.readings if s > since_seq]}
-        if since_version is None or self._camera_v > since_version:
+        if self.want_camera and (since_version is None or self._camera_v > since_version):
             out["camera"] = self.camera
         return out
 
@@ -156,7 +179,7 @@ class Hub:
             return None
         msg = self._message(*self._sent)
         self._sent = (self.version, self.seq)
-        return json.dumps(msg)
+        return dumps(msg)
 
     def snapshot_text(self) -> str:
         """Everything as of the last delta, for a screen that joins now."""
@@ -164,7 +187,7 @@ class Hub:
         msg = self._message(None, s - HISTORY)
         # pending changes go out with the next delta; readings must not arrive twice
         msg["readings"] = [r for q, r in self.readings if s - HISTORY < q <= s]
-        return json.dumps(msg)
+        return dumps(msg)
 
 
 def offer(q: asyncio.Queue, text: str, hub: Hub) -> None:
@@ -215,7 +238,7 @@ def create_app(scenario_path: str) -> FastAPI:
                     elif t == topic("state"):
                         hub.ingest_state(msg)
                     else:
-                        hub.radio = msg
+                        hub.radio = finite(msg)
                 except Exception:
                     log.exception("dashboard: skipped a bad %r message", t)
         except asyncio.CancelledError:
@@ -237,7 +260,7 @@ def create_app(scenario_path: str) -> FastAPI:
                 text = hub.delta_text()
                 idle = 0 if text is not None else idle + 1
                 if text is None and idle >= 10:  # nothing new for 1 s: say why
-                    text, idle = json.dumps({"heartbeat": True, "pump": hub.pump_alive}), 0
+                    text, idle = dumps({"heartbeat": True, "pump": hub.pump_alive}), 0
                 if text is None:
                     continue
                 for q in list(clients):
@@ -307,10 +330,15 @@ def create_app(scenario_path: str) -> FastAPI:
     async def city():
         return JSONResponse(city_json)
 
+    camera_screens: set[asyncio.Queue] = set()  # /ws?camera=1: the classic page
+
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
         await sock.accept()
         q: asyncio.Queue = asyncio.Queue(maxsize=QUEUE)
+        if sock.query_params.get("camera"):
+            camera_screens.add(q)
+            hub.want_camera = True
         if hub.state is not None:  # a new screen starts with everything and the recent history
             q.put_nowait(hub.snapshot_text())
         clients.add(q)  # no await since the snapshot: the next delta continues from it
@@ -321,6 +349,8 @@ def create_app(scenario_path: str) -> FastAPI:
             pass
         finally:
             clients.discard(q)
+            camera_screens.discard(q)
+            hub.want_camera = bool(camera_screens)
 
     @app.websocket("/ws/cams")
     async def ws_cams(sock: WebSocket):
