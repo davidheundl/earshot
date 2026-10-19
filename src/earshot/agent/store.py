@@ -73,7 +73,9 @@ class MessageStore:
         return len(self._frames)
 
     def add_own(self, frame: bytes) -> None:
-        self._frames[peek_key(frame)] = frame
+        k = peek_key(frame)
+        self._frames[k] = frame
+        self.stats.by_origin[k[1]] = max(self.stats.by_origin.get(k[1], 0), k[2])  # in my Digest
 
     # -- receiving ------------------------------------------------------------------------
 

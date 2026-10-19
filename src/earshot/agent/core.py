@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from earshot.agent.belief import Belief, TrackEst, merge_overlapping, mergeable
+from earshot.agent.belief import TRACK_SAME, Belief, TrackEst, merge_overlapping, mergeable
 from earshot.agent.policy import VERIFY, Policy, task_kind
 from earshot.agent.store import MessageStore
 from earshot.city import City
@@ -40,7 +40,6 @@ TRACK_RESEND = 10.0  # unchanged drone Tracks are re-broadcast this often
 EXPLAINED_RESEND = 30.0  # Explained ones (train, vehicle) only this often: nobody acts on them
 MAX_TRACKS_SENT = 3  # most confident drone Tracks per extraction
 TRACK_MOVED = 50.0  # m; a Track that moved more is re-broadcast at once
-TRACK_SAME = 60.0  # m; a neighbour's Track this close with the same class/status is "the same"
 OBS_HOPS = 1
 TRACK_HOPS = 3
 CLAIM_HOPS = 3

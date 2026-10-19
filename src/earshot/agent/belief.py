@@ -3,7 +3,7 @@
 Interface:
     belief = Belief(city, cell=20.0)
     belief.add_evidence(obs, t_now)   Observation from anyone (own or received), each exactly once
-    belief.set_track(track)           a received Track; replaces the one with the same key
+    belief.set_track(track)           a received Track; replaces that origin's older one there
     belief.advance(t_now)             decay to t_now (call before reading)
     belief.posterior()                (4, ny, nx) class probabilities, indexed by TargetClass
     belief.tracks(t_now)              fused Suspicions as Track-like records (TrackEst)
@@ -20,12 +20,15 @@ Model (concept section 6):
   shape (a capped sum would flatten it). G and W stay plain sums, so arrival order never
   matters (concept 8.4). D_o,f = exp(-(t - newest reading of o,f) / TAU): G and W decay
   alike, so without it a capped average would never fade once its sensor falls silent.
-  C holds camera evidence, which is strong and not capped.
+  C holds camera evidence, strong but capped the same way per camera (at most N_EFF frames'
+  worth, fading with TAU_CAMERA from its newest frame): a Verifier hovering 20 s must not
+  bury a spot for ten minutes, nor saturate the probability into a flat plateau.
 - Evidence is a bounded log-likelihood ratio. A sound bearing raises cells along its wedge and
   mildly lowers the other cells within hearing range (mildly: the reading may come from a
   different source or be an outlier). An RF reading raises the ring at the distance its band
   implies and lowers cells inside and beyond it. A camera detection adds a blob, a camera
-  "nothing here" removes one.
+  "nothing here" removes one within the radius it could check (the reading's level when > 0,
+  else CAMERA_RANGE), and drops a Confirmed point there that the camera no longer sees.
 - Everything decays with time constant TAU (moving sources); late evidence enters already
   decayed by its own age.
 - Priors come from the City: rail lines make trains likely, roads make vehicles likely. That
@@ -71,6 +74,10 @@ EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is E
 CONFIRM_RADIUS = 80.0  # a drone Track this close to a camera confirmation is Confirmed
 CONFIRM_FOLLOW = 150.0  # m a confirmed drone may move between Track updates and stay Confirmed
 CONFIRM_SPEED = 15.0  # m/s a confirmed point moves at most: it follows the drone, not ghosts
+CONFIRM_GRACE = 2.0  # s without a sighting before a camera "nothing" drops a confirmed point
+CONFIRM_HOLD = 120.0  # s a confirmed point lives after the camera last saw it
+TRACK_SAME = 60.0  # m; a Track this close with the same class is "the same" (and replaces it)
+RX_MAX_AGE = 15.0  # s a received Track counts
 FAULT_WINDOW = 30.0  # s of an origin's bearings that are checked
 FAULT_MIN_CHECKS = 8  # bearings needed in the window before judging
 FAULT_STRONG = 8.0  # threat log-odds the others reach on their own; ghosts stay at 3-7
@@ -221,10 +228,14 @@ class Belief:
         self._G: dict[tuple[int, str], np.ndarray] = {}  # (origin, family) -> (3, ny, nx) LLR
         self._W: dict[tuple[int, str], np.ndarray] = {}  # (origin, family) -> (ny, nx) weight
         self._newest: dict[tuple[int, str], float] = {}  # (origin, family) -> newest reading t
-        self._C = np.zeros((3, *self.shape))  # camera evidence
+        self._CG: dict[int, np.ndarray] = {}  # camera origin -> (3, ny, nx) LLR
+        self._CW: dict[int, np.ndarray] = {}  # camera origin -> (ny, nx) frames that looked here
+        self._c_newest: dict[int, float] = {}  # camera origin -> newest frame t
+        self._cam: tuple[tuple, np.ndarray] | None = None  # (stamp, capped camera evidence)
         self._t = 0.0
-        self._tracks_rx: dict[tuple[int, int], Track] = {}
-        self._confirmed: list[tuple[float, float, float]] = []  # (x, y, t)
+        self._tracks_rx: dict[int, list[Track]] = {}  # origin -> its current Tracks
+        # (x, y, t_seen, t_moved): last camera sighting (the hold) and last move (the speed cap)
+        self._confirmed: list[tuple[float, float, float, float]] = []
         self.faulty: set[int] = set()
         self.last_sound: dict[int, Observation] = {}  # origin -> newest sound bearing
         self._fused: list[tuple[float, int, str]] = []  # (t, origin, family) for the dashboard
@@ -275,7 +286,11 @@ class Belief:
             g *= f
         for wgt in self._W.values():
             wgt *= f
-        self._C *= math.exp(-dt / TAU_CAMERA)
+        fc = math.exp(-dt / TAU_CAMERA)
+        for g in self._CG.values():
+            g *= fc
+        for wgt in self._CW.values():
+            wgt *= fc
         self._t = t_now
 
     def add_evidence(self, obs: Observation, t_now: float | None = None) -> None:
@@ -341,34 +356,64 @@ class Belief:
 
     def _camera(self, obs: Observation, w: float) -> None:
         d, theta = self._geometry(obs)
-        disc = d <= CAMERA_RANGE
+        o = obs.header.origin
+        g = self._CG.setdefault(o, np.zeros((3, *self.shape)))
+        wgt = self._CW.setdefault(o, np.zeros(self.shape))
+        self._c_newest[o] = max(self._c_newest.get(o, obs.t), obs.t)
         nothing = obs.class_probs[TargetClass.NOTHING] >= 0.5 or math.isnan(obs.bearing)
         if nothing:
-            self._C += w * A_CAMERA_NONE * disc  # looked here: no threat within range
+            # a detector may clear less than the full field of view: it says how far (level)
+            radius = obs.level if obs.level > 0 else CAMERA_RANGE
+            disc = d <= radius
+            g += w * A_CAMERA_NONE * disc  # looked here: no threat within range
+            wgt += w * disc
+            self._unconfirm(obs.x, obs.y, obs.t, radius)
             return
+        disc = d <= CAMERA_RANGE
         delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
         blob = np.exp(-0.5 * (delta / 15.0) ** 2) * disc
         for i, k in enumerate(THREATS):
-            self._C[i] += w * A_CAMERA * obs.class_probs[k] * blob
+            g[i] += w * A_CAMERA * obs.class_probs[k] * blob
+        wgt += w * disc
         if obs.class_probs[TargetClass.DRONE] >= 0.5:
             self._confirm(obs.x, obs.y, obs.t)
 
     def set_track(self, track: Track) -> None:
-        self._tracks_rx[(track.header.origin, track.track_id)] = track
+        """A received Track replaces the same origin's older one in its place (same id, or
+        same class within TRACK_SAME): a moving Track leaves no stale copies behind."""
+        mine = self._tracks_rx.setdefault(track.header.origin, [])
+        same = [tr for tr in mine if tr.track_id == track.track_id
+                or (tr.cls == track.cls
+                    and math.hypot(tr.x - track.x, tr.y - track.y) <= TRACK_SAME)]
+        if any(tr.t > track.t for tr in same):
+            return  # an older copy (relayed or healed late): the newer one stands
+        mine[:] = [tr for tr in mine if not any(tr is x for x in same)] + [track]
         if track.status == TrackStatus.CONFIRMED:
             self._confirm(track.x, track.y, track.t, seen=False)
 
     def _confirm(self, x: float, y: float, t: float, seen: bool = True) -> None:
         """Remember a camera-confirmed drone. A report near a known one moves it along (the
         drone flies on); it never seeds a second point, so 'confirmed' cannot spread. A
-        neighbour's Confirmed Track (not `seen` by a camera) moves it no faster than
-        CONFIRM_SPEED: its Track is a map peak, which can sit on a Ghost."""
-        for i, (cx, cy, ct) in enumerate(self._confirmed):
+        neighbour's Confirmed Track (not `seen` by a camera) only moves an existing point, no
+        faster than CONFIRM_SPEED (its Track is a map peak, which can sit on a Ghost), and
+        never extends its hold: only a camera frame adds a point or keeps it alive."""
+        for i, (cx, cy, seen_t, moved_t) in enumerate(self._confirmed):
             if math.hypot(cx - x, cy - y) <= CONFIRM_FOLLOW:
-                if t >= ct:
-                    self._confirmed[i] = (x, y, t) if seen else (*_toward(cx, cy, x, y, ct, t), t)
+                if seen:
+                    self._confirmed[i] = (x, y, t, t) if t >= moved_t \
+                        else (cx, cy, max(seen_t, t), moved_t)
+                elif t >= moved_t:
+                    self._confirmed[i] = (*_toward(cx, cy, x, y, moved_t, t), seen_t, t)
                 return
-        self._confirmed.append((x, y, t))
+        if seen:
+            self._confirmed.append((x, y, t, t))
+
+    def _unconfirm(self, x: float, y: float, t: float, radius: float) -> None:
+        """The camera looked within `radius` of a confirmed point and saw nothing: unless it
+        saw the drone within CONFIRM_GRACE (one missed frame), the drone is no longer there."""
+        self._confirmed = [c for c in self._confirmed
+                           if math.hypot(c[0] - x, c[1] - y) > radius
+                           or t - c[2] < CONFIRM_GRACE]
 
     # -- reading --------------------------------------------------------------------------
 
@@ -378,7 +423,7 @@ class Belief:
                 if key[0] not in self.faulty}
 
     def _logits(self, contribs: dict | None = None) -> np.ndarray:
-        total = self.prior + self._C
+        total = self.prior + self._camera_evidence()
         for c in (self._contributions() if contribs is None else contribs).values():
             total = total + c
         return total
@@ -391,9 +436,22 @@ class Belief:
     def _cap(self, key) -> float:
         return N_EFF * math.exp(-max(0.0, self._t - self._newest[key]) / TAU)
 
+    def _camera_cap(self, o: int) -> float:
+        return N_EFF * math.exp(-max(0.0, self._t - self._c_newest[o]) / TAU_CAMERA)
+
+    def _camera_evidence(self) -> np.ndarray:
+        """(3, ny, nx): each camera's frames, at most N_EFF frames' worth (as _contribution)."""
+        stamp = self._stamp()
+        if self._cam is None or self._cam[0] != stamp:
+            total = np.zeros((3, *self.shape))
+            for o, g in self._CG.items():
+                total += g * np.minimum(1.0, self._camera_cap(o) / np.maximum(self._CW[o], 1e-9))
+            self._cam = (stamp, total)
+        return self._cam[1]
+
     def _threat_logodds_at(self, iy: int, ix: int, exclude: int) -> float:
         """Threat log-odds of one cell without `exclude`'s evidence (same sums as `_logits`)."""
-        total = self.prior[:, iy, ix] + self._C[:, iy, ix]
+        total = self.prior[:, iy, ix] + self._camera_evidence()[:, iy, ix]
         for key, g in self._G.items():
             if key[0] in self.faulty or key[0] == exclude:
                 continue
@@ -419,10 +477,13 @@ class Belief:
         denom = e.sum(axis=0) + nothing
         return np.concatenate([e / denom, (nothing / denom)[None]], axis=0)
 
-    def confirmed_near(self, x: float, y: float, t_now: float, radius=None, hold=120.0) -> bool:
+    def confirmed_near(self, x: float, y: float, t_now: float, radius=None,
+                       hold=CONFIRM_HOLD) -> bool:
+        """Is a confirmed point within `radius`? Points the camera has not seen for `hold`
+        seconds expire first."""
         radius = CONFIRM_RADIUS if radius is None else radius
         self._confirmed = [c for c in self._confirmed if t_now - c[2] < hold]
-        return any(math.hypot(cx - x, cy - y) <= radius for cx, cy, _ in self._confirmed)
+        return any(math.hypot(c[0] - x, c[1] - y) <= radius for c in self._confirmed)
 
     # -- Faulty Sensor --------------------------------------------------------------------
 
@@ -529,7 +590,7 @@ class Belief:
                 ((o, fam, round(float(c[ci, iy, ix]), 2)) for (o, fam), c in contribs.items()),
                 key=lambda e: -abs(e[2])))
             by_sensor = tuple(e for e in by_sensor if abs(e[2]) >= 0.05)
-            cam = float(self._C[ci][iy, ix])
+            cam = float(self._camera_evidence()[ci][iy, ix])
             if abs(cam) >= 0.05:
                 by_sensor += ((-1, "camera", round(cam, 2)),)
             prior = round(float(self.prior[ci][iy, ix]), 2)
@@ -551,11 +612,12 @@ class Belief:
         nearest drone peak within CONFIRM_FOLLOW, once per extraction, and moves toward it
         (at most CONFIRM_SPEED). That peak is CONFIRMED; other drone peaks that close to a
         confirmed point are its side lobes, Explained. So the point cannot hop from peak to
-        peak onto a second drone, and side lobes are not broadcast as Confirmed."""
+        peak onto a second drone, and side lobes are not broadcast as Confirmed. Following
+        does not extend the hold: without a new camera sighting the point expires."""
         self.confirmed_near(0.0, 0.0, t_now)  # drop expired points
         out = list(peaks)
         taken: set[int] = set()
-        for i, (cx, cy, ct) in enumerate(list(self._confirmed)):
+        for i, (cx, cy, seen_t, moved_t) in enumerate(list(self._confirmed)):
             near = [(math.hypot(tr.x - cx, tr.y - cy), j) for j, tr in enumerate(out)
                     if j not in taken and tr.cls == TargetClass.DRONE
                     and tr.status == TrackStatus.SUSPECTED
@@ -565,7 +627,8 @@ class Belief:
             _, j = min(near)
             taken.add(j)
             out[j] = replace(out[j], status=TrackStatus.CONFIRMED)
-            self._confirmed[i] = (*_toward(cx, cy, out[j].x, out[j].y, ct, t_now), t_now)
+            self._confirmed[i] = (*_toward(cx, cy, out[j].x, out[j].y, moved_t, t_now), seen_t,
+                                  t_now)
         return [replace(tr, status=TrackStatus.EXPLAINED)
                 if tr.cls == TargetClass.DRONE and tr.status == TrackStatus.SUSPECTED
                 and self.confirmed_near(tr.x, tr.y, t_now, radius=CONFIRM_FOLLOW) else tr
@@ -578,8 +641,14 @@ class Belief:
             return TrackStatus.EXPLAINED
         return TrackStatus.SUSPECTED
 
-    def received_tracks(self, t_now: float, max_age: float = 15.0) -> list[Track]:
-        return [tr for tr in self._tracks_rx.values() if t_now - tr.t <= max_age]
+    def received_tracks(self, t_now: float, max_age: float = RX_MAX_AGE) -> list[Track]:
+        """Each origin's current Tracks, by origin then arrival; older ones are pruned."""
+        for o in list(self._tracks_rx):
+            self._tracks_rx[o] = [tr for tr in self._tracks_rx[o] if t_now - tr.t <= RX_MAX_AGE]
+            if not self._tracks_rx[o]:
+                del self._tracks_rx[o]
+        return [tr for o in sorted(self._tracks_rx) for tr in self._tracks_rx[o]
+                if t_now - tr.t <= max_age]
 
     # -- dashboard ------------------------------------------------------------------------
 

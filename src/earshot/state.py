@@ -76,6 +76,7 @@ class PolicyParams:
     same_task_radius: float = 200.0  # m: a Claim of the same kind this close covers a drifted one
     arrive: float = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
     dismiss_after: float = 8.0  # s at the target with no Suspicion left -> dismissed
+    outbid_cooldown: float = 5.0  # s an outbid drone leaves that place alone
 
     @classmethod
     def from_dict(cls, d: dict | None) -> PolicyParams:

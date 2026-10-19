@@ -15,8 +15,12 @@ Concept section 7, as reworked on 2026-10-11:
   is the nearest drone (ties to the lower id); it follows the Verifier's distance as it flies.
   The auction is by place: Claims within same_task_radius + 100 m are one danger, whatever
   cell each drone's averaged Suspicion falls in. A drone flies only after holding the best bid
-  for a settle window, renews its lease while working, and releases with lease 0. A silent
-  drone's lease lapses and someone else bids; a nearer drone that bids later takes over.
+  for a settle window (its Claim is sent again halfway through, so one lost frame cannot let a
+  rival settle too), renews its lease while working, and releases with lease 0, also when
+  outbid. A silent drone's lease lapses and someone else bids; a nearer drone that bids later
+  takes over. An outbid drone waits outbid_cooldown before bidding near that place again.
+- A task follows its Suspicion as it drifts, but at most same_task_radius from where it was
+  claimed; beyond that it is dropped and re-auctioned.
 - Sectors are Voronoi cells of the homes of available drones (no active Claim); when a drone
   leaves, its neighbours' cells grow and patrollers fly Fill Gap.
 
@@ -74,6 +78,7 @@ class _Task:
     y: float
     track: TrackEst | None
     target: tuple[float, float]  # verify point
+    claimed: tuple[float, float] | None = None  # where it was claimed: drift is capped from here
 
 
 class Policy:
@@ -97,8 +102,11 @@ class Policy:
         self._claimed_at = 0.0
         self._last_claim = -1e9
         self._settled = False
+        self._reclaimed = False  # the Claim was sent again halfway through settle
         self._my_bid = 0.0
         self._arrived_at: float | None = None
+        self._lost: tuple[float, float, float] | None = None  # (t, x, y) of the last outbid
+        self._cooldown = self.p.outbid_cooldown
         xs = np.arange(city.bounds[0] + SECTOR_CELL / 2, city.bounds[2], SECTOR_CELL)
         ys = np.arange(city.bounds[1] + SECTOR_CELL / 2, city.bounds[3], SECTOR_CELL)
         self._SX, self._SY = np.meshgrid(xs, ys)
@@ -173,6 +181,10 @@ class Policy:
     def _bid_for_best(self, t, s, tasks, active, d: Decision) -> None:
         best: tuple[float, _Task] | None = None
         for task in tasks.values():
+            if self._lost is not None and t - self._lost[0] < self._cooldown \
+                    and math.hypot(task.x - self._lost[1], task.y - self._lost[2]) \
+                    <= self.p.same_task_radius:
+                continue  # just outbid here: the Ghost next door is the same danger
             bid = self._bid(task, s)
             rival = self._rival(task, active)
             if rival is not None and rival >= (bid, -self.me):
@@ -181,8 +193,11 @@ class Policy:
                 best = (bid, task)
         if best is None:
             return
-        self._my_bid, self._task = best
+        self._my_bid, task = best
+        self._task = _Task(task.tid, task.kind, task.x, task.y, task.track, task.target,
+                           claimed=(task.x, task.y))
         self._claimed_at, self._settled, self._arrived_at = t, False, None
+        self._reclaimed = False
         self._send_claim(t, d, LEASE)
         d.events.append(self._event(t, "claim"))
 
@@ -197,6 +212,10 @@ class Policy:
     def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
         current = tasks.get(task.tid) or self._drifted(task, tasks) or self._held(task, tracks)
+        if current is not None and task.claimed is not None and math.hypot(
+                current.x - task.claimed[0], current.y - task.claimed[1]) > self.p.same_task_radius:
+            self._release(t, d, "drifted")  # walked too far from its Claim: re-auction it
+            return
         self._verify_progress(t, s, tracks, current, d)
         if self._task is None:
             return
@@ -206,13 +225,19 @@ class Policy:
         self._my_bid = self._bid(task, s)  # it gets nearer as it flies
         rival = self._rival(task, active)
         if rival is not None and rival > (self._my_bid, -self.me):
-            self._task = None  # a nearer drone has it: let my lease lapse
+            self._send_claim(t, d, 0.0)  # a nearer drone has it: release, don't linger
+            self._lost = (t, task.x, task.y)
+            self._task = None
+            self._settled = False
             d.events.append({"t": round(t, 2), "kind": "outbid", "drone": self.me})
             return
         if not self._settled and t - self._claimed_at >= self.p.settle:
             self._settled = True
             d.events.append(self._event(t, "dispatch"))
-        if t - self._last_claim >= RENEW:
+        if not self._settled and not self._reclaimed and t - self._claimed_at >= self.p.settle / 2:
+            self._reclaimed = True  # once more before flying: the first Claim may be lost
+            self._send_claim(t, d, LEASE)
+        elif t - self._last_claim >= RENEW:
             self._send_claim(t, d, LEASE)
 
     def _drifted(self, task: _Task, tasks) -> _Task | None:
@@ -228,7 +253,8 @@ class Policy:
                 and tr.confidence >= self.p.verify_min_confidence
                 and math.hypot(tr.x - task.x, tr.y - task.y) <= self.p.same_task_radius]
         tr = min(same, key=lambda tr: math.hypot(tr.x - task.x, tr.y - task.y), default=None)
-        return None if tr is None else _Task(task.tid, task.kind, tr.x, tr.y, tr, (tr.x, tr.y))
+        return None if tr is None else _Task(task.tid, task.kind, tr.x, tr.y, tr, (tr.x, tr.y),
+                                             task.claimed)
 
     def _verify_progress(self, t, s, tracks, current, d: Decision) -> None:
         task = self._task
