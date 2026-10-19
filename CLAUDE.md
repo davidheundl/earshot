@@ -14,7 +14,7 @@ Read before changing code:
 - `main` holds the working version of everything, judged logic included, built before the event; anything new built before Oct 24 gets a line in DECLARATION.md.
 - Simulators sit behind the Backend seam (`earshot/backend/`): `twin2d`, `webots`, `gazebo`, picked by `--backend`. Nothing above the seam may know which one runs.
 - Judge behaviour changes with `uv run earshot eval` over seeds, one change at a time; a single run is noise.
-- Generated Webots worlds use base nodes only (ADR 0005); keep DEF names `DRONE_<id>`, `SRC_<id>`, `RIG`.
+- Generated Webots worlds may use EXTERNPROTOs (ADR 0005 superseded: the venue has WLAN); open each world once online so Webots caches them. Keep DEF names `DRONE_<id>`, `SRC_<id>`, `RIG`.
 
 ## Verify
 

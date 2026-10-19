@@ -251,7 +251,7 @@ Live in Webots with the full perception (EfficientAT sound, YOLO Verifier camera
 uv run earshot live --scenario scenarios/muc_full.yaml --backend webots
 ```
 
-Add `--no-webots-view` when the dashboard is the show.
+Add `--no-webots-view` when the dashboard is the show. The world loads 5 Webots PROTOs from GitHub (`EXTERNPROTOS` in `tools/build_webots_world.py`); Webots caches them on the first online launch, so launch each demo Mac once with network before the venue.
 
 Fallbacks, from least to most drastic:
 
