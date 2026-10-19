@@ -104,7 +104,7 @@ A Suspicion where unrelated evidence happens to cross (overlapping RF rings, bea
 _Avoid_: false positive (that is the outcome of verifying a Ghost)
 
 **Explained**:
-A Suspicion best accounted for by City knowledge (rumble on the rail line is a train); nobody verifies it.
+A Suspicion best accounted for without a new Source: by City knowledge (rumble on the rail line is a train), or as a side lobe of a Confirmed drone (a drone peak within 150 m of a confirmed point, other than the one that point follows). Nobody verifies it.
 
 **Faulty Sensor**:
 The hypothesis that a Drone's own sensor, not the world, explains its reports.
