@@ -5,7 +5,8 @@ __pycache__/
 .ruff_cache/
 runs/
 data/raw/
-data/models/
+data/models/*
+!data/models/sound_head.pt
 *.egg-info/
 .DS_Store
 

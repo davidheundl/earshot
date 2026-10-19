@@ -36,7 +36,7 @@ gives Train 0.81 at 10 s and nonsense at 1 s. The classifier therefore tiles eac
 
 ## Results: held-out real recordings
 
-Per row: ESC-50 fold 5 (8 clips per class, 5 s each) and drone1 at 25/50 cm, as clean windows
+Per row: ESC-50 fold 5 (8 clips of 5 s per ESC-50 category; vehicle merges 3 categories, machine 4) and drone1 at 25/50 cm, as clean windows
 and as beam-like mixes at fixed SNR. "Drone recall" is the share of drone windows called
 drone. "False drone" is the share of everything else called drone. Full numbers are in
 `sound-classifier-results.json`.
@@ -67,11 +67,12 @@ Trucks are recognised in 81 % of windows from −5 dB up and in 94 % above 0 dB.
 
 The simulator detects a sound at −8 dB SNR half the time (`acoustics.snr50_db`), and the
 beam the classifier gets has exactly that SNR. At the SNRs where the sim detects a drone, a
-real recording is hard to classify. That is either a sim assumption to revisit (the level
-model already counts array gain; the beam gets none) or the honest limit of 1 s sound
-classification.
+real recording is hard to classify. According to `acoustics.py`, the −8 dB threshold
+models "tonal / long-integration detectors" that work below the broadband noise floor. The
+classifier gets no such integration: one 1 s beam at that SNR. That gap is either a sim
+assumption to revisit or the honest limit of 1 s sound classification.
 
-## Results: downstream (`earshot eval --scenario random --runs 10`)
+## Results: downstream (`earshot eval --scenario random --runs 30`)
 
 `EARSHOT_SOUND_DEVICE=mps uv run earshot eval --scenario random --runs 30 --classifier none
 earshot.audio.classifier:efficientat`. Real clips are in `data/sounds/`, and the run took 33 min.
@@ -115,12 +116,16 @@ startup included, while another `earshot tune` was running.
 - **Tuning bias:** `PolicyParams` were tuned against `CONFUSION` (fan→drone 35 %). A
   classifier that rarely calls a fan a drone moves the evidence the thresholds were tuned
   for, so some of any eval difference is the tuning target moving.
+- **Never run on a real microphone.** The arrays take `--classifier`, but no drone, plane or
+  car sound has been played at a ReSpeaker yet, because there was no hardware here.
+- **The committed head (`data/models/sound_head.pt`, 0.8 MB) was trained partly on ESC-50,
+  which is CC BY-NC.** That's fine for a hackathon demo; it is declared in DECLARATION.md.
 - **Unpaired comparison:** `none` vs `efficientat` runs aren't paired, because CONFUSION draws
   random numbers and the classifier doesn't. Read medians and ranges over seeds.
 - **Cost:** about 170 ms per beam on Apple-silicon CPU (torch has no fast depthwise
   convolution there) and about 70 ms on MPS, or 18 ms batched. `EARSHOT_SOUND_DEVICE=mps`
-  selects MPS. In `live`, with six drones hearing a few sources each, classification is
-  1-3 s of compute per sim second on CPU.
+  selects MPS. Only beams of detected Sources are classified, so `live` keeps real time on
+  CPU (see above). A 30-seed eval takes about 33 min instead of a few.
 
 ## Go / no-go for the day
 
@@ -137,16 +142,18 @@ startup included, while another `earshot tune` was running.
   1. Real drone recordings at range, outdoors. Both drones in the data were recorded at
      25/50 cm in one lab. Record the team's own drone at 20-100 m on the day, add it to
      training, and re-fit.
-  2. Faint drones. The sim detects them at −15 dB SNR, where 1 s of audio says little. Either
-     give the beam array gain (the level model's SNR already assumes it), or classify on 2-3 s
-     of beam history per Source instead of 1 s.
+  2. Faint drones. The sim detects them at −15 dB SNR, where 1 s of audio says little. Give
+     the classifier the integration the detection threshold assumes: 2-3 s of beam history
+     per Source instead of 1 s, or a real array's beamforming gain (about 6 dB for the
+     ReSpeaker's 4 mics).
   3. More plane and helicopter negatives. ESC-50 has 40 clips each, so add FSD50K
      (CC BY) aircraft clips if planes become part of the demo.
 
 ## Reproduce
 
     uv sync --group ml
-    uv run python tools/fetch_efficientat.py
+    uv run python tools/fetch_efficientat.py           # backbone, 20 MB: all the head needs
+    # the trained head is committed; to retrain or evaluate:
     uv run python tools/fetch_sound_data.py            # ~1 GB download, ~7 min
     uv run python tools/train_sound_head.py            # ~25 min features on MPS, then seconds
     uv run earshot fast --audio runs/audio --audio-beams --duration 300
