@@ -34,7 +34,7 @@ def test_demo_intruder_is_confirmed_and_the_train_is_left_alone():
 
     sc = Scenario.load(ROOT / "scenarios/demo.yaml", seed=100)
     r = run(sc, root=ROOT)
-    m = metrics(r, "earshot")
+    m = metrics(r, "earshot", sc.duration)
     assert m.t_confirm is not None and m.t_confirm < 200
     assert m.false_verify <= 20  # one seed; `earshot eval` tracks the distribution (1-18 now)
     near_rail = [e for e in r.events if e.get("task") == "verify" and e["kind"] == "dispatch"

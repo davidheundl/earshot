@@ -189,9 +189,25 @@ def _params(a) -> dict | None:
     return d.get("params", d)
 
 
+def _eval_seed(a) -> int:
+    """--seed, else the held-out seeds when --params (a tuned set) is judged, else 0. Warns
+    when a tuned set is judged on its own training seeds."""
+    from earshot.tune import HOLDOUT_SEED0, TRAIN_RUNS, TRAIN_SEED0
+
+    seed = a.seed if a.seed is not None else (HOLDOUT_SEED0 if a.params else 0)
+    if a.params and seed < TRAIN_SEED0 + TRAIN_RUNS and TRAIN_SEED0 < seed + a.runs:
+        print(f"warning: seeds {seed}-{seed + a.runs - 1} overlap tune's training seeds "
+              f"{TRAIN_SEED0}-{TRAIN_SEED0 + TRAIN_RUNS - 1}: --params was fit to them "
+              f"(held-out seeds start at {HOLDOUT_SEED0})", file=sys.stderr)
+    return seed
+
+
 def cmd_eval(a) -> None:
     from earshot.eval import as_json, evaluate, summarize
 
+    if a.jobs > 1 and any(c != "none" for c in a.classifier or []):
+        sys.exit("--jobs > 1 cannot share a loaded sound classifier: drop --jobs or --classifier")
+    seed = _eval_seed(a)
     t0 = time.time()
     table, raw = [], {}
     from earshot.eval import sound_audio
@@ -203,7 +219,8 @@ def cmd_eval(a) -> None:
         label = policy + (f"/{scheme}" if scheme else "") + (f"/{a.bw:g}kHz" if a.bw else "")
         if c:
             label += "/" + c.rpartition(":")[2]
-        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw, _params(a), audios[c])
+        rows = evaluate(a.scenario, a.runs, seed, policy, scheme, a.bw, _params(a), audios[c],
+                        a.jobs, a.duration)
         raw[label] = as_json(rows)
         table.append(summarize(rows, label))
     cols = list(table[0])
@@ -211,8 +228,9 @@ def cmd_eval(a) -> None:
     print("  ".join(c.ljust(width[c]) for c in cols))
     for row in table:
         print("  ".join(str(row[c]).ljust(width[c]) for c in cols))
-    print(f"{a.runs} run(s) x {len(combos)} configurations in {time.time() - t0:.0f}s"
-          "  (median [min-max] over seeds)")
+    print(f"{a.runs} run(s) (seeds {seed}-{seed + a.runs - 1}) x {len(combos)} configurations"
+          f" in {time.time() - t0:.0f}s  (median [min-max] over seeds; latencies censored at"
+          " the scenario's duration; confirmed: drone Sources, agreed: jammed runs)")
     if a.out:
         Path(a.out).write_text(json.dumps({"summary": table, "runs": raw}, indent=1))
 
@@ -264,6 +282,43 @@ def cmd_live(a) -> None:
                 p.kill()
 
 
+def _wait_for_webots(proc: subprocess.Popen, timeout: float = 60.0) -> None:
+    """Wait until Webots has loaded the world and offers the RIG's extern-controller socket
+    (a big world such as Munich takes a while), at most `timeout` seconds. Webots keeps that
+    socket at /tmp/webots/<user>/<port>/ipc/<robot>/extern; if its instance folder never
+    shows up while the port is open, the layout differs from what we expect and we go on
+    (the controller library itself retries for a while)."""
+    user = os.environ.get("USER") or os.environ.get("USERNAME") or "default"
+    instance = Path("/tmp/webots") / user / str(config.WEBOTS_PORT)
+    robot = os.environ.get("WEBOTS_ROBOT_NAME") or "supervisor"  # webots_env's controller URL
+    sock = instance / "ipc" / robot / "extern"
+    start = time.monotonic()
+    port_up: float | None = None
+    print(f"[live] waiting for Webots to load {Path(proc.args[-1]).name} (up to "
+          f"{timeout:.0f} s)", flush=True)
+    said = 0
+    while (waited := time.monotonic() - start) < timeout:
+        if proc.poll() is not None:
+            sys.exit(f"Webots exited with {proc.returncode} while loading the world")
+        if sock.exists():
+            print(f"[live] Webots ready after {waited:.0f} s", flush=True)
+            return
+        if port_up is None:
+            with socket.socket() as sk:
+                if sk.connect_ex((config.HOST, config.WEBOTS_PORT)) == 0:
+                    port_up = time.monotonic()
+        elif not instance.exists() and time.monotonic() - port_up > 10.0:
+            print("[live] Webots is up, its controller socket not where expected; "
+                  "connecting anyway", flush=True)
+            return
+        if waited // 10 > said:
+            said = int(waited // 10)
+            print(f"[live] still waiting for Webots ({waited:.0f} s)", flush=True)
+        time.sleep(0.5)
+    print(f"[live] Webots not ready after {timeout:.0f} s; connecting anyway (the world may "
+          "fail to start: check the Webots window)", flush=True)
+
+
 def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
     """Start Webots (optional), radio, agents, dashboard and world; return when the world
     ends. A crashed helper is reported, not fatal (the dashboard never stops a run)."""
@@ -285,7 +340,7 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
                  *(["--no-rendering"] if a.no_webots_view else []),
                  "--stdout", "--stderr", str(world_file)]
             ))
-            time.sleep(3)
+            _wait_for_webots(procs[-1])
 
     if a.backend == "gazebo":
         world_file = Path(f"gazebo/worlds/{sc.name}.sdf")
@@ -337,10 +392,12 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
 def cmd_doctor(a) -> None:
     ok = True
 
-    def check(name, cond, hint=""):
+    def check(name, cond, hint="", fatal=True):
+        """fatal=False: a run works without it (dev setups, optional hardware/backends)."""
         nonlocal ok
-        ok &= bool(cond)
-        print(f"  {'ok  ' if cond else 'FAIL'} {name}" + ("" if cond else f"  -> {hint}"))
+        ok &= bool(cond) or not fatal
+        tag = "ok  " if cond else ("FAIL" if fatal else "warn")
+        print(f"  {tag} {name}" + ("" if cond else f"  -> {hint}"))
 
     print("earshot doctor")
     check("python 3.11", sys.version_info[:2] == (3, 11), "uv python pin 3.11 && uv sync")
@@ -350,14 +407,15 @@ def cmd_doctor(a) -> None:
                        env=webots_env(), capture_output=True, check=False)
     check("Webots Python controller importable", r.returncode == 0, r.stderr.decode()[-200:])
     check("Gazebo installed (gz sim)", shutil.which("gz") is not None,
-          "brew tap osrf/simulation && brew install gz-harmonic")
+          "brew tap osrf/simulation && brew install gz-harmonic", fatal=False)
     check("Gazebo Python bindings (Homebrew)", gazebo_python() is not None,
-          "brew install gz-harmonic")
+          "brew install gz-harmonic", fatal=False)
     if (GZ_VENV / "bin" / "python").exists():
         r = subprocess.run([str(GZ_VENV / "bin" / "python"), "-c",
                             "import gz.sim8, gz.transport13, gz.msgs10.image_pb2, zmq, msgpack"],
                            capture_output=True, check=False)
-        check("Gazebo bridge venv importable", r.returncode == 0, r.stderr.decode()[-200:])
+        check("Gazebo bridge venv importable", r.returncode == 0, r.stderr.decode()[-200:],
+              fatal=False)
     else:
         check("Gazebo bridge venv (made by the first `earshot live --backend gazebo`)", True)
     for name, ep in [("world pub", config.WORLD_PUB), ("world pull", config.WORLD_PULL),
@@ -376,15 +434,18 @@ def cmd_doctor(a) -> None:
     check("city data present", Path("data/cities/synthetic.json").exists(),
           "uv run python tools/make_synthetic_city.py")
     check("default HMAC key replaced", "EARSHOT_KEY" in os.environ,
-          "export EARSHOT_KEY=... (fine to skip for dev)")
+          "export EARSHOT_KEY=... (fine to skip for dev)", fatal=False)
     try:
         import sounddevice as sd
 
         n_in = [d for d in sd.query_devices() if d["max_input_channels"] >= 4]
-        check("4+ channel input device (ReSpeaker)", n_in, "plug in the array; grant mic access")
+        check("4+ channel input device (ReSpeaker)", n_in, "plug in the array; grant mic access",
+              fatal=False)
     except Exception as e:  # noqa: BLE001
-        check("audio extras installed", False, f"uv sync ({e})")
-    print("all good" if ok else "some checks failed (non-fatal ones are fine during dev)")
+        check("audio extras installed", False, f"uv sync ({e})", fatal=False)
+    if not ok:
+        sys.exit("some checks FAILed: fix them before a run (warn lines are fine during dev)")
+    print("ready (warn lines are fine during dev)")
 
 
 def main(argv=None) -> None:
@@ -416,7 +477,8 @@ def main(argv=None) -> None:
     lv.add_argument("--speed", type=float, default=1.0)
     lv.add_argument("--no-dashboard", action="store_true")
     lv.add_argument("--events", help="replay a recorded session: a file, or 'latest'")
-    lv.add_argument("--duration", type=float, help="run this many sim seconds (default: scenario)")
+    lv.add_argument("--duration", type=float,
+                    help="stop after this many sim seconds (default: run until Ctrl-C)")
     lv.add_argument("--array", action="append", metavar="ID=DEVICE[@ROT]",
                     help="drone ID hears through a real microphone array (see `earshot arrays`)")
     lv.add_argument("--no-webots-launch", action="store_true", help="Webots already open")
@@ -436,7 +498,12 @@ def main(argv=None) -> None:
     ev.add_argument("--scenario", default="scenarios/demo.yaml",
                     help="a scenario YAML, or 'random' for a generated world per seed")
     ev.add_argument("--runs", type=int, default=10)
-    ev.add_argument("--seed", type=int, default=0)
+    ev.add_argument("--seed", type=int,
+                    help="first seed (default: tune's held-out seeds, 1000, with --params; "
+                         "else 0); warns if --params is judged on tune's training seeds")
+    ev.add_argument("--jobs", type=int, default=1,
+                    help="processes; same rows as serial (not with --classifier)")
+    ev.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")
     ev.add_argument("--policy", nargs="+", default=["earshot"],
                     choices=["earshot", "nearest", "no_perch"])
     ev.add_argument("--scheme", nargs="+", choices=["ours", "flood", "unicast3"])

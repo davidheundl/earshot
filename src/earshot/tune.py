@@ -7,7 +7,9 @@ GENES move. Each candidate runs the earshot policy on the same training seeds (g
 worlds, scenario "random"), so candidates differ only by their parameters; a run is
 deterministic, so the objective is too. Cost per run, in seconds of delay:
 
-    t_confirm (never confirmed: the scenario's duration)
+    t_confirm                       mean over the drone Sources (eval.metrics: one never
+                                    confirmed counts as the scenario's duration), so a
+                                    second intruder weighs as much as the first
     + W_MISS * missed               a drone Source never confirmed
     + W_FALSE * false_verify        a Verifier sent where no drone is
     + W_GAP * busy_max              drones away from their post at once (the Gap)
@@ -29,7 +31,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import fields
 from pathlib import Path
 
-from earshot.eval import RunMetrics, load_scenario, run_one
+from earshot.eval import RunMetrics, run_one
 from earshot.state import PolicyParams
 
 # gene -> (low, high): bounds keep the protocol safe, not just plausible
@@ -47,6 +49,7 @@ W_FALSE = 10.0
 W_GAP = 10.0
 W_MISS = 600.0  # a missed drone is the one unacceptable outcome: no trade buys it back
 TRAIN_SEED0 = 0
+TRAIN_RUNS = 10  # default --train: seeds TRAIN_SEED0 .. + TRAIN_RUNS - 1
 HOLDOUT_SEED0 = 1000
 
 
@@ -63,8 +66,8 @@ def to_unit(params: PolicyParams) -> list[float]:
     return [(getattr(params, name) - lo) / (hi - lo) for name, (lo, hi) in GENES.items()]
 
 
-def run_cost(m: RunMetrics, duration: float) -> dict:
-    t_c = m.t_confirm if m.t_confirm is not None else duration
+def run_cost(m: RunMetrics) -> dict:
+    t_c = m.t_confirm if m.t_confirm is not None else 0.0  # None: no drone Source to confirm
     return {"cost": t_c + W_MISS * m.missed + W_FALSE * m.false_verify + W_GAP * m.busy_max,
             "t_confirm": t_c, "false_verify": m.false_verify, "busy_max": m.busy_max,
             "missed": m.missed, "verify_flights": m.verify_flights,
@@ -73,8 +76,7 @@ def run_cost(m: RunMetrics, duration: float) -> dict:
 
 def _job(scenario: str, seed: int, params: dict) -> dict:
     """One (candidate, seed) run in a worker process: returns its cost components."""
-    duration = load_scenario(scenario, seed).duration
-    return run_cost(run_one(scenario, seed, "earshot", params=params), duration)
+    return run_cost(run_one(scenario, seed, "earshot", params=params))
 
 
 def _mean(rows: list[dict]) -> dict:
@@ -86,7 +88,7 @@ def evaluate_all(pool, scenario: str, candidates: list[dict], seeds: list[int]) 
     return [[f.result() for f in row] for row in futures]
 
 
-def tune(scenario: str = "random", gens: int = 30, pop: int = 12, train: int = 10,
+def tune(scenario: str = "random", gens: int = 30, pop: int = 12, train: int = TRAIN_RUNS,
          holdout: int = 20, workers: int | None = None, sigma0: float = 0.25,
          seed: int = 1, out: Path | None = None) -> Path:
     import warnings
