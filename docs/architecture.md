@@ -27,6 +27,8 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
                      └────────────────────────────────────────────────────┘
 ```
 
+With `--backend gazebo` the box at the top is Gazebo Sim instead: `gz_bridge.py` (Homebrew Python, `gazebo/.venv`) embeds the Gazebo server and answers the world's REQ on `:5554`, one round trip per tick; `gz sim -g` shows it (ADR 0008).
+
 `earshot live` starts all of these and stops them together. `earshot fast` runs the same World, RadioMedium and Agents in one process in lockstep, with no sockets (ADR 0001).
 
 ## Modules and their seams
@@ -36,7 +38,7 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 | `messages` | `encode(msg, key) -> bytes`, `decode(frame, key) -> msg` | The radio contract, ≤ 40 B per frame (ADR 0004). |
 | `city` | `City.load(json)`, `buildings_between`, `distance_to_rail/road`, `grid` | Static prior. Schema in the module docstring. |
 | `scenario` | `Scenario.load(yaml, seed)`, `active_sources(t)`, `jam_zones(t)`, `faults_for`, `apply(op, t)` | The only place ground truth lives. Every Event (YAML, hotkey, replay) goes through `apply`; op list in the module docstring. |
-| `backend` | `step(dt, commands) -> states`, `camera_frame(id)`, `close()` | Adapters: `twin2d.Twin2D`, `webots.WebotsBackend` (ADR 0002). |
+| `backend` | `step(dt, commands) -> states`, `camera_frame(id)`, `close()` | Adapters, chosen by `--backend twin2d\|webots\|gazebo` (`world_proc.make_backend`): `twin2d.Twin2D`, `webots.WebotsBackend` (ADR 0002), `gazebo.GazeboBackend` (ADR 0008; talks to `gz_bridge.py`, which embeds Gazebo Sim in its own Python). |
 | `sensors` | `SensorSuite.sense(state, t, frame) -> [Detection]` | Physics in `acoustics.py` / `rf.py` (pure), calibrated to concept 5.1/5.2 by `tests/test_sensors.py`. A Detection = reading + truth; truth never reaches Agents. With a rendered frame (Webots), the recogniser decides what the camera sees. |
 | `sensors.waveform` | `ClipBank(dir)`, `Mixer.window(...) -> AudioWindow`, `Mixer.beam(win, i)`, `load_classifier("mod:attr")` | Off unless asked (`--audio`, `--classifier`). Each 1 s sound window rendered as 16 kHz audio: recordings from `data/sounds/<drone\|vehicle\|train\|nothing\|ego\|background>/*.wav`, synthetic loops for classes without any; every part scaled to the level `acoustics` computes, so waveform SNR = logged SNR. A classifier (`classify(audio, sr) -> 4 probs` by TargetClass) gets one *beam* per detected Source (it + the others 6 dB down + noise), not the raw mix, and replaces the `CONFUSION` stand-in. Draws no random numbers: with audio on, everything else in the run stays the same (a classifier aside). `sensors.export.AudioExport` writes training data (`earshot fast --audio DIR [--audio-beams]`): `drone<k>.wav`, `labels.jsonl`, `beams/`, `meta.json`. |
 | `world` | `World.step(commands) -> {id: Sensed}`, `detections`, `audio`, `snapshot()` | Backend + truth + sensors. Runners own the clock. `detections` feeds logs and metrics. |
@@ -54,9 +56,9 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 
 ## Pre-built vs. on the day
 
-Rule (concept section 14): infrastructure is built beforehand and declared ([DECLARATION.md](../DECLARATION.md)); the judged intelligence is built on Oct 24. Branch `main` holds the infrastructure with the judged logic as stubs. Branch `prototype` holds a working version of the judged logic, built before the event to rehearse and measure: using it on the day means declaring it (DECLARATION.md lists it), or rebuilding it on the day from `main`.
+Rule (concept section 14): infrastructure is built beforehand and declared ([DECLARATION.md](../DECLARATION.md)); the judged intelligence is built on Oct 24. Branch `main` holds the infrastructure and a working version of the judged logic, built before the event to rehearse and measure: using it on the day means declaring it (DECLARATION.md lists it), or rebuilding it on the day.
 
-Open items worth doing on the day (prototype):
+Open items worth doing on the day:
 - Bearings that point at an already confirmed drone should explain away the ghost crossings they create (the source of most remaining false verify flights).
 - One aggregated Observation per drone per second, so the swarm also runs on a 125 kHz LoRa channel (it needs 500 kHz now).
 - A trained detector instead of the Webots recogniser. (EfficientAT for the sound class: spike on `prototype`, see [sound-classifier-spike.md](sound-classifier-spike.md).)
@@ -66,6 +68,7 @@ Open items worth doing on the day (prototype):
 | Area | Contract |
 |---|---|
 | City from LoD2 + OSM | Done for Munich Airport: `tools/muc_fetch.py` caches the open data, `tools/make_muc.py` writes `data/cities/muc.json` (optional keys `ground_tiles`, `basemap`, `building_meshes`, `stands`, `features` and `surround`: the Webots builder and dashboard use them when present; the City class ignores them, so they never change a run). Otherwise: write a City JSON (schema in `earshot/city.py`) into `data/cities/<name>.json`; point a scenario's `city:` at it. Local metric frame, metres, x = east, y = north. |
+| Gazebo world | `tools/build_gazebo_world.py` (reuses the Webots builder's meshes and textures). Model names `DRONE_<id>`, `SRC_<id>[_w<k>]`, `CAMV`, `CAM_<k>`; a Source's body visuals carry a `Label` (class, `gazebo.LABELS`); one visual per body. |
 | Webots world | Either extend `tools/build_webots_world.py` or hand-build a world; it must keep `DEF DRONE_<id>` (Pose), `DEF SRC_<source id>` (Solid with `recognitionColors`) and `DEF RIG` (Robot, `supervisor TRUE`, `controller "<extern>"`, Camera named `camera` with a Recognition node). Base nodes only, or pre-cache PROTOs (ADR 0005). |
 | Camera detector | `Sensed.camera_frame` = `{"w","h","objects"}` on the Verifier (the image only via `camera_image()`, for the dashboard preview). Now: Webots' recogniser reports each Source Solid's `model` (its class) and `SensorSuite._camera` turns that into a reading. Replace with a trained detector at the same spot. |
 | Live arrays | `scenarios/room.yaml`: drones 0 and 1 are `fixed` (never leave their roof). `earshot arrays` lists devices; `earshot live --scenario scenarios/room.yaml --array 0=<dev>@<rot> --array 1=<dev>@<rot>` replaces their simulated sound with real bearings. `rot` = the compass bearing the array's forward points to in the miniature city (1 m room = 100 m city). On arrival: check the mic-channel order (`audio/doa.py`) and calibrate `calibration_db`. |
@@ -84,3 +87,6 @@ Live Events are applied at the next world tick, tagged `live`, and recorded to `
 - Regenerate the Webots world after changing the City or scenario sources: `earshot live --backend webots` does this automatically.
 - `WebotsBackend` sleeps each basic step to its wall-clock deadline. With `--no-webots-view`, `earshot live` starts Webots in fast mode, so our per-tick work fits into that slack (1.0x); with the 3D window it stays in realtime mode, where our work comes on top of every step.
 - Each Webots camera renders the whole scene. The view cameras run only while a game screen sends its `/view` keepalive (every 2 s, not from the evidence screen or a hidden tab); `--no-webots-view` skips Webots' own 3D window, the largest remaining cost.
+- Gazebo: every gz process needs `GZ_IP=127.0.0.1` and `GZ_PARTITION=earshot` (`cli.gazebo_env()`), or another Gazebo on the network joins our bus. To look at a running world from a shell: `GZ_IP=127.0.0.1 GZ_PARTITION=earshot gz topic -l`.
+- Gazebo's label render (the Verifier's box camera) costs per visual in the scene: merge geometry into few meshes. An OBJ without normals renders white; the builder adds them.
+- Two live runs on one Mac share the same ports: `earshot live` refuses to start while any of them listens. It cannot see a run that is still starting up, so one Mac (or one checkout's session) runs one live session at a time.

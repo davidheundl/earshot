@@ -12,6 +12,7 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - 2D twin backend (kinematic drones, perching on flat roofs, battery drain).
 - Webots bridge: puppeted drones, a single camera rig with recognition, world generator from City JSON.
 - Webots performance: backend paces Webots (fast mode) to the wall clock, Verifier camera rendered once per tick, drone view cameras only while a screen shows them, tree meshes tiled for culling, `--no-webots-view`; detail falls off with distance from the City (trees outside it without trunks and with coarser crowns, villages 2 km out as LoD1 blocks), parked cars without separate tyres, fence posts every 8 m.
+- Gazebo Sim backend, interchangeable with Webots behind the Backend seam: world generator from City JSON (SDF, single-mesh bodies), a bridge process embedding the Gazebo server in lockstep, a bounding-box camera with class labels as the Verifier's detector, view cameras for the game screen, `earshot live --backend gazebo`.
 - Placeholder synthetic city and a demo scenario.
 - Munich Airport city, 1:1 from open data (`tools/muc_fetch.py`, `tools/make_muc.py`): 1,303 LoD2 buildings with their measured walls and roofs, Perch Sites on flat roofs, OSM runways, roads and the S-Bahn surface track, the aerial photo as Webots ground and dashboard basemap; scenario `scenarios/muc.yaml` (drones on the terminal roofs, intruder over the apron).
 - Munich Airport look in Webots: the aerial photo draped over the LoD2 roofs, a curtain-wall facade texture on the walls, ground photo at 0.5 m/px (dashboard basemap 4096 px).
@@ -28,9 +29,9 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Scenario events (add source, jam, fault, day/night, ego filter): scripted in YAML or sent live from dashboard hotkeys; live sessions recorded and replayable in fast mode.
 - Stub belief and duty-cycle policy.
 
-## Prototype of the judged logic (branch `prototype`, built before the event)
+## Prototype of the judged logic (built before the event, on `main`)
 
-Built to rehearse and measure. If any of it is used on the day, it goes on the declaration slide as pre-built; otherwise it is rebuilt on the day from `main`.
+Built to rehearse and measure. If any of it is used on the day, it goes on the declaration slide as pre-built; otherwise it is rebuilt on the day.
 
 - Probability Map: bounded log-likelihood evidence per drone and sensor, effective-sample cap, rail/road priors (explaining away), camera confirmation and dismissal, track extraction with uncertainty ellipses, overlapping Suspicions merged at their likelihood-weighted mean.
 - Faulty Sensor detection against what the other drones agree on.

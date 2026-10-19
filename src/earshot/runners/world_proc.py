@@ -1,7 +1,8 @@
 """Live world process: owns the clock, the backend and the ground truth.
 
     python -m earshot.runners.world_proc --scenario scenarios/demo.yaml --backend twin2d
-    (backend webots: start via `earshot live --backend webots`, which sets the Webots env)
+    (backend webots: start via `earshot live --backend webots`, which sets the Webots env;
+    backend gazebo: via `earshot live --backend gazebo`, which starts the Gazebo bridge)
 
 Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot) to radio + dashboard;
 with --audio also "audio." (each drone's newest 1 s of microphone sound) to the dashboard.
@@ -38,13 +39,17 @@ def make_backend(name: str, city: City, scenario: Scenario):
         from earshot.backend.webots import WebotsBackend
 
         return WebotsBackend(city, scenario), False  # the backend paces Webots' steps
+    if name == "gazebo":
+        from earshot.backend.gazebo import GazeboBackend
+
+        return GazeboBackend(city, scenario), False  # the bridge paces Gazebo's steps
     raise ValueError(name)
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
-    ap.add_argument("--backend", default="twin2d", choices=["twin2d", "webots"])
+    ap.add_argument("--backend", default="twin2d", choices=["twin2d", "webots", "gazebo"])
     ap.add_argument("--speed", type=float, default=1.0, help="real-time factor (twin2d only)")
     ap.add_argument("--events", help="recorded session to replay (runs/live-*.events.jsonl)")
     ap.add_argument("--duration", type=float, help="override the scenario length (sim seconds)")

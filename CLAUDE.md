@@ -11,7 +11,8 @@ Read before changing code:
 
 - `earshot/agent/` stays pure: time arrives as the `t` argument, frames as `inbox`, randomness through injected seeded generators. `tests/test_lockstep.py` checks same seed → same run.
 - Radio frames stay ≤ 40 B; `earshot/messages.py` is their single source of truth.
-- `main` keeps the judged logic as `ON THE DAY` stubs; `prototype` holds a working version built before the event. Anything new built before Oct 24 gets a line in DECLARATION.md.
+- `main` holds the working version of everything, judged logic included, built before the event; anything new built before Oct 24 gets a line in DECLARATION.md.
+- Simulators sit behind the Backend seam (`earshot/backend/`): `twin2d`, `webots`, `gazebo`, picked by `--backend`. Nothing above the seam may know which one runs.
 - Judge behaviour changes with `uv run earshot eval` over seeds, one change at a time; a single run is noise.
 - Generated Webots worlds use base nodes only (ADR 0005); keep DEF names `DRONE_<id>`, `SRC_<id>`, `RIG`.
 

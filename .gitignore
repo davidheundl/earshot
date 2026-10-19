@@ -21,3 +21,8 @@ webots/worlds/muc.wbt
 
 # real recordings dropped in by tools/fetch_sound_data.py (dataset licences: not redistributed)
 data/sounds/*/
+
+# Gazebo: the bridge venv (earshot live --backend gazebo makes it) and generated worlds
+gazebo/.venv/
+gazebo/worlds/*.sdf
+gazebo/worlds/*_assets/

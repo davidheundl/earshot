@@ -2,8 +2,8 @@
 
     earshot fast   --scenario S [--runs N] [--seed K] [--log] [--events F]   lockstep, no sockets
                    [--audio DIR [--audio-beams]] [--classifier MOD:ATTR]       sound as waveforms
-    earshot live   --scenario S [--backend twin2d|webots] [--events F|latest] [--no-dashboard]
-                   [--audio] [--classifier MOD:ATTR]
+    earshot live   --scenario S [--backend twin2d|webots|gazebo] [--events F|latest]
+                   [--no-dashboard] [--audio] [--classifier MOD:ATTR]
     earshot doctor                                                pre-flight checks (run offline)
 """
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -34,6 +35,46 @@ def webots_env() -> dict:
     env["PYTHONIOENCODING"] = "UTF-8"
     env["WEBOTS_CONTROLLER_URL"] = f"ipc://{config.WEBOTS_PORT}/supervisor"
     return env
+
+
+GZ_VENV = Path("gazebo/.venv")
+
+
+def gazebo_env() -> dict:
+    """gz-transport on loopback, in our own partition (server, GUI and bridge alike)."""
+    env = dict(os.environ)
+    env["GZ_IP"] = config.HOST
+    env["GZ_PARTITION"] = config.GZ_PARTITION
+    return env
+
+
+def gazebo_python() -> str | None:
+    """Homebrew's newest Python that has Gazebo's bindings (gz.sim8), or None."""
+    prefix = Path(os.environ.get("HOMEBREW_PREFIX", "/opt/homebrew"))
+    for site in sorted(prefix.glob("lib/python3.*/site-packages"),
+                       key=lambda p: int(p.parent.name.split(".")[1]), reverse=True):
+        exe = prefix / "bin" / site.parent.name
+        if exe.exists() and list(site.glob("gz/sim8*")):
+            return str(exe)
+    return None
+
+
+def ensure_gazebo_venv() -> str:
+    """The bridge's interpreter: a venv on Homebrew's Python that sees its gz packages,
+    plus gazebo/requirements.txt. Made on first use; returns its python."""
+    py = GZ_VENV / "bin" / "python"
+    if py.exists():
+        return str(py)
+    base = gazebo_python()
+    if base is None:
+        sys.exit("Gazebo's Python bindings not found: brew tap osrf/simulation && "
+                 "brew install gz-harmonic")
+    print(f"making {GZ_VENV} on {base} (once)")
+    subprocess.run(["uv", "venv", str(GZ_VENV), "--python", base, "--system-site-packages",
+                    "-q"], check=True)
+    subprocess.run(["uv", "pip", "install", "-q", "--python", str(py), "-r",
+                    "gazebo/requirements.txt"], check=True)
+    return str(py)
 
 
 # -- fast ---------------------------------------------------------------------------------
@@ -86,6 +127,19 @@ def _resolve_events(arg: str) -> Path:
         hint = "\n  ".join(str(h) for h in have[-5:]) or "(none yet)"
         sys.exit(f"{arg} not found. Recorded sessions:\n  {hint}\nor use --events latest")
     return p
+
+
+def busy_ports(gazebo: bool = False) -> list[int]:
+    """The local ports a live run binds that something already listens on."""
+    eps = [config.WORLD_PUB, config.WORLD_PULL, config.RADIO_PULL, config.RADIO_PUB]
+    eps += [config.GAZEBO_BRIDGE] if gazebo else []
+    ports = [int(ep.rsplit(":", 1)[1]) for ep in eps] + [config.DASHBOARD_PORT]
+    out = []
+    for port in ports:
+        with socket.socket() as sk:
+            if sk.connect_ex((config.HOST, port)) == 0:
+                out.append(port)
+    return out
 
 
 def stale_webots() -> list[str]:
@@ -213,6 +267,10 @@ def cmd_live(a) -> None:
 def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
     """Start Webots (optional), radio, agents, dashboard and world; return when the world
     ends. A crashed helper is reported, not fatal (the dashboard never stops a run)."""
+    taken = busy_ports(gazebo=a.backend == "gazebo")
+    if taken:  # another run: our agents would steer its world
+        sys.exit(f"Port(s) {', '.join(map(str, taken))} taken: another Earshot run (or a "
+                 "leftover one) is live. Stop it first, e.g. pkill -f 'earshot live'")
     if a.backend == "webots":
         world_file = Path(f"webots/worlds/{sc.name}.wbt")
         subprocess.run([py, "tools/build_webots_world.py", a.scenario, str(world_file)], check=True)
@@ -228,6 +286,16 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
                  "--stdout", "--stderr", str(world_file)]
             ))
             time.sleep(3)
+
+    if a.backend == "gazebo":
+        world_file = Path(f"gazebo/worlds/{sc.name}.sdf")
+        subprocess.run([py, "tools/build_gazebo_world.py", a.scenario, str(world_file)], check=True)
+        bridge_py = ensure_gazebo_venv()
+        procs.append(subprocess.Popen([bridge_py, "src/earshot/backend/gz_bridge.py",
+                                       str(world_file), "--endpoint", config.GAZEBO_BRIDGE],
+                                      env=gazebo_env()))
+        if not a.no_gazebo_view:  # macOS: the GUI is its own process, joined over gz-transport
+            procs.append(subprocess.Popen(["gz", "sim", "-g"], env=gazebo_env()))
 
     spawn(["earshot.runners.radio_proc", "--scenario", a.scenario])
     for d in sc.drones:
@@ -281,8 +349,20 @@ def cmd_doctor(a) -> None:
     r = subprocess.run([sys.executable, "-c", "from controller import Supervisor"],
                        env=webots_env(), capture_output=True, check=False)
     check("Webots Python controller importable", r.returncode == 0, r.stderr.decode()[-200:])
+    check("Gazebo installed (gz sim)", shutil.which("gz") is not None,
+          "brew tap osrf/simulation && brew install gz-harmonic")
+    check("Gazebo Python bindings (Homebrew)", gazebo_python() is not None,
+          "brew install gz-harmonic")
+    if (GZ_VENV / "bin" / "python").exists():
+        r = subprocess.run([str(GZ_VENV / "bin" / "python"), "-c",
+                            "import gz.sim8, gz.transport13, gz.msgs10.image_pb2, zmq, msgpack"],
+                           capture_output=True, check=False)
+        check("Gazebo bridge venv importable", r.returncode == 0, r.stderr.decode()[-200:])
+    else:
+        check("Gazebo bridge venv (made by the first `earshot live --backend gazebo`)", True)
     for name, ep in [("world pub", config.WORLD_PUB), ("world pull", config.WORLD_PULL),
-                     ("radio pull", config.RADIO_PULL), ("radio pub", config.RADIO_PUB)]:
+                     ("radio pull", config.RADIO_PULL), ("radio pub", config.RADIO_PUB),
+                     ("gazebo bridge", config.GAZEBO_BRIDGE)]:
         port = int(ep.rsplit(":", 1)[1])
         with socket.socket() as s:
             check(f"port {port} free ({name})", s.connect_ex((config.HOST, port)) != 0,
@@ -332,7 +412,7 @@ def main(argv=None) -> None:
 
     lv = sub.add_parser("live", help="multi-process run with radio, agents and dashboard")
     lv.add_argument("--scenario", default="scenarios/demo.yaml")
-    lv.add_argument("--backend", default="twin2d", choices=["twin2d", "webots"])
+    lv.add_argument("--backend", default="twin2d", choices=["twin2d", "webots", "gazebo"])
     lv.add_argument("--speed", type=float, default=1.0)
     lv.add_argument("--no-dashboard", action="store_true")
     lv.add_argument("--events", help="replay a recorded session: a file, or 'latest'")
@@ -348,6 +428,8 @@ def main(argv=None) -> None:
                     help="a trained sound classifier decides the class probabilities")
     lv.add_argument("--no-webots-view", action="store_true",
                     help="don't draw Webots' own 3D window (the drone cameras still render)")
+    lv.add_argument("--no-gazebo-view", action="store_true",
+                    help="don't open Gazebo's window (the drone cameras still render)")
     lv.set_defaults(fn=cmd_live)
 
     ev = sub.add_parser("eval", help="metrics over seeded runs, policies side by side")
