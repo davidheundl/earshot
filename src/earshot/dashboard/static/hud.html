@@ -971,7 +971,7 @@ function drawTicker() {
 function decisionText(e) {
   const what = e.task === "verify" ? "verify" : "listen";
   return { claim: `drone ${e.drone} bids to ${what}`, dispatch: `drone ${e.drone} <span class="k">sets off to ${what}</span>`, confirmed: `drone ${e.drone} <b style="color:${css("--warn")}">confirms a drone</b>`,
-    dismissed: `drone ${e.drone} finds nothing`, obsolete: `drone ${e.drone} drops a ${what} task`, outbid: `drone ${e.drone} yields to a nearer drone`,
+    dismissed: `drone ${e.drone} finds nothing`, timeout: `drone ${e.drone} gives up: nothing to see`, obsolete: `drone ${e.drone} drops a ${what} task`, outbid: `drone ${e.drone} yields to a nearer drone`,
     fault_flagged: `drone ${e.drone} flags drone ${e.suspect}'s microphone` }[e.kind] || `drone ${e.drone}: ${e.kind}`;
 }
 function checkAlerts() {

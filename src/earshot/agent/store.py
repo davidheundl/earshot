@@ -44,6 +44,13 @@ REQUEST_WINDOW = 20  # seqs asked for at most per origin
 REQUEST_COOLDOWN = 30.0  # s before the same origin is asked for again
 RESEND_COOLDOWN = 10.0  # s before the same frame is resent again
 MAX_RESEND_PER_REQUEST = 5
+HORIZON = 600.0  # s a stored frame is kept: seqs wrap after 65536 frames (~55 min at 20/s)
+SEQ_MOD = 0x10000
+
+
+def seq_newer(a: int, b: int) -> bool:
+    """a was sent after b, across the 16-bit wrap (serial number arithmetic)."""
+    return 0 < (a - b) % SEQ_MOD < SEQ_MOD // 2
 
 
 @dataclass
@@ -67,6 +74,9 @@ class MessageStore:
         self._pending: dict[tuple[int, int, int], tuple[float, bytes, str]] = {}
         self._asked: dict[int, float] = {}  # origin -> last Request time
         self._resent: dict[tuple[int, int, int], float] = {}
+        self._kept: dict[tuple[int, int, int], float] = {}  # when each stored frame came
+        self._now = 0.0  # the latest time receive() or due() was called with
+        self._pruned = 0.0
         self.stats = StoreStats()
 
     def __len__(self) -> int:
@@ -75,7 +85,26 @@ class MessageStore:
     def add_own(self, frame: bytes) -> None:
         k = peek_key(frame)
         self._frames[k] = frame
-        self.stats.by_origin[k[1]] = max(self.stats.by_origin.get(k[1], 0), k[2])  # in my Digest
+        self._kept[k] = self._now
+        self._latest(k[1], k[2])  # in my own Digest too
+
+    def _latest(self, origin: int, seq: int) -> None:
+        mine = self.stats.by_origin.get(origin)
+        if mine is None or seq_newer(seq, mine):
+            self.stats.by_origin[origin] = seq
+
+    def _prune(self, t: float) -> None:
+        """Forget frames older than HORIZON, so a wrapped seq is a new frame, not a duplicate,
+        and the store stays bounded in a run that goes on for hours."""
+        self._now = max(self._now, t)
+        if t - self._pruned < 10.0:
+            return
+        self._pruned = t
+        old = [k for k, at in self._kept.items() if t - at > HORIZON]
+        for k in old:
+            del self._kept[k]
+            self._frames.pop(k, None)
+            self._resent.pop(k, None)
 
     # -- receiving ------------------------------------------------------------------------
 
@@ -85,6 +114,7 @@ class MessageStore:
         except BadFrame:
             self.stats.bad += 1
             return None
+        self._prune(t)
         k = peek_key(frame)
         mtype, origin, seq = k
         if k in self._pending:  # someone else relayed or resent it first: stand down
@@ -98,8 +128,9 @@ class MessageStore:
             self.stats.duplicates += 1
             return None
         self._frames[k] = frame
+        self._kept[k] = t
         self.stats.accepted += 1
-        self.stats.by_origin[origin] = max(self.stats.by_origin.get(origin, 0), seq)
+        self._latest(origin, seq)
         if msg.header.hops_left > 1:
             self._schedule_forward(k, with_hops(frame, msg.header.hops_left - 1), margin_db, t)
         return msg
@@ -115,6 +146,7 @@ class MessageStore:
         self._pending[k] = (due, frame, "fwd")
 
     def due(self, t: float) -> list[bytes]:
+        self._prune(t)
         out = []
         for k, (when, frame, why) in sorted(self._pending.items(), key=lambda kv: kv[1][0]):
             if when <= t:
@@ -139,10 +171,13 @@ class MessageStore:
         for origin, theirs in d.entries:
             if origin == self.me:
                 continue
-            mine = self.stats.by_origin.get(origin, 0)
-            if theirs > mine and t - self._asked.get(origin, -1e9) >= REQUEST_COOLDOWN:
+            mine = self.stats.by_origin.get(origin)
+            newer = mine is None or seq_newer(theirs, mine)
+            if newer and t - self._asked.get(origin, -1e9) >= REQUEST_COOLDOWN:
                 self._asked[origin] = t
-                out.append((origin, max(mine + 1, theirs - REQUEST_WINDOW + 1), theirs))
+                gap = REQUEST_WINDOW if mine is None else (theirs - mine) % SEQ_MOD
+                lo = (theirs - min(gap, REQUEST_WINDOW) + 1) % SEQ_MOD
+                out.append((origin, lo, theirs))
                 self.stats.requested += 1
         return out
 
@@ -150,10 +185,11 @@ class MessageStore:
         """Schedule resends (1 hop) of stored Tracks/Claims in the asked range, newest first."""
         hits = sorted(
             (k for k in self._frames
-             if k[1] == r.want_origin and r.from_seq <= k[2] <= r.to_seq
+             if k[1] == r.want_origin
+             and (k[2] - r.from_seq) % SEQ_MOD <= (r.to_seq - r.from_seq) % SEQ_MOD
              and MsgType(k[0]) in RESENDABLE
              and t - self._resent.get(k, -1e9) >= RESEND_COOLDOWN),
-            key=lambda k: -k[2],
+            key=lambda k: -((k[2] - r.from_seq) % SEQ_MOD),
         )[:MAX_RESEND_PER_REQUEST]
         for i, k in enumerate(hits):
             self._resent[k] = t

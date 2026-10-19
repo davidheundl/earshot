@@ -56,8 +56,8 @@ def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, fl
 class YoloDetector:
     weights: str | Path = DEFAULT_WEIGHTS
     conf: float = 0.25  # a box at all
-    verify_conf: float = 0.6  # a box that counts towards a track's streak (0.75 never confirmed
-    #                           the 15 m video; 0.6 did by frame 3 with no false confirm)
+    verify_conf: float = 0.5  # a box that counts towards a track's streak: on Nikolas' 15 m
+    #                           video 0.75 never confirmed, 0.5 did by frame 3, none while absent
     confirm_frames: int = 3
     clear_windows: int = 3
     clear_radius: float = 40.0
@@ -115,18 +115,26 @@ class YoloDetector:
                 self._window_hits[key] = (b, s, score)
         self._streaks = current  # a missed frame resets a track's streak
 
-    def verdict(self) -> CameraVerdict:
+    def verdict(self, hovering: bool = True) -> CameraVerdict:
+        """This window's verified tracks; "nothing" once `clear_windows` windows in a row were
+        empty while the Verifier held still (`hovering`)."""
         hits = list(self._window_hits.values())
-        self._empty_windows = 0 if self._window_boxes else self._empty_windows + 1
+        if self._window_boxes or not hovering:
+            self._empty_windows = 0
+        else:
+            self._empty_windows += 1
         clear = self.clear_radius if self._empty_windows >= self.clear_windows else None
         self._window_hits.clear()
         self._window_boxes = 0
         return CameraVerdict(hits, clear)
 
-    def warm(self) -> None:
-        """Load the model now (and fail now) rather than on the first Verifier frame."""
-        self._model()
-        self._device()
+    def warm(self, w: int = 1280, h: int = 768) -> None:
+        """Load the model and run it once on a blank frame now (and fail now: a missing
+        tracker package, a device error) rather than on the first Verifier frame."""
+        self._model().track(np.zeros((h, w, 3), np.uint8), persist=False, conf=self.conf,
+                            imgsz=self.imgsz or w, tracker="bytetrack.yaml",
+                            device=self._device(), verbose=False)
+        self.reset()
 
     def _device(self) -> str:
         if self.device is None:

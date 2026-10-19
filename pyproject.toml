@@ -21,8 +21,8 @@ earshot = "earshot.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
-# Camera detector (YOLO, tools/cv_demos.py, earshot.vision): `uv sync --group cv`.
-cv = ["ultralytics>=8.3", "lap>=0.5.12"]
+# Camera detector (YOLO: earshot.sensors.camera, tools/cv_demos.py): `uv sync --group cv`.
+cv = ["ultralytics>=8.4", "lap>=0.5.12"]  # 8.4: track(persist=...) honoured per call
 # Live microphone arrays in the room (concept section 10). Nikolas' area.
 audio = ["sounddevice>=0.4", "pyroomacoustics>=0.7"]
 # Building cities from open data (tools/muc_fetch.py, tools/make_muc.py); not needed at runtime.

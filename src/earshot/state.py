@@ -74,9 +74,10 @@ class PolicyParams:
     confirmed_shadow: float = 200.0  # m: Suspicions this close to a confirmed drone are side lobes
     settle: float = 3.0  # s, > typical 3-hop Claim latency, so rival bids arrive before anyone flies
     same_task_radius: float = 200.0  # m: a Claim of the same kind this close covers a drifted one
-    arrive: float = 60.0  # m; the Verifier holds a 40 m standoff (backend Kinematics.standoff)
+    arrive: float = 60.0  # m; above the Verifier's standoff (Kinematics.standoff: 40 m, or camera.standoff)
     dismiss_after: float = 8.0  # s at the target with no Suspicion left -> dismissed
     outbid_cooldown: float = 5.0  # s an outbid drone leaves that place alone
+    verify_timeout: float = 90.0  # s at the target without confirming -> given up (Ghost held up)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> PolicyParams:

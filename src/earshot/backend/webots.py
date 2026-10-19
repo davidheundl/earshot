@@ -89,7 +89,7 @@ N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
 VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
-VERIFY_PITCH_DEG = 14.0  # the Verifier camera looks this far down (atan(10 m / 40 m standoff))
+TARGET_DROP_M = 10.0  # a Verifier cruises 10 m above an intruder (40 m vs. 30 m above ground)
 PILOT = {"ahead": 0.6, "up": -0.15, "pitch": 10.0}  # just ahead of the props
 CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills the lower third
 CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
@@ -116,6 +116,8 @@ class WebotsBackend:
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
         self._verifier_heading = 0.0
+        # the camera looks down at the point it keeps its standoff from: 14 deg at 40 m
+        self._verify_pitch = math.degrees(math.atan2(TARGET_DROP_M, self.twin.kin.standoff))
         self.detector_frames = False  # set by the World when a trained detector reads images
         ids = [d.id for d in scenario.drones]
         self.views: list[list] = [[ids[k % len(ids)], "chase" if k == 0 else "pilot"]
@@ -257,7 +259,7 @@ class WebotsBackend:
         frame = {"w": c.getWidth(), "h": c.getHeight()}
         if self.detector_frames:
             frame.update(bgra=c.getImage(), fov=c.getFov(), yaw=self._verifier_heading,
-                         pitch=math.radians(VERIFY_PITCH_DEG))
+                         pitch=math.radians(self._verify_pitch))
         if c.hasRecognition():
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
@@ -336,7 +338,10 @@ class WebotsBackend:
                 node[0].setSFVec3f(pos)
                 node[1].setSFRotation([0.0, 0.0, 1.0, _yaw(heading)])
 
-        verifier = next((d for d, s in states.items() if s.camera_on), None)
+        # one rig: it stays with its Verifier until that camera goes off, so a second
+        # Verifier arriving cannot take it mid-look (that one stays inconclusive)
+        verifier = (self._verifier if self._verifier in states and states[self._verifier].camera_on
+                    else next((d for d, s in states.items() if s.camera_on), None))
         if verifier != self._verifier:
             if verifier is None:
                 self.camera.disable()
@@ -354,5 +359,5 @@ class WebotsBackend:
                 s = states[verifier]
                 self._verifier_heading = s.heading
                 self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
-                self._camv[1].setSFRotation(look_rotation(s.heading, VERIFY_PITCH_DEG))
+                self._camv[1].setSFRotation(look_rotation(s.heading, self._verify_pitch))
         self._place_views(states)

@@ -42,7 +42,7 @@ GENES = {
     "confirmed_shadow": (50.0, 400.0),
     "settle": (2.0, 8.0),  # below ~2 s rival bids arrive too late: two drones fly
     "same_task_radius": (100.0, 400.0),
-    "arrive": (45.0, 150.0),  # the standoff is 40 m: below it a Verifier never arrives
+    "arrive": (45.0, 150.0),  # the default standoff is 40 m: below it a Verifier never arrives
     "dismiss_after": (3.0, 20.0),
 }
 W_FALSE = 10.0

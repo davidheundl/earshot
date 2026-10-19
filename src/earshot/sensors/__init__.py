@@ -36,6 +36,7 @@ MASKING_OFFSET_DB = wf.MASKING_OFFSET_DB
 LEVEL_NOISE_DB = 2.0
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
 CAMERA_P_DETECT = 0.9
+CAMERA_HOVER_M = 5.0  # m moved in a window: a Verifier this still is looking, not flying in
 CAMERA_MATCH_DEG = 5.0  # a detector bearing this close to a Source is that Source (truth only)
 
 # Placeholder for the EfficientAT head: true class -> predicted class weights. The fan
@@ -81,18 +82,16 @@ class SensorSuite:
         self.camera = camera  # a trained detector on rendered frames; else the stand-in
         self.windows: list[wf.AudioWindow] = []  # rendered audio, collected by the World
         self._window: dict[int, int] = {}
-        self._cam_drone: int | None = None
+        self._cam_drone: int | None = None  # the Verifier the detector's view belongs to
+        self._cam_pos: tuple[float, float] | None = None  # where it was at the last verdict
 
     def sense(self, s: DroneState, t: float, frame: dict | None = None) -> list[Detection]:
         """`frame`: the Verifier's camera frame when a renderer exists (Webots); its
         recognised objects then decide what the camera sees."""
         faults = {f.kind for f in self.scenario.faults_for(s.id, t)}
         out: list[Detection] = []
-        if self.camera is not None and s.camera_on and frame is not None and "bgra" in frame:
-            if self._cam_drone != s.id:  # a new Verifier: its view starts from scratch
-                self.camera.reset()
-                self._cam_drone = s.id
-            self.camera.observe(frame)  # every rendered tick; the verdict comes per window
+        if self.camera is not None:
+            self._feed_detector(s, frame)
         if not self._new_window(s.id, t):
             return out
         sources = self.scenario.active_sources(t)
@@ -198,9 +197,32 @@ class SensorSuite:
 
     # -- camera (ground-truth stand-in for the Webots detector, with an error rate) ------
 
+    def _feed_detector(self, s: DroneState, frame: dict | None) -> None:
+        """Every rendered tick of a Verifier in VERIFY: the detector sees it. A sortie ends
+        (camera off, another Mode) or another drone takes the rig: its view starts afresh,
+        so nothing it saw on one sortie can verify the next."""
+        verifying = s.camera_on and s.mode == Mode.VERIFY
+        if not verifying:
+            if self._cam_drone == s.id:
+                self.camera.reset()
+                self._cam_drone = self._cam_pos = None
+            return
+        if frame is None or "bgra" not in frame:
+            return
+        if self._cam_drone != s.id:
+            self.camera.reset()
+            self._cam_drone, self._cam_pos = s.id, None
+        try:
+            self.camera.observe(frame)  # every rendered tick; the verdict comes per window
+        except Exception as e:  # noqa: BLE001 - a broken model must not stop the World
+            print(f"[sensors] camera detector failed ({e!r}); ground-truth stand-in from now")
+            self.camera = None
+
     def _camera(self, s: DroneState, sources, frame: dict | None = None) -> list[Detection]:
-        if self.camera is not None and frame is not None and "bgra" in frame:
-            return self._detected(s, sources)
+        if self.camera is not None:
+            # the detector or nothing: a Verifier without the rig's images (another drone
+            # has it) stays inconclusive rather than falling back to ground truth
+            return self._detected(s, sources) if self._cam_drone == s.id else []
         out = []
         seen = None
         if frame is not None and "objects" in frame:
@@ -227,7 +249,12 @@ class SensorSuite:
         """The trained detector's verdict for this window: verified tracks as drone bearings,
         "nothing" with the radius it really cleared, or no reading when inconclusive. Truth
         (logs and metrics only) is the active Source nearest in bearing, within 5 deg."""
-        v = self.camera.verdict()
+        moved = (math.inf if self._cam_pos is None
+                 else math.hypot(s.x - self._cam_pos[0], s.y - self._cam_pos[1]))
+        self._cam_pos = (s.x, s.y)
+        # an empty view only counts towards "nothing" from where the Verifier holds still: on
+        # the way in it has not yet looked at the place
+        v = self.camera.verdict(hovering=moved <= CAMERA_HOVER_M)
         out = []
         for b, sigma, _ in v.hits:
             truth, best = None, CAMERA_MATCH_DEG
@@ -273,13 +300,15 @@ def build_perception(scenario: Scenario, *, classifier: str | None = None,
     if camera is not None:
         spec["detector"] = camera
     det = None
+    if not renders and camera == "yolo":
+        log("[sensors] --camera yolo needs rendered images (--backend webots); stand-in")
     if renders and spec.get("detector") == "yolo":
         from earshot.sensors.camera import load_detector
 
         det = load_detector(spec)
         try:
-            det.warm()
-        except (ImportError, OSError, RuntimeError) as e:
+            det.warm(*spec.get("resolution", (1280, 768)))
+        except Exception as e:  # noqa: BLE001 - any failure: the stand-in, not a dead World
             log(f"[sensors] camera detector unavailable ({e}); ground-truth stand-in")
             det = None
     return snd, det

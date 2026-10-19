@@ -269,6 +269,11 @@ class Policy:
         if (current is None and self._arrived_at is not None
                 and t - self._arrived_at >= self.p.dismiss_after):
             self._release(t, d, "dismissed")
+        elif self._arrived_at is not None and t - self._arrived_at >= self.p.verify_timeout:
+            # listeners keep a Suspicion alive the camera can neither see nor clear: give it up
+            # and leave the place alone a while, as when outbid
+            self._lost = (t, task.x, task.y)
+            self._release(t, d, "timeout")
         elif current is None and not self._settled:
             self._release(t, d, "obsolete")
 

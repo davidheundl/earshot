@@ -255,6 +255,13 @@ def cmd_live(a) -> None:
     if bad:
         sys.exit(f"--array takes <drone id>=<device>[@rotation], got {bad}")
     arrays = dict(x.split("=", 1) for x in (a.array or []))
+    if a.params:  # a typo would otherwise only show as every agent exiting
+        from earshot.state import PolicyParams
+
+        try:
+            PolicyParams.from_dict({**sc.params, **(_params(a) or {})})
+        except (OSError, ValueError, TypeError) as e:
+            sys.exit(f"--params {a.params}: {e}")
 
     def spawn(args, env=None):
         procs.append(subprocess.Popen([py, "-m", *args], env=env))

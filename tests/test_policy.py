@@ -137,3 +137,20 @@ def test_a_task_drifts_at_most_same_task_radius_from_its_claim():
     drift_x = next(x for kind, x in events if kind == "drifted")
     assert SUSPICION.x + 200.0 < drift_x <= SUSPICION.x + 230.0
     assert d.claims[0][2] == 0.0  # released, so it can be auctioned afresh
+
+
+def test_a_verify_sortie_the_camera_cannot_settle_times_out():
+    # listeners keep the Suspicion alive, the camera neither confirms nor clears it: the
+    # Verifier gives up after verify_timeout and leaves the place alone for a while
+    p = _one(verify_timeout=20.0)
+    kinds = []
+    for k in range(400):
+        t = round(k * 0.1, 1)
+        at = DroneState(0, t, SUSPICION.x, SUSPICION.y - 30.0, 40.0, 0.0, Mode.VERIFY, None, 1.0,
+                        5700.0, True) if t >= 3.5 else _perched(p, t)
+        d = p.decide(t, at, [SUSPICION], Belief(CITY), {})
+        kinds += [(t, e["kind"]) for e in d.events]
+    timeouts = [t for t, kind in kinds if kind == "timeout"]
+    assert timeouts and 23.0 <= timeouts[0] <= 25.0
+    claims_after = [t for t, kind in kinds if kind == "claim" and t > timeouts[0]]
+    assert not claims_after or claims_after[0] >= timeouts[0] + 5.0  # outbid_cooldown

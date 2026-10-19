@@ -136,3 +136,81 @@ def test_real_model_verifies_a_recorded_drone_and_clears_an_empty_view():
         det.observe(e)
         radii.append(det.verdict().clear_radius)
     assert radii[-1] == det.clear_radius
+
+
+# -- through the SensorSuite: what the World hands the Agents -----------------------------
+
+def _suite(script):
+    from earshot.city import City
+    from earshot.scenario import Scenario
+    from earshot.sensors import SensorSuite
+
+    root = Path(__file__).resolve().parents[1]
+    sc = Scenario.load(root / "scenarios/demo.yaml")
+    det = YoloDetector(model=FakeModel(script), device="cpu")
+    return SensorSuite(City.load(root / sc.city), sc, np.random.default_rng(0), camera=det), det
+
+
+def _verifier(t, x=0.0, mode=None, camera=True, drone=3):
+    from earshot.messages import Mode
+    from earshot.state import DroneState
+
+    return DroneState(drone, t, x, 0.0, 40.0, 90.0, mode or Mode.VERIFY, None, 1.0, 5700.0,
+                      camera)
+
+
+def _camera_readings(dets):
+    from earshot.messages import Sensor
+
+    return [d.reading for d in dets if d.reading.sensor == Sensor.CAMERA]
+
+
+def test_a_second_sortie_starts_from_a_clean_view():
+    from earshot.messages import Mode
+
+    suite, _ = _suite([[(1, 0.8, BOX)]] * 3 + [[]] * 50)
+    hits = []
+    for k in range(3):  # first sortie: three frames of one track, verified
+        hits += _camera_readings(suite.sense(_verifier(10.0 + k * 0.1), 10.0 + k * 0.1, frame()))
+    suite.sense(_verifier(20.0, mode=Mode.LISTEN, camera=False), 20.0, None)  # back on its roof
+    later = []
+    for k in range(20):  # second sortie, nothing in view
+        t = 40.0 + k * 0.1
+        later += _camera_readings(suite.sense(_verifier(t), t, frame()))
+    assert all(r.class_probs[0] < 0.5 for r in later)  # no stale drone from the first sortie
+
+
+def test_no_nothing_while_flying_in():
+    suite, _ = _suite([[]] * 200)
+    readings = []
+    for k in range(60):  # 6 s at 15 m/s: empty views, but on the move
+        t = 50.0 + k * 0.1
+        readings += _camera_readings(suite.sense(_verifier(t, x=15.0 * k * 0.1), t, frame()))
+    assert readings == []
+    for k in range(40):  # holding still: three empty windows, then "nothing" for 40 m
+        t = 56.0 + k * 0.1
+        readings += _camera_readings(suite.sense(_verifier(t, x=90.0), t, frame()))
+    assert readings and readings[-1].class_probs[3] == 1.0 and readings[-1].level == 40.0
+
+
+def test_a_verifier_without_the_rig_stays_inconclusive():
+    suite, _ = _suite([[]] * 200)
+    for k in range(30):  # drone 3 has the rig
+        t = 50.0 + k * 0.1
+        suite.sense(_verifier(t), t, frame())
+    other = []
+    for k in range(30):  # drone 4 verifies too, without images: no ground-truth fallback
+        t = 50.0 + k * 0.1
+        other += _camera_readings(suite.sense(_verifier(t, drone=4), t, None))
+    assert other == []
+
+
+def test_a_detector_that_breaks_hands_over_to_the_stand_in():
+    class Broken(FakeModel):
+        def track(self, img, **kw):
+            raise RuntimeError("MPS out of memory")
+
+    suite, _ = _suite([])
+    suite.camera.model = Broken([])
+    suite.sense(_verifier(1.0), 1.0, frame())
+    assert suite.camera is None

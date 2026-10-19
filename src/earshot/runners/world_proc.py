@@ -51,7 +51,7 @@ class VerifyCounts:
         self._intruders: list[list[float]] = []  # last known position of each confirmed one
 
     def add(self, ev: dict) -> None:
-        kind = ev.get("kind")
+        kind = "dismissed" if ev.get("kind") == "timeout" else ev.get("kind")  # given up
         if ev.get("task") != "verify" or kind not in self._tids or "tid" not in ev:
             return
         tid = ev["tid"]
