@@ -1,0 +1,255 @@
+[
+  {
+    "id": "query_03",
+    "valid_pixels": 0,
+    "mae_m": null,
+    "absrel": null,
+    "near20_tp": 0,
+    "near20_fp": 140920,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 8.61584758758545,
+        "true_p10_m": 118.28024291992188
+      },
+      {
+        "predicted_p10_m": 8.893255233764648,
+        "true_p10_m": 124.78447723388672
+      },
+      {
+        "predicted_p10_m": 8.892659187316895,
+        "true_p10_m": 118.906982421875
+      }
+    ]
+  },
+  {
+    "id": "query_04",
+    "valid_pixels": 5673,
+    "mae_m": 30.520448684692383,
+    "absrel": 0.8589673638343811,
+    "near20_tp": 0,
+    "near20_fp": 143860,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 8.980107307434082,
+        "true_p10_m": 125.19221496582031
+      },
+      {
+        "predicted_p10_m": 8.939748764038086,
+        "true_p10_m": 125.19242095947266
+      },
+      {
+        "predicted_p10_m": 8.868184089660645,
+        "true_p10_m": 125.19248962402344
+      }
+    ]
+  },
+  {
+    "id": "query_08",
+    "valid_pixels": 0,
+    "mae_m": null,
+    "absrel": null,
+    "near20_tp": 0,
+    "near20_fp": 141400,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 8.785630226135254,
+        "true_p10_m": 122.04075622558594
+      },
+      {
+        "predicted_p10_m": 8.192546844482422,
+        "true_p10_m": 118.833984375
+      },
+      {
+        "predicted_p10_m": 7.769745349884033,
+        "true_p10_m": 120.27420043945312
+      }
+    ]
+  },
+  {
+    "id": "query_09",
+    "valid_pixels": 4117,
+    "mae_m": 35.01302719116211,
+    "absrel": 0.8795025944709778,
+    "near20_tp": 0,
+    "near20_fp": 142950,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 8.878023147583008,
+        "true_p10_m": 124.78214263916016
+      },
+      {
+        "predicted_p10_m": 8.887612342834473,
+        "true_p10_m": 124.78216552734375
+      },
+      {
+        "predicted_p10_m": 9.046842575073242,
+        "true_p10_m": 124.78221130371094
+      }
+    ]
+  },
+  {
+    "id": "query_13",
+    "valid_pixels": 54087,
+    "mae_m": 49.22272491455078,
+    "absrel": 0.8798564672470093,
+    "near20_tp": 0,
+    "near20_fp": 130133,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 10.583194732666016,
+        "true_p10_m": 125.18868255615234
+      },
+      {
+        "predicted_p10_m": 8.103597640991211,
+        "true_p10_m": 69.51423645019531
+      },
+      {
+        "predicted_p10_m": 5.957944393157959,
+        "true_p10_m": 51.5404167175293
+      }
+    ]
+  },
+  {
+    "id": "query_14",
+    "valid_pixels": 42934,
+    "mae_m": 65.17764282226562,
+    "absrel": 0.9080848693847656,
+    "near20_tp": 0,
+    "near20_fp": 137626,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 11.961297035217285,
+        "true_p10_m": 124.78164672851562
+      },
+      {
+        "predicted_p10_m": 11.22675895690918,
+        "true_p10_m": 115.44430541992188
+      },
+      {
+        "predicted_p10_m": 6.410914421081543,
+        "true_p10_m": 69.183837890625
+      }
+    ]
+  },
+  {
+    "id": "query_18",
+    "valid_pixels": 32177,
+    "mae_m": 52.827545166015625,
+    "absrel": 0.9107277393341064,
+    "near20_tp": 0,
+    "near20_fp": 142016,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 5.0298542976379395,
+        "true_p10_m": 55.96870803833008
+      },
+      {
+        "predicted_p10_m": 9.599981307983398,
+        "true_p10_m": 123.67064666748047
+      },
+      {
+        "predicted_p10_m": 9.433359146118164,
+        "true_p10_m": 124.78180694580078
+      }
+    ]
+  },
+  {
+    "id": "query_19",
+    "valid_pixels": 43319,
+    "mae_m": 62.19645690917969,
+    "absrel": 0.9163490533828735,
+    "near20_tp": 0,
+    "near20_fp": 146088,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 5.455857276916504,
+        "true_p10_m": 64.41421508789062
+      },
+      {
+        "predicted_p10_m": 8.536702156066895,
+        "true_p10_m": 97.62359619140625
+      },
+      {
+        "predicted_p10_m": 9.95596694946289,
+        "true_p10_m": 122.04029083251953
+      }
+    ]
+  },
+  {
+    "id": "depth_20",
+    "valid_pixels": 158080,
+    "mae_m": 32.743438720703125,
+    "absrel": 0.8368158936500549,
+    "near20_tp": 0,
+    "near20_fp": 191241,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 5.469036102294922,
+        "true_p10_m": 32.55202865600586
+      },
+      {
+        "predicted_p10_m": 5.60524320602417,
+        "true_p10_m": 32.55201721191406
+      },
+      {
+        "predicted_p10_m": 5.637576103210449,
+        "true_p10_m": 32.5520133972168
+      }
+    ]
+  },
+  {
+    "id": "depth_21",
+    "valid_pixels": 159814,
+    "mae_m": 30.343751907348633,
+    "absrel": 0.7756019830703735,
+    "near20_tp": 0,
+    "near20_fp": 181026,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 7.680602073669434,
+        "true_p10_m": 32.959449768066406
+      },
+      {
+        "predicted_p10_m": 7.738389015197754,
+        "true_p10_m": 32.95939254760742
+      },
+      {
+        "predicted_p10_m": 7.6591339111328125,
+        "true_p10_m": 32.95937728881836
+      }
+    ]
+  },
+  {
+    "id": "depth_22",
+    "valid_pixels": 192441,
+    "mae_m": 20.893043518066406,
+    "absrel": 0.7134560346603394,
+    "near20_tp": 63175,
+    "near20_fp": 147425,
+    "near20_fn": 0,
+    "sectors_left_center_right": [
+      {
+        "predicted_p10_m": 4.100701332092285,
+        "true_p10_m": 23.634733200073242
+      },
+      {
+        "predicted_p10_m": 5.991472244262695,
+        "true_p10_m": 32.551971435546875
+      },
+      {
+        "predicted_p10_m": 3.345613956451416,
+        "true_p10_m": 5.733477592468262
+      }
+    ]
+  }
+]

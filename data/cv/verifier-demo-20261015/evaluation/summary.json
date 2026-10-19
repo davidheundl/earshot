@@ -1,0 +1,52 @@
+{
+  "model_source": "https://huggingface.co/TomSmail/drone-yolo-v1",
+  "checkpoint_sha256": "bf24a20e69b28896a0c7e4855c72146149fa5c25845fa5e54beda2b93cf79824",
+  "classes": {
+    "0": "quadcopter",
+    "1": "fixed-wing"
+  },
+  "confidence": 0.25,
+  "imgsz": 640,
+  "device": "cpu",
+  "matching": "quadcopter class and IoU >= 0.5",
+  "by_distance": [
+    {
+      "distance_m": 5,
+      "frames": 4,
+      "matched": 0,
+      "missed": 4,
+      "center_inside_reference": 4
+    },
+    {
+      "distance_m": 15,
+      "frames": 4,
+      "matched": 0,
+      "missed": 4,
+      "center_inside_reference": 3
+    },
+    {
+      "distance_m": 30,
+      "frames": 4,
+      "matched": 0,
+      "missed": 4,
+      "center_inside_reference": 1
+    },
+    {
+      "distance_m": 60,
+      "frames": 4,
+      "matched": 0,
+      "missed": 4,
+      "center_inside_reference": 0
+    },
+    {
+      "distance_m": 90,
+      "frames": 4,
+      "matched": 0,
+      "missed": 4,
+      "center_inside_reference": 0
+    }
+  ],
+  "empty_frames": 10,
+  "empty_frames_with_any_drone_prediction": 0,
+  "empty_false_boxes": 0
+}

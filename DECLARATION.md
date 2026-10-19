@@ -4,6 +4,16 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 
 ## Infrastructure (pre-built)
 
+- Offline visual localization (DINOv2 retrieval, SIFT/PnP with a reference RGB-D map)
+  and Depth Anything V2 outdoor metric-depth/proximity demos, with held-out simulator
+  query poses and aligned depth truth for evaluation; no flight-control integration.
+  Localization also includes iterative pose hypotheses, cross-reference consensus and
+  ambiguity rejection, with a separate withheld-reference evaluation split.
+
+- Offline CV demos and controlled Webots Verifier datasets: pretrained drone detection,
+  resolution comparison and moving-sequence tracking; demo verification requires repeated
+  same-track detections and returns INCONCLUSIVE on misses. No Agent/Belief integration.
+
 - Repository, Python 3.11 environment (uv), CLI (`earshot fast | live | doctor`).
 - Radio message formats (≤ 40 B binary frames with HMAC tags), codec and tests.
 - Simulated radio medium: LoRa airtime, range with shadowing, half duplex, collisions with capture, duty-cycle budget, jam zones.

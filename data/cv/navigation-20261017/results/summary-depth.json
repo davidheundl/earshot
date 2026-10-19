@@ -1,0 +1,11 @@
+{
+  "depth": {
+    "frames": 11,
+    "frames_with_in_range_truth": 9,
+    "mean_frame_mae_m": 42.10423109266493,
+    "mean_frame_absrel": 0.8532624443372091,
+    "near20_tp": 63175,
+    "near20_fp": 1644685,
+    "near20_fn": 0
+  }
+}

@@ -1,0 +1,978 @@
+[
+  {
+    "image": "images/frame_00.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -340.0,
+      -525.0,
+      31.246640014215902
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          153.5,
+          66.0,
+          252.5,
+          166.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.2900066375732422,
+        "box": [
+          159.85421752929688,
+          101.1343002319336,
+          241.09323120117188,
+          135.74313354492188
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.2839987356243937,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 35.65633296966553
+  },
+  {
+    "image": "images/frame_01.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -340.0,
+      -535.0,
+      33.73992004264771
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          183.5,
+          101.5,
+          216.5,
+          134.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.5963996648788452,
+        "box": [
+          184.38113403320312,
+          112.93224334716797,
+          215.53111267089844,
+          127.07515716552734
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.4045467982705789,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 26.09474991913885
+  },
+  {
+    "image": "images/frame_02.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -340.0,
+      -550.0,
+      37.47984008529542
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          190.5,
+          110.5,
+          207.5,
+          127.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 27.002208051271737
+  },
+  {
+    "image": "images/frame_03.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -340.0,
+      -580.0,
+      44.95968017059084
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          194.5,
+          115.0,
+          203.5,
+          123.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 24.9001249903813
+  },
+  {
+    "image": "images/frame_04.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -340.0,
+      -610.0,
+      52.439520255886265
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          196.0,
+          116.0,
+          202.0,
+          122.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 25.67524998448789
+  },
+  {
+    "image": "images/frame_05.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -345.0,
+      -520.0,
+      31.246640014215902
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          144.0,
+          67.0,
+          244.0,
+          167.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.7615223526954651,
+        "box": [
+          154.88914489746094,
+          93.53021240234375,
+          242.7135772705078,
+          141.28289794921875
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.41938525024428963,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 25.106417015194893
+  },
+  {
+    "image": "images/frame_06.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -355.0,
+      -520.0,
+      33.73992004264771
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          181.5,
+          102.5,
+          214.5,
+          135.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 24.986749980598688
+  },
+  {
+    "image": "images/frame_07.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -370.0,
+      -520.0,
+      37.47984008529542
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          191.0,
+          110.5,
+          207.0,
+          127.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 25.593167054466903
+  },
+  {
+    "image": "images/frame_08.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -400.0,
+      -520.0,
+      44.95968017059084
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          195.0,
+          115.0,
+          203.0,
+          123.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 24.139749933965504
+  },
+  {
+    "image": "images/frame_09.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -430.0,
+      -520.0,
+      52.439520255886265
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          196.0,
+          116.0,
+          202.0,
+          122.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 24.15812504477799
+  },
+  {
+    "image": "images/frame_10.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -340.0,
+      -515.0,
+      31.246640014215902
+    ],
+    "heading_deg": 180,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          151.0,
+          67.5,
+          253.0,
+          168.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.6534059047698975,
+        "box": [
+          160.76683044433594,
+          103.08969116210938,
+          237.81272888183594,
+          133.4469451904297
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.2270337711810672,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 24.952457984909415
+  },
+  {
+    "image": "images/frame_11.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -340.0,
+      -505.0,
+      33.73992004264771
+    ],
+    "heading_deg": 180,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          184.5,
+          102.5,
+          217.5,
+          135.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.62975013256073,
+        "box": [
+          184.3889923095703,
+          112.3965835571289,
+          216.0644073486328,
+          125.732421875
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.3860113767151874,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 23.80516706034541
+  },
+  {
+    "image": "images/frame_12.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -340.0,
+      -490.0,
+      37.47984008529542
+    ],
+    "heading_deg": 180,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          190.5,
+          110.5,
+          207.5,
+          127.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.28459516167640686,
+        "box": [
+          193.29049682617188,
+          116.003662109375,
+          206.33604431152344,
+          122.35382080078125
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.2866480856341113,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 24.15666705928743
+  },
+  {
+    "image": "images/frame_13.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -340.0,
+      -460.0,
+      44.95968017059084
+    ],
+    "heading_deg": 180,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          195.0,
+          115.0,
+          203.0,
+          123.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 24.169750045984983
+  },
+  {
+    "image": "images/frame_14.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -340.0,
+      -430.0,
+      52.439520255886265
+    ],
+    "heading_deg": 180,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          196.0,
+          116.0,
+          202.0,
+          122.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.84170808363706
+  },
+  {
+    "image": "images/frame_15.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -335.0,
+      -520.0,
+      31.246640014215902
+    ],
+    "heading_deg": 270,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          150.5,
+          66.5,
+          249.5,
+          165.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.5689073801040649,
+        "box": [
+          153.1117401123047,
+          98.16583251953125,
+          245.44358825683594,
+          139.20106506347656
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.38657880418560203,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 23.959417012520134
+  },
+  {
+    "image": "images/frame_16.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -325.0,
+      -520.0,
+      33.73992004264771
+    ],
+    "heading_deg": 270,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          183.0,
+          102.5,
+          217.0,
+          135.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [
+      {
+        "class": "quadcopter",
+        "score": 0.4907500147819519,
+        "box": [
+          186.28367614746094,
+          111.73966217041016,
+          214.05665588378906,
+          126.06377410888672
+        ],
+        "target": true
+      }
+    ],
+    "best_iou": 0.3545661948379727,
+    "matched_iou50": false,
+    "center_inside_reference": true,
+    "inference_ms": 24.252917035482824
+  },
+  {
+    "image": "images/frame_17.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -310.0,
+      -520.0,
+      37.47984008529542
+    ],
+    "heading_deg": 270,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          191.5,
+          110.5,
+          208.5,
+          127.5
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 27.373209013603628
+  },
+  {
+    "image": "images/frame_18.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -280.0,
+      -520.0,
+      44.95968017059084
+    ],
+    "heading_deg": 270,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          195.0,
+          115.0,
+          203.0,
+          123.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.866166011430323
+  },
+  {
+    "image": "images/frame_19.png",
+    "width": 400,
+    "height": 240,
+    "source_present": true,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -250.0,
+      -520.0,
+      52.439520255886265
+    ],
+    "heading_deg": 270,
+    "pitch_down_deg": 14,
+    "objects": [
+      {
+        "class": "drone",
+        "source": "SRC_drone1",
+        "bbox_xyxy": [
+          196.0,
+          116.0,
+          202.0,
+          122.0
+        ]
+      }
+    ],
+    "label_origin": "Webots recognition geometry",
+    "status": "recognized_drone",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.699500015936792
+  },
+  {
+    "image": "images/frame_20.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -340.0,
+      -525.0,
+      31.246640014215902
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.99429096840322
+  },
+  {
+    "image": "images/frame_21.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -340.0,
+      -535.0,
+      33.73992004264771
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.766458965837955
+  },
+  {
+    "image": "images/frame_22.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -340.0,
+      -550.0,
+      37.47984008529542
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.55291706044227
+  },
+  {
+    "image": "images/frame_23.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -340.0,
+      -580.0,
+      44.95968017059084
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.695292067714036
+  },
+  {
+    "image": "images/frame_24.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -340.0,
+      -610.0,
+      52.439520255886265
+    ],
+    "heading_deg": 0,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.73320795595646
+  },
+  {
+    "image": "images/frame_25.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 5,
+    "camera_position": [
+      -345.0,
+      -520.0,
+      31.246640014215902
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.77466601319611
+  },
+  {
+    "image": "images/frame_26.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 15,
+    "camera_position": [
+      -355.0,
+      -520.0,
+      33.73992004264771
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.75537494663149
+  },
+  {
+    "image": "images/frame_27.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 30,
+    "camera_position": [
+      -370.0,
+      -520.0,
+      37.47984008529542
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.193374974653125
+  },
+  {
+    "image": "images/frame_28.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 60,
+    "camera_position": [
+      -400.0,
+      -520.0,
+      44.95968017059084
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.266582982614636
+  },
+  {
+    "image": "images/frame_29.png",
+    "width": 400,
+    "height": 240,
+    "source_present": false,
+    "horizontal_distance_m": 90,
+    "camera_position": [
+      -430.0,
+      -520.0,
+      52.439520255886265
+    ],
+    "heading_deg": 90,
+    "pitch_down_deg": 14,
+    "objects": [],
+    "label_origin": "Webots recognition geometry",
+    "status": "empty",
+    "predictions": [],
+    "best_iou": 0,
+    "matched_iou50": false,
+    "center_inside_reference": false,
+    "inference_ms": 23.759125033393502
+  }
+]
