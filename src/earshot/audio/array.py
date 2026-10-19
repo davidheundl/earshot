@@ -35,13 +35,16 @@ MIN_LEVEL_DB = 45.0  # quieter blocks are room noise
 class ArraySensor:
     def __init__(self, device: str | int, rotation_deg: float = 0.0, fs: int = 16000,
                  n_channels: int = 6, mic_channels=(1, 2, 3, 4), calibration_db: float = 94.0,
-                 start: bool = True):
+                 start: bool = True, classifier=None):
+        """`classifier`: a sensors.waveform.Classifier for the class probabilities (else the
+        coarse spectral stand-in), e.g. `earshot live --array ... --classifier MOD:ATTR`."""
         self.device = device
         self.rotation_deg = rotation_deg
         self.fs = fs
         self.n_channels = n_channels
         self.mic_channels = list(mic_channels)
         self.calibration_db = calibration_db
+        self.classifier = classifier
         self.mics = respeaker_v2_geometry()
         self._q: queue.Queue = queue.Queue()
         self.diagnostics: dict = {}  # last block: level, spectrum, SRP scan, bearing (dashboard)
@@ -86,7 +89,12 @@ class ArraySensor:
             return None
         scan: list = []
         bearing, power = estimate_bearing(block, self.fs, self.mics, self.rotation_deg, scan=scan)
-        probs = coarse_class_probs(block, self.fs)
+        if self.classifier is not None:
+            p = np.clip(np.asarray(self.classifier.classify(block.mean(axis=0), self.fs), float),
+                        0.0, None)
+            probs = tuple(p / p.sum()) if p.sum() > 0 else (0.25,) * 4
+        else:
+            probs = coarse_class_probs(block, self.fs)
         self.diagnostics.update(scan=scan, bearing=round(bearing, 1), power=round(power, 2),
                                 probs=[round(p, 2) for p in probs], heard=power >= MIN_POWER)
         if power < MIN_POWER:

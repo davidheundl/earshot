@@ -41,13 +41,15 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 - Live arrays: SRP-PHAT bearing, array sensor, fixed drones.
 - Policy tuning: the decision thresholds as `PolicyParams` (scenario `params:`, `--params`), `earshot tune` (CMA-ES over seeded random worlds, paired check on held-out seeds); a first tuned set (`scenarios/params/tuned-2026-10-18.json`, notes in `docs/tune-2026-10-18.md`) and the `two_drones` scenario.
 - Agent hot path cached between changes (merged Tracks, telemetry, summary; cheap overlap reject): no behaviour change, eval identical bit for bit.
+- Sound classifier spike (`src/earshot/audio/classifier.py`, `tools/*sound*`, results in `docs/sound-classifier-spike.md`): EfficientAT mn10 (AudioSet-pretrained, vendored, frozen) with a small trained head over fine classes (drone, plane, helicopter, vehicle, train, machine, insect, ambient, other) folded onto the 4 Target Classes; a zero-shot AudioSet baseline; `earshot eval --classifier` side by side, `--classifier` for the live arrays. Trained on ESC-50 and DroneAudioSet, tested on ESC-50 fold 5 and a drone the head never heard. Built to judge whether it is worth rebuilding and retraining on the day.
 - Second-drone blind spot: a confirmed drone follows one map peak per update at most 15 m/s (no hopping from peak to peak), other peaks beside it are Explained side lobes, Confirmed Tracks merge only with Confirmed ones; `scenario_gen` adds a second intruder 250-500 m from the first in 30 % of random worlds (own random stream, other worlds unchanged).
 
 ## Third-party
 
 - Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`; `cma` (pycma, BSD-3) for `earshot tune`.
 - Munich Airport map data: buildings (LoD2) and aerial photo (DOP) © Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0; © OpenStreetMap contributors, ODbL. Both need this attribution on the slide.
-- Planned: EfficientAT (MIT), DroneAudioset (MIT).
+- EfficientAT (MIT, github.com/fschmid56/EfficientAT): model code vendored in `src/earshot/audio/efficientat/`, mn10_as AudioSet weights downloaded; AudioSet label names (CC BY 4.0, Google). `torch`/`torchvision` (BSD) in the optional `ml` group.
+- Sound datasets, downloaded, not redistributed: DroneAudioSet (MIT, Gupta et al., NeurIPS 2025, huggingface.co/datasets/ahlab-drone-project/DroneAudioSet), ESC-50 (CC BY-NC 3.0, K. J. Piczak, github.com/karolpiczak/ESC-50; clips from freesound.org).
 
 ## Built on the day
 

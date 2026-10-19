@@ -117,8 +117,23 @@ def load_scenario(scenario_path: str, seed: int) -> Scenario:
     return Scenario.load(scenario_path, seed=seed)
 
 
+def sound_audio(classifier: str | None, sounds: str = "data/sounds"):
+    """sensors.Audio with a trained sound classifier ("pkg.module:attr"), or None for the
+    CONFUSION stand-in. Built once per classifier: loading a model is the slow part."""
+    if not classifier or classifier == "none":
+        return None
+    from pathlib import Path
+
+    from earshot.sensors import Audio
+    from earshot.sensors import waveform as wf
+
+    return Audio(wf.Mixer(wf.ClipBank(Path(sounds))), wf.load_classifier(classifier))
+
+
 def run_one(scenario_path: str, seed: int, policy: str, scheme: str | None = None,
-            bw_khz: float | None = None, params: dict | None = None) -> RunMetrics:
+            bw_khz: float | None = None, params: dict | None = None,
+            audio=None) -> RunMetrics:
+    """`audio`: sensors.Audio (see sound_audio) to classify sound with a trained model."""
     sc = load_scenario(scenario_path, seed)
     sc.policy = policy
     if params is not None:  # state.PolicyParams overrides, on top of the scenario's own
@@ -127,13 +142,13 @@ def run_one(scenario_path: str, seed: int, policy: str, scheme: str | None = Non
         sc.radio = {**sc.radio, "scheme": scheme}
     if bw_khz:
         sc.radio = {**sc.radio, "bw_khz": bw_khz}
-    return metrics(run(sc), policy)
+    return metrics(run(sc, audio=audio), policy)
 
 
 def evaluate(scenario_path: str, runs: int, seed0: int, policy: str,
              scheme: str | None = None, bw_khz: float | None = None,
-             params: dict | None = None) -> list[RunMetrics]:
-    return [run_one(scenario_path, seed0 + k, policy, scheme, bw_khz, params)
+             params: dict | None = None, audio=None) -> list[RunMetrics]:
+    return [run_one(scenario_path, seed0 + k, policy, scheme, bw_khz, params, audio)
             for k in range(runs)]
 
 

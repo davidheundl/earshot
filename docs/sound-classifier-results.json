@@ -1,0 +1,338 @@
+{
+ "real": {
+  "clean": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.391,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.006,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.966,
+    "drone_recall": 0.97,
+    "p_drone_on_drone": 0.671,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   }
+  },
+  "-10dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.38,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.01,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.682,
+    "drone_recall": 0.599,
+    "p_drone_on_drone": 0.479,
+    "false_drone": 0.065,
+    "false_drone_by": {
+     "plane": 0.125,
+     "helicopter": 0.075,
+     "vehicle": 0.11,
+     "train": 0.0,
+     "machine": 0.076,
+     "insect": 0.0,
+     "ambient": 0.072,
+     "other": 0.039
+    }
+   }
+  },
+  "-5dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.38,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.01,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.825,
+    "drone_recall": 0.828,
+    "p_drone_on_drone": 0.606,
+    "false_drone": 0.037,
+    "false_drone_by": {
+     "plane": 0.025,
+     "helicopter": 0.05,
+     "vehicle": 0.055,
+     "train": 0.0,
+     "machine": 0.051,
+     "insect": 0.026,
+     "ambient": 0.049,
+     "other": 0.016
+    }
+   }
+  },
+  "+0dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.38,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.009,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.888,
+    "drone_recall": 0.916,
+    "p_drone_on_drone": 0.664,
+    "false_drone": 0.02,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.05,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.013,
+     "insect": 0.0,
+     "ambient": 0.046,
+     "other": 0.012
+    }
+   }
+  },
+  "+5dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.381,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.008,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.913,
+    "drone_recall": 0.924,
+    "p_drone_on_drone": 0.666,
+    "false_drone": 0.01,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.025,
+     "vehicle": 0.009,
+     "train": 0.0,
+     "machine": 0.006,
+     "insect": 0.026,
+     "ambient": 0.019,
+     "other": 0.0
+    }
+   }
+  },
+  "+10dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.388,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.007,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.94,
+    "drone_recall": 0.942,
+    "p_drone_on_drone": 0.668,
+    "false_drone": 0.004,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.025,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.011,
+     "other": 0.0
+    }
+   }
+  },
+  "+20dB": {
+   "zeroshot": {
+    "n": 2097,
+    "acc": 0.39,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.006,
+    "false_drone": 0.0,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.0,
+     "insect": 0.0,
+     "ambient": 0.0,
+     "other": 0.0
+    }
+   },
+   "head": {
+    "n": 2097,
+    "acc": 0.946,
+    "drone_recall": 0.939,
+    "p_drone_on_drone": 0.665,
+    "false_drone": 0.003,
+    "false_drone_by": {
+     "plane": 0.0,
+     "helicopter": 0.0,
+     "vehicle": 0.0,
+     "train": 0.0,
+     "machine": 0.006,
+     "insect": 0.0,
+     "ambient": 0.008,
+     "other": 0.0
+    }
+   }
+  }
+ },
+ "sim:demo-seed0": {
+  "-20..-10dB": {
+   "zeroshot": {
+    "n": 408,
+    "acc": 0.172,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.011,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 408,
+    "acc": 0.174,
+    "drone_recall": 0.186,
+    "p_drone_on_drone": 0.311,
+    "false_drone": 0.022
+   }
+  },
+  "-10..-5dB": {
+   "zeroshot": {
+    "n": 195,
+    "acc": 0.759,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 195,
+    "acc": 0.774,
+    "false_drone": 0.0
+   }
+  },
+  "-5..0dB": {
+   "zeroshot": {
+    "n": 111,
+    "acc": 0.018,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 111,
+    "acc": 0.658,
+    "false_drone": 0.0
+   }
+  },
+  "0..5dB": {
+   "zeroshot": {
+    "n": 47,
+    "acc": 0.0,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 47,
+    "acc": 0.702,
+    "false_drone": 0.0
+   }
+  },
+  "5..10dB": {
+   "zeroshot": {
+    "n": 36,
+    "acc": 0.194,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 36,
+    "acc": 0.917,
+    "false_drone": 0.0
+   }
+  },
+  "all": {
+   "zeroshot": {
+    "n": 798,
+    "acc": 0.284,
+    "drone_recall": 0.0,
+    "p_drone_on_drone": 0.011,
+    "false_drone": 0.0
+   },
+   "head": {
+    "n": 798,
+    "acc": 0.454,
+    "drone_recall": 0.186,
+    "p_drone_on_drone": 0.311,
+    "false_drone": 0.009
+   }
+  }
+ }
+}

@@ -36,13 +36,21 @@ def main(argv=None) -> None:
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
     ap.add_argument("--array", help="sound from this microphone array (device name or index), "
                     "optionally @rotation_deg, instead of the simulated sound sensor")
+    ap.add_argument("--classifier", metavar="MOD:ATTR",
+                    help="with --array, a trained sound classifier decides the class")
     a = ap.parse_args(argv)
     array = None
     if a.array:
         from earshot.audio.array import ArraySensor
 
         dev, _, rot = a.array.partition("@")
-        array = ArraySensor(int(dev) if dev.isdigit() else dev, float(rot or 0.0))
+        clf = None
+        if a.classifier:
+            from earshot.sensors.waveform import load_classifier
+
+            clf = load_classifier(a.classifier)
+        array = ArraySensor(int(dev) if dev.isdigit() else dev, float(rot or 0.0),
+                            classifier=clf)
         print(f"[agent {a.id}] sound from array {dev!r}, rotation {rot or 0} deg", flush=True)
     scenario = Scenario.load(a.scenario)
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,

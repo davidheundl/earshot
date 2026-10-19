@@ -13,3 +13,8 @@ Any PCM WAV works (8/16/24/32-bit, mono or stereo, any rate); it is resampled to
 normalised, because the level comes from the sound model. Clips must be at least 1 s long; each
 Source keeps one clip for the whole run. A class without recordings is synthesised. Check each
 dataset's licence and list it in DECLARATION.md.
+
+`tools/fetch_sound_data.py` stocks `drone/`, `vehicle/`, `train/` and `nothing/` with real recordings
+(DroneAudioSet's drone1, ESC-50 fold 5: engines, trains, planes, helicopters, machines, insects): the
+ones the sound classifier never trained on, so simulated beams test it fairly. They are gitignored
+(dataset licences); `ego/` and `background/` stay synthetic.

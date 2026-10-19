@@ -45,9 +45,10 @@ Vocabulary: [CONTEXT.md](../CONTEXT.md). Decisions: [docs/adr/](adr/). Concept: 
 | `agent.belief` | `add_evidence`, `tracks(t)`, `check_faults(t)`, `posterior()` | Probability Map: bounded log-likelihood per (origin, sensor family), at most N_EFF readings' worth each (ADR 0006); rail/road priors explain trains and trucks; camera confirms or dismisses; overlapping drone Suspicions merge at their likelihood-weighted mean (`merge_overlapping`, also applied to received Tracks); Faulty Sensor check. |
 | `agent.policy` | `decide(t, state, tracks, belief, claims) -> Decision` | Thresholds from `SwarmConfig.params` (`state.PolicyParams`; a scenario's `params:`, `--params FILE`). One verify task per strong Suspicion, taken by the nearest drone (bid by distance, auction by place within 300 m); everyone else holds their post; Claim lease and settle window; Voronoi Sectors and Fill Gap; baselines `nearest`, `no_perch`; fixed (array) drones never fly. |
 | `agent.store` | `receive(frame, margin, t)`, `due(t)`, `on_digest`, `on_request` | Duplicate filter; contention-based relaying (far receivers first, cancel on overhearing, skip when heard strongly); Digest/Request healing of Tracks and Claims; schemes `ours` / `flood` / `unicast3`. |
-| `eval` | `evaluate(scenario, runs, seed, policy, scheme, bw)`, `summarize` | Section 17 metrics from decision events + ground truth; `scenario_gen` makes a random world per seed. |
+| `eval` | `evaluate(scenario, runs, seed, policy, scheme, bw, params, audio)`, `sound_audio(classifier)`, `summarize` | Section 17 metrics from decision events + ground truth; `scenario_gen` makes a random world per seed. |
 | `tune` | `tune(scenario, gens, pop, train, holdout)` | `earshot tune`: CMA-ES over the `GENES` of `PolicyParams` (bounded so the protocol stays safe), cost = t_confirm + misses + false verifies + Gap on fixed training seeds, then default vs best paired on held-out seeds. Writes `runs/tune-<time>/` (history.jsonl, best.json, holdout.json). |
-| `audio` | `ArraySensor(device, rotation).readings()`, `doa.estimate_bearing` | Real microphone arrays as a perched drone's sound sensor (SRP-PHAT, 500-4000 Hz). |
+| `audio` | `ArraySensor(device, rotation, classifier=None).readings()`, `doa.estimate_bearing` | Real microphone arrays as a perched drone's sound sensor (SRP-PHAT, 500-4000 Hz); class from a sound classifier if given, else the coarse spectral stand-in. |
+| `audio.classifier` | `zeroshot`, `efficientat` (for `--classifier earshot.audio.classifier:<name>`), `FINE`, `fold` | Needs the `ml` group (torch) and `data/models/` (tools/fetch_efficientat.py, tools/train_sound_head.py). Frozen EfficientAT mn10 (vendored in `audio/efficientat/`), each 1 s beam tiled to 5 s (1 s inputs saturate it); a trained head over fine classes, folded onto the 4 Target Classes (plane, helicopter, fan → Nothing). Inference only, no random numbers. `EARSHOT_SOUND_DEVICE=mps` for speed. |
 | `runners.*` | processes and lockstep | Thin shells. `wire.py` holds the msgpack shapes. |
 | `dashboard` | `GET /`, `GET /city`, `WS /ws`, `WS /ws/audio`, `POST /control` | Operator console: hotkeys send Events to the world. Agents never see it; a crash never stops a run. With `earshot live --audio`, Listen (`l`) plays the selected drone's microphone, and the Evidence screen graphs every drone's frequencies (sound per band from the snapshot's `spectrum`, RF dBm per band from the readings). |
 
@@ -58,7 +59,7 @@ Rule (concept section 14): infrastructure is built beforehand and declared ([DEC
 Open items worth doing on the day (prototype):
 - Bearings that point at an already confirmed drone should explain away the ghost crossings they create (the source of most remaining false verify flights).
 - One aggregated Observation per drone per second, so the swarm also runs on a 125 kHz LoRa channel (it needs 500 kHz now).
-- EfficientAT instead of the coarse class stand-in for the arrays; a trained detector instead of the Webots recogniser.
+- A trained detector instead of the Webots recogniser. (EfficientAT for the sound class: spike on `prototype`, see [sound-classifier-spike.md](sound-classifier-spike.md).)
 
 ## Where Nikolas plugs in
 

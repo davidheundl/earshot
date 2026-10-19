@@ -140,10 +140,16 @@ def cmd_eval(a) -> None:
 
     t0 = time.time()
     table, raw = [], {}
-    combos = [(p, s) for p in a.policy for s in (a.scheme or [None])]
-    for policy, scheme in combos:
+    from earshot.eval import sound_audio
+
+    combos = [(p, s, c) for c in (a.classifier or [None]) for p in a.policy
+              for s in (a.scheme or [None])]
+    audios = {c: sound_audio(c, a.sounds) for c in (a.classifier or [None])}
+    for policy, scheme, c in combos:
         label = policy + (f"/{scheme}" if scheme else "") + (f"/{a.bw:g}kHz" if a.bw else "")
-        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw, _params(a))
+        if c:
+            label += "/" + c.rpartition(":")[2]
+        rows = evaluate(a.scenario, a.runs, a.seed, policy, scheme, a.bw, _params(a), audios[c])
         raw[label] = as_json(rows)
         table.append(summarize(rows, label))
     cols = list(table[0])
@@ -151,7 +157,7 @@ def cmd_eval(a) -> None:
     print("  ".join(c.ljust(width[c]) for c in cols))
     for row in table:
         print("  ".join(str(row[c]).ljust(width[c]) for c in cols))
-    print(f"{a.runs} run(s) x {len(a.policy)} policies in {time.time() - t0:.0f}s"
+    print(f"{a.runs} run(s) x {len(combos)} configurations in {time.time() - t0:.0f}s"
           "  (median [min-max] over seeds)")
     if a.out:
         Path(a.out).write_text(json.dumps({"summary": table, "runs": raw}, indent=1))
@@ -226,6 +232,8 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
     spawn(["earshot.runners.radio_proc", "--scenario", a.scenario])
     for d in sc.drones:
         extra = ["--array", arrays[str(d.id)]] if str(d.id) in arrays else []
+        if extra and a.classifier:
+            extra += ["--classifier", a.classifier]
         spawn(["earshot.runners.agent_proc", "--id", str(d.id), "--scenario", a.scenario, *extra])
     if not a.no_dashboard:
         spawn(["earshot.dashboard.server", "--scenario", a.scenario])
@@ -353,6 +361,10 @@ def main(argv=None) -> None:
     ev.add_argument("--bw", type=float, help="LoRa bandwidth in kHz (default: scenario's)")
     ev.add_argument("--out", help="write all metrics as JSON")
     ev.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
+    ev.add_argument("--classifier", nargs="+", metavar="MOD:ATTR",
+                    help="sound classifiers side by side; 'none' is the CONFUSION stand-in")
+    ev.add_argument("--sounds", default="data/sounds",
+                    help="recordings per class for --classifier: <dir>/<class>/*.wav")
     ev.set_defaults(fn=cmd_eval)
 
     tu = sub.add_parser("tune", help="CMA-ES over the policy parameters, judged on held-out seeds")

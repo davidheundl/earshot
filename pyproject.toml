@@ -25,6 +25,9 @@ dev = ["pytest>=8", "ruff>=0.6"]
 audio = ["sounddevice>=0.4", "pyroomacoustics>=0.7"]
 # Building cities from open data (tools/muc_fetch.py, tools/make_muc.py); not needed at runtime.
 data = ["pyproj>=3.6"]
+# Sound classifier (src/earshot/audio/classifier.py, tools/*sound*): EfficientAT on the CPU.
+# Not a default group: the swarm runs without torch. `uv sync --group ml` to add it.
+ml = ["torch>=2.5,<2.10", "torchvision>=0.20,<0.25", "soundfile>=0.12", "pyarrow>=15"]
 
 [tool.uv]
 default-groups = ["dev", "audio", "data"]
@@ -39,6 +42,10 @@ packages = ["src/earshot"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["src/earshot/audio/efficientat/model.py",
+                  "src/earshot/audio/efficientat/block_types.py",
+                  "src/earshot/audio/efficientat/attention_pooling.py",
+                  "src/earshot/audio/efficientat/utils.py"]  # vendored as-is
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
