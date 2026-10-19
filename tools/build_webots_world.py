@@ -1529,9 +1529,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     looks = set()  # one appearance per material, DEF on first use
     for prefix, files, look_of in (("AC", aircraft, aircraft_look), ("PROP", props, prop_look)):
         for name, file in files:
-            key = f"{prefix}_{name.upper()}"
-            look = f"USE {key}" if key in looks else f"DEF {key} {look_of(name)}"
-            looks.add(key)
+            look_def = f"{prefix}_{name.upper()}"  # not `key`: that is the cache stamp below
+            look = f"USE {look_def}" if look_def in looks else f"DEF {look_def} {look_of(name)}"
+            looks.add(look_def)
             parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{file}" }} castShadows FALSE }}')
 
     for d in sc.drones:
