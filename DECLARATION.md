@@ -12,7 +12,9 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 
 - Offline CV demos and controlled Webots Verifier datasets: pretrained drone detection,
   resolution comparison and moving-sequence tracking; demo verification requires repeated
-  same-track detections and returns INCONCLUSIVE on misses. No Agent/Belief integration.
+  same-track detections and returns INCONCLUSIVE on misses (Nikolas, `tools/cv_demos.py`,
+  `tools/cv_navigation.py`, `data/cv/`). Since Oct 18 the detector is also in the loop: see
+  "Integration" below.
 
 - Repository, Python 3.11 environment (uv), CLI (`earshot fast | live | doctor`).
 - Radio message formats (≤ 40 B binary frames with HMAC tags), codec and tests.
@@ -37,11 +39,10 @@ Everything below existed before the hackathon day (Oct 24, 2026) and goes on the
 - Detection log with ground-truth source per measurement (for the evaluation metrics).
 - Sound as waveforms (infrastructure only, no trained model): per-class clip bank (recordings in `data/sounds/`, synthetic stand-ins otherwise), per-drone 1 s mixes calibrated to the level model, per-Source beams, a classifier hook, training-data export (`earshot fast --audio`) and live playback in the dashboard (`earshot live --audio`, Listen).
 - Scenario events (add source, jam, fault, day/night, ego filter): scripted in YAML or sent live from dashboard hotkeys; live sessions recorded and replayable in fast mode.
-- Stub belief and duty-cycle policy.
 
-## Prototype of the judged logic (built before the event, on `main`)
+## Prototype of the judged logic (built before the event, on `main` and `integrate`)
 
-Built to rehearse and measure. If any of it is used on the day, it goes on the declaration slide as pre-built; otherwise it is rebuilt on the day.
+Built to rehearse and measure, and to learn what to rebuild better on the day. Whatever of it runs in the demo goes on the declaration slide as pre-built; what is rebuilt on the day goes under "Built on the day".
 
 - Probability Map: bounded log-likelihood evidence per drone and sensor, effective-sample cap, rail/road priors (explaining away), camera confirmation and dismissal, track extraction with uncertainty ellipses, overlapping Suspicions merged at their likelihood-weighted mean.
 - Faulty Sensor detection against what the other drones agree on.
@@ -56,13 +57,21 @@ Built to rehearse and measure. If any of it is used on the day, it goes on the d
 - Second-drone blind spot: a confirmed drone follows one map peak per update at most 15 m/s (no hopping from peak to peak), other peaks beside it are Explained side lobes, Confirmed Tracks merge only with Confirmed ones; `scenario_gen` adds a second intruder 250-500 m from the first in 30 % of random worlds (own random stream, other worlds unchanged).
 - Second tuned policy set trained with two-intruder worlds (`scenarios/params/tuned-2026-10-18b.json`, notes in `docs/tune-2026-10-18b.md`): fewer missed drones on held-out random worlds, worse on `two_drones.yaml`'s late RF-only second drone.
 
+## Integration (Oct 18-19, branch `integrate`)
+
+- Branches merged: `prototype` (the swarm), `main` (Gazebo backend), `feat/cv-applications` (Nikolas' offline CV).
+- Perception in the loop: the trained EfficientAT sound head decides each beam's class, and a YOLO Verifier camera detector (`src/earshot/sensors/camera.py`, Nikolas' drone-yolo-v1 weights, ByteTrack streaks, "nothing" only after empty windows while holding still) reads the rendered Webots Verifier view at 1280x768; both chosen per Scenario (`audio:`, `camera:`, `build_perception`), with stand-ins when a model cannot load; `scenarios/muc_full.yaml`.
+- Fixes from the pre-event review (`docs/review-2026-10-18.md`): censored eval metrics per drone Source, `eval --jobs`; radio shadowing drawn once per frame and receiver, summed interference; Confirmed only from a camera, capped camera evidence, Tracks per origin, bounded task drift, Claim re-sent within settle, outbid cooldown, `verify_timeout`; wrap-safe message store; live world outlives its script, Webots-quit fallback to the twin, deduplicated dashboard counters, map-first HUD without cameras; the Webots world cache stamp.
+- Docs: `docs/functionality.md` (end to end), `docs/architecture.md` updated.
+
 ## Third-party
 
 - Webots R2025a (Apache 2.0). Python packages per `pyproject.toml` / `uv.lock`; `cma` (pycma, BSD-3) for `earshot tune`.
 - Munich Airport map data: buildings (LoD2) and aerial photo (DOP) © Bayerische Vermessungsverwaltung, www.geodaten.bayern.de, CC BY 4.0; © OpenStreetMap contributors, ODbL. Both need this attribution on the slide.
 - EfficientAT (MIT, github.com/fschmid56/EfficientAT): model code vendored in `src/earshot/audio/efficientat/`, mn10_as AudioSet weights downloaded; AudioSet label names (CC BY 4.0, Google). `torch`/`torchvision` (BSD) in the optional `ml` group.
+- Camera detector: drone-yolo-v1 (TomSmail, Hugging Face, CC BY 4.0) via `ultralytics` (AGPL-3.0, optional `cv` group; a closed product needs an Enterprise licence or another detector). Offline CV: DINOv2-small (Apache-2.0), Depth Anything V2 Metric Outdoor Small (Apache-2.0), OpenCV, transformers (`cv-navigation` group).
 - Sound datasets, downloaded, not redistributed: DroneAudioSet (MIT, Gupta et al., NeurIPS 2025, huggingface.co/datasets/ahlab-drone-project/DroneAudioSet), ESC-50 (CC BY-NC 3.0, K. J. Piczak, github.com/karolpiczak/ESC-50; clips from freesound.org).
 
 ## Built on the day
 
-Probability map and measurement models, explaining away, faulty-sensor detection, mode decisions, perch-site selection, verification value vs. gap cost, claim auction with leases, sector re-partitioning, relevance-limited forwarding, partition healing, evaluation over 100 runs.
+To fill in on Oct 24 with what was really rebuilt or added that day, each with its before/after `earshot eval`. Not yet built anywhere, so candidates that are genuinely new: perch-site selection by expected information (crossing angle, SNR, flight and Gap cost), position uncertainty (flying drones drift, perched ones are surveyed; bearings weighted by it), a corroboration gate that lets fix A of the review (second drone keeps its Track) back in without dispatching Ghosts, verification value vs. Gap cost, relevance-limited forwarding.

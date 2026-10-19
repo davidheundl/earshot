@@ -67,6 +67,26 @@ Munich Airport, 1:1 from open data (LoD2 buildings, OSM runways and rail, the ae
 uv run earshot live --scenario scenarios/muc.yaml --backend webots
 ```
 
+Munich with the full perception (`scenarios/muc_full.yaml`): the trained sound classifier (EfficientAT) and a YOLO drone detector on the Verifier camera. Install the model groups (`ml`: torch for sound, `cv`: ultralytics for the camera) and fetch the assets that are not committed, the sound backbone and the recordings:
+
+```bash
+uv sync --group ml --group cv
+uv run python tools/fetch_efficientat.py
+uv run python tools/fetch_sound_data.py
+```
+
+On the 2D twin (sound classifier on, the camera stays the ground-truth stand-in):
+
+```bash
+uv run earshot live --scenario scenarios/muc_full.yaml
+```
+
+In Webots, YOLO on a 1280x768 Verifier view (the first world build takes about 3 min). A missing model falls back to its stand-in with a warning; `--camera truth` and `--classifier none` turn them off:
+
+```bash
+uv run earshot live --scenario scenarios/muc_full.yaml --backend webots
+```
+
 The airport files in `data/cities/` are committed. To rebuild them from the open data (needs internet once; downloads ~850 MB into `data/raw/muc/`, the surroundings included):
 
 ```bash
@@ -101,6 +121,7 @@ uv run pytest
 
 ## Docs
 
+- [docs/functionality.md](docs/functionality.md): how the system works end to end (sensors, Probability Map, policy, radio, evaluation, how to run Munich), limitations, licences.
 - [docs/architecture.md](docs/architecture.md): processes, module interfaces, where each teammate plugs in.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.
 - [docs/adr/](docs/adr/): decisions and why.
