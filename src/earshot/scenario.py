@@ -242,7 +242,9 @@ class Scenario:
     # -- events ----------------------------------------------------------------------------
 
     def due_events(self, t: float) -> list[dict]:
-        """Pop scripted events whose time has come."""
+        """Pop scripted events whose time has come. Recorded events carry round(t, 3) while
+        the clock drifts (0.1 added ten times is 0.9999999999999999), hence the epsilon."""
+        t += 1e-6
         due = [e for e in self.events if e["t"] <= t]
         self.events = [e for e in self.events if e["t"] > t]
         return due

@@ -44,11 +44,11 @@ def test_jammed_receiver_hears_nothing():
 def test_claims_jump_the_queue():
     from collections import deque
 
-    from earshot.radio.medium import _enqueue
+    from earshot.radio.medium import _enqueue, _Queued
     q = deque()
     for f in [bytes([1]) + b"obs", bytes([2]) + b"trk", bytes([3]) + b"clm", bytes([1]) + b"ob2"]:
-        _enqueue(q, f)
-    assert [f[0] for f in q] == [3, 2, 1, 1]
+        _enqueue(q, _Queued(f, 0.0))
+    assert [x.frame[0] for x in q] == [3, 2, 1, 1]
 
 
 def test_simultaneous_equal_power_collide():
@@ -68,3 +68,37 @@ def test_overlap_across_a_tick_boundary_collides_both_frames():
     for r, frames in m.step(0.2, pos, {}).items():
         got.setdefault(r, []).extend(frames)
     assert got == {}  # half duplex at 0 and 1, equal-power collision at 2
+
+
+def test_equidistant_overlapping_frames_deliver_at_most_one():
+    # one shadowing draw per (frame, receiver): a frame's power as wanted and as interferer
+    # are the same number, so two overlapping frames cannot both capture the receiver
+    pos = {0: (-200, 0, 40), 1: (200, 0, 40), 2: (0, 0, 40)}
+    for seed in range(300):
+        cfg = RadioConfig(nominal_range_m=500, shadowing_db=6.0, jitter_s=0.0)
+        m = RadioMedium(cfg, np.random.default_rng(seed))
+        got = _run(m, pos, {0: [b"a" * 30], 1: [b"b" * 30]})
+        assert len(got.get(2, [])) <= 1, seed
+
+
+def test_weak_interferer_below_sensitivity_still_blocks():
+    # wanted ~ +3 dB above sensitivity, interferer ~ -1 dB: below sensitivity, but SIR ~ 4 dB
+    # is short of the 6 dB capture margin
+    pos = {0: (390, 0, 40), 1: (-545, 0, 40), 2: (0, 0, 40)}
+    assert [f for f, _ in _run(_medium(nominal_range_m=500), pos, {0: [b"a" * 30]})[2]] == [
+        b"a" * 30
+    ]
+    got = _run(_medium(nominal_range_m=500), pos, {0: [b"a" * 30], 1: [b"b" * 30]})
+    assert 2 not in got
+
+
+def test_frame_never_starts_before_it_is_handed_in():
+    pos = {0: (0, 0, 40), 1: (100, 0, 40)}
+    for seed in range(20):
+        m = RadioMedium(RadioConfig(shadowing_db=0.0, jitter_s=0.3), np.random.default_rng(seed))
+        m.step(0.1, pos, {})
+        m.step(0.2, pos, {0: [b"x" * 30]})
+        assert m.stats()["sent"] == 0  # handed in at 0.2: it cannot already be on air
+        for t in (0.3, 0.4, 0.5, 0.6):
+            m.step(t, pos, {})
+        assert m.stats()["sent"] == 1 and m._history[0][0][0] >= 0.2

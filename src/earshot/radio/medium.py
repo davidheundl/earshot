@@ -8,11 +8,14 @@ Interface:
 
 `outgoing` are frames each drone handed to its radio since the last step; they queue per
 sender by priority (Claim, Request, Track, Observation, Digest; FIFO within one), half duplex,
-one frame on air at a time, airtime budget. `margin_db` is the received power above
+one frame on air at a time, airtime budget. A frame is ready when handed in plus one random
+jitter drawn for it then; it never starts earlier. `margin_db` is the received power above
 sensitivity, what a real radio reports as RSSI/SNR; forwarders use it to decide who relays. A frame is delivered at the
 end of its airtime to every receiver that (a) is in range after shadowing, (b) was not itself
-transmitting during the overlap, (c) is not inside an active jam zone, and (d) has no
-overlapping frame within the capture margin. Same seed + same inputs = same deliveries.
+transmitting during the overlap, (c) is not inside an active jam zone, and (d) beats the summed
+power of all overlapping frames (weak ones too) by the capture margin. Shadowing is drawn once
+per (frame, receiver), so a link has the same power as wanted frame and as interferer. Same
+seed + same inputs = same deliveries.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ class RadioConfig:
     capture_db: float = 6.0
     duty_cycle: float = 0.10  # max fraction of airtime per sender over the window
     duty_window_s: float = 10.0
-    queue_len: int = 32  # per sender; oldest dropped beyond this
+    queue_len: int = 32  # per sender; beyond this the least important, newest frame is dropped
     jitter_s: float = 0.3  # random start offset: contention window, no listen-before-talk
 
     @classmethod
@@ -61,12 +64,18 @@ def lora_airtime(payload_bytes: int, sf: int, bw_khz: float, cr: int = 1, preamb
 _PRIORITY = {3: 0, 5: 1, 2: 2, 1: 3, 4: 4}
 
 
-def _enqueue(q: deque, frame: bytes) -> None:
-    prio = _PRIORITY.get(frame[0], 9)
+@dataclass
+class _Queued:
+    frame: bytes
+    ready: float  # handed in + its own jitter: the earliest start
+
+
+def _enqueue(q: deque, item: _Queued) -> None:
+    prio = _PRIORITY.get(item.frame[0], 9)
     i = len(q)
-    while i > 0 and _PRIORITY.get(q[i - 1][0], 9) > prio:
+    while i > 0 and _PRIORITY.get(q[i - 1].frame[0], 9) > prio:
         i -= 1
-    q.insert(i, frame)
+    q.insert(i, item)
 
 
 @dataclass
@@ -76,6 +85,7 @@ class _Tx:
     start: float
     end: float
     pos: tuple[float, float, float]
+    shadow: dict[int, float] = field(default_factory=dict)  # receiver -> dB, drawn once
 
 
 @dataclass
@@ -99,7 +109,7 @@ class RadioMedium:
         self._margin_db = self.REF_LOSS_DB + 10 * cfg.path_loss_exp * math.log10(
             cfg.nominal_range_m
         )
-        self._queues: dict[int, deque[bytes]] = {}
+        self._queues: dict[int, deque[_Queued]] = {}
         self._busy_until: dict[int, float] = {}
         self._history: dict[int, deque[tuple[float, float]]] = {}  # sender -> (start, airtime)
         self._in_flight: list[_Tx] = []
@@ -117,10 +127,10 @@ class RadioMedium:
         outgoing: Mapping[int, Sequence[bytes]],
         jam_zones: Sequence = (),
     ) -> dict[int, list[tuple[bytes, float]]]:
-        for sender, frames in outgoing.items():
+        for sender in sorted(outgoing):
             q = self._queues.setdefault(sender, deque())
-            for f in frames:
-                _enqueue(q, f)
+            for f in outgoing[sender]:
+                _enqueue(q, _Queued(f, t + float(self.rng.uniform(0, self.cfg.jitter_s))))
                 if len(q) > self.cfg.queue_len:
                     q.pop()  # drop the least important, newest frame
                     self._s.dropped_queue += 1
@@ -163,14 +173,14 @@ class RadioMedium:
         for sender in sorted(self._queues):
             q = self._queues[sender]
             while q:
-                start = max(self._busy_until.get(sender, 0.0), self._t)
-                start += float(self.rng.uniform(0, self.cfg.jitter_s))
+                # not before this tick: a frame held back by the budget starts once it allows
+                start = max(self._busy_until.get(sender, 0.0), q[0].ready, self._t)
                 if start > t:
                     break
-                air = self._airtime(q[0])
+                air = self._airtime(q[0].frame)
                 if not self._budget_ok(sender, start, air):
                     break  # wait for the window to slide
-                frame = q.popleft()
+                frame = q.popleft().frame
                 self._history[sender].append((start, air))
                 self._busy_until[sender] = start + air
                 pos = positions.get(sender, (0.0, 0.0, 0.0))
@@ -178,10 +188,14 @@ class RadioMedium:
                 self._s.sent += 1
                 self._s.airtime[sender] = self._s.airtime.get(sender, 0.0) + air
 
-    def _rx_power(self, a, b) -> float:
-        d = max(1.0, math.dist(a, b))
+    def _rx_power(self, tx: _Tx, r: int, rpos) -> float:
+        """Power of `tx` at receiver `r` above sensitivity, dB; the same whether `tx` is the
+        wanted frame or an interferer there."""
+        if r not in tx.shadow:
+            tx.shadow[r] = float(self.rng.normal(0, self.cfg.shadowing_db))
+        d = max(1.0, math.dist(tx.pos, rpos))
         loss = self.REF_LOSS_DB + 10 * self.cfg.path_loss_exp * math.log10(d)
-        return self._margin_db - loss + float(self.rng.normal(0, self.cfg.shadowing_db))
+        return self._margin_db - loss + tx.shadow[r]
 
     def _finish_transmissions(self, t, positions, jam_zones) -> dict[int, list[tuple]]:
         done = [x for x in self._in_flight if x.end <= t]
@@ -195,7 +209,8 @@ class RadioMedium:
         for tx in sorted(done, key=lambda x: x.end):
             overlapping = [o for o in self._in_flight + self._ended if o is not tx
                            and o.start < tx.end and tx.start < o.end]
-            for r, rpos in positions.items():
+            for r in sorted(positions):
+                rpos = positions[r]
                 if r == tx.sender:
                     continue
                 if r in jammed or tx.sender in jammed:
@@ -204,14 +219,15 @@ class RadioMedium:
                 if any(o.sender == r for o in overlapping):  # half duplex
                     self._s.collided += 1
                     continue
-                p = self._rx_power(tx.pos, rpos)
+                p = self._rx_power(tx, r, rpos)
                 if p < 0:
                     self._s.out_of_range += 1
                     continue
-                interferers = [self._rx_power(o.pos, rpos) for o in overlapping]
-                if any(p - i < self.cfg.capture_db for i in interferers if i >= 0):
-                    self._s.collided += 1
-                    continue
+                if overlapping:
+                    i_mw = sum(10 ** (self._rx_power(o, r, rpos) / 10) for o in overlapping)
+                    if p - 10 * math.log10(i_mw) < self.cfg.capture_db:
+                        self._s.collided += 1
+                        continue
                 out.setdefault(r, []).append((tx.frame, round(p, 1)))
                 self.links[(tx.sender, r)] = t
                 self._s.delivered += 1

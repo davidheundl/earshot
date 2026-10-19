@@ -87,3 +87,16 @@ def test_replayed_events_are_deterministic():
 
     a, b = once(), once()
     assert a.radio == b.radio and a.agents == b.agents
+
+
+def test_event_at_a_recorded_time_fires_despite_float_drift():
+    # live events are logged at round(t, 3); the twin adds dt each step, so ten steps give
+    # 0.9999999999999999, not 1.0. A replayed event at t: 1.0 must still fire on that step.
+    sc = _scenario()
+    sc.events = [{"t": 1.0, "op": "jam", "x": 0, "y": 0}]
+    _, world, _, _ = build(sc, ROOT)
+    for _ in range(10):
+        world.step({})
+    assert world.t != 1.0 and round(world.t, 3) == 1.0
+    world.step({})
+    assert len(world.applied) == 1 and world.applied[0]["t"] == 1.0
