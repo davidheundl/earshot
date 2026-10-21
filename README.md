@@ -103,7 +103,7 @@ Anti-poaching in a 10 x 10 km game reserve in the South African lowveld (`scenar
 uv run earshot live --scenario scenarios/savanna.yaml
 ```
 
-In Webots (bushveld, acacias, the game as herds, Range Rovers; the world uses Webots' Cow, Horse, Deer and Range Rover PROTOs, so open it once online to cache them):
+In Webots (bushveld, acacias, the game as herds, pickups; all from primitives, nothing to download). The Verifier camera is the stand-in: the COCO detector is wired but sees the primitive pickups as "bird":
 
 ```bash
 uv run earshot live --scenario scenarios/savanna.yaml --backend webots --no-webots-view

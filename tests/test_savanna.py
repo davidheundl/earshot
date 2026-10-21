@@ -75,11 +75,14 @@ def test_a_short_run_goes_through():
     assert r.steps == 80 and r.radio["sent"] > 0 and r.threats == []
 
 
-def test_the_reserves_camera_spec_builds_a_detector(world):
+def test_the_reserves_coco_mapping_builds_a_detector(world):
+    # scenarios/savanna.yaml keeps the stand-in; its commented YOLO block must still load
     from earshot.sensors.camera import load_detector
 
     sc, _ = world
-    det = load_detector(sc.camera)  # the keys the world and the kinematics read are not its own
+    assert load_detector(sc.camera) is None  # detector: truth
+    det = load_detector({**sc.camera, "detector": "yolo", "weights": "yolo11n.pt",
+                         "classes": {"car": "vehicle", "truck": "vehicle", "elephant": "nothing"}})
     assert det.class_of("truck") == TargetClass.VEHICLE
     assert det.class_of("elephant") == TargetClass.NOTHING
     assert det.class_of("quadcopter") == TargetClass.NOTHING  # not in this model's map

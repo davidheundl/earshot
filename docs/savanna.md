@@ -86,7 +86,7 @@ Reading it:
 ## Limits
 
 - **A poacher on a track is Explained**, like the game drive, and never verified; a ranger off the tracks is verified. Only where a vehicle drives separates them. The rangers' own radios report GPS positions in many reserves; as City knowledge they would explain the rangers wherever they drive, and every other vehicle could be suspicious.
-- **The camera stand-in knows the reserve's own vehicles** (ground truth `intruder: false`), as a classifier trained on their livery would. The COCO detector in Webots (`yolo11n.pt`) says "car" for both: in Webots a ranger the swarm verifies is confirmed as a vehicle.
+- **The camera is the stand-in, in Webots too** (`camera.detector: truth`). The COCO detector (`yolo11n.pt`, `camera.classes`) is wired, but in a live Webots run on 2026-10-20 it saw the primitive pickups as "bird" and dismissed both checks near the poacher; it would need real vehicle models (the Range Rover PROTO failed to download, see the builder) or a detector trained on these renders. The stand-in also knows the reserve's own vehicles (ground truth `intruder: false`), as a classifier trained on their livery would.
 - **The game is a Source with a constant level.** Real calls come in bursts (a lion roars for a minute, then not for an hour); elephants' rumble is mostly infrasound. Animals use the Nuisance acoustics of a fan (3.7 dB/km absorption).
 - **UHF calibration**: 50 % detection at 2.5 km in the open and 0.7 km behind a kopje, chosen, not measured; push-to-talk as a 40 % chance per second of any transmission.
 - **No people on foot.** Poachers who walk in from a road make little sound; gunshots (loud, short, heard 5 km away) would be the cue, as a fifth sound class or a short Source.

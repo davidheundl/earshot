@@ -87,17 +87,19 @@ radio:
   nominal_range_m: 3500   # drones on 12 m towers over open bush, 2-2.5 km apart (2500 m split
   #                         the swarm: Claims did not reach, a drone flew 7 km to a poacher)
 
-camera:                   # Webots: the COCO detector names what it sees (twin: the stand-in)
+camera:                   # the stand-in in every backend: it names the Source's kind
   range: 300              # m the stand-in sees a vehicle at night: a thermal camera sees the
   #                         engine's heat far beyond the 100 m a quadcopter takes
-  detector: yolo
-  weights: yolo11n.pt
-  classes: {car: vehicle, truck: vehicle, bus: vehicle, motorcycle: vehicle,
-            elephant: nothing, zebra: nothing, giraffe: nothing, cow: nothing, horse: nothing,
-            sheep: nothing, dog: nothing, cat: nothing, bear: nothing, bird: nothing}
-  verify_conf: 0.4
-  confirm_frames: 3
-  clear_radius: 60        # m: a car is far bigger than a quadcopter
-  every: 2
+  detector: truth         # COCO YOLO is wired (below) but sees the primitive pickups as
+  #                         "bird", not "car": with it the Verifier dismisses the poacher
+  # detector: yolo        # to try it in Webots (`uv sync --group cv`):
+  # weights: yolo11n.pt
+  # classes: {car: vehicle, truck: vehicle, bus: vehicle, motorcycle: vehicle,
+  #           elephant: nothing, zebra: nothing, giraffe: nothing, cow: nothing, horse: nothing,
+  #           sheep: nothing, dog: nothing, cat: nothing, bear: nothing, bird: nothing}
+  # verify_conf: 0.4
+  # confirm_frames: 3
+  # clear_radius: 60      # m: a car is far bigger than a quadcopter
+  # every: 2
   resolution: [1280, 768]
   standoff: 30
