@@ -242,3 +242,25 @@ def test_a_detector_that_breaks_hands_over_to_the_stand_in():
     suite.camera.model = Broken([])
     suite.sense(_verifier(1.0), 1.0, frame())
     assert suite.camera is None
+
+
+def test_a_broken_detector_gives_the_backend_back_to_the_stand_in():
+    # the World told the backend a detector reads its images (Webots then aims the camera for
+    # it); once the detector is gone, the stand-in's recogniser looks again
+    from earshot.backend.twin2d import Twin2D
+    from earshot.city import City
+    from earshot.scenario import Scenario
+    from earshot.world import World
+
+    root = Path(__file__).resolve().parents[1]
+    sc = Scenario.load(root / "scenarios/demo.yaml")
+    city = City.load(root / sc.city)
+    backend = Twin2D(city, sc.drones)
+    backend.detector_frames = False
+    world = World(sc, city, backend, camera=YoloDetector(model=FakeModel([]), device="cpu"))
+    assert backend.detector_frames
+    world.step({})
+    assert backend.detector_frames
+    world.sensors.camera = None  # what SensorSuite does when the model raises
+    world.step({})
+    assert not backend.detector_frames

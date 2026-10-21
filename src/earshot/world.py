@@ -86,6 +86,8 @@ class World:
                     **({"label": det.label} if det.label else {}),
                 })
             sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame)
+        if self.sensors.camera is None and getattr(self.backend, "detector_frames", False):
+            self.backend.detector_frames = False  # the detector broke: the stand-in's view
         for w in self.audio:
             self._spectra[w.drone] = spectrum(w.mix)
         self._recent = [d for d in self._recent if self.t - d["t"] < 3.0] + [
