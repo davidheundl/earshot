@@ -53,6 +53,7 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 | Geolocated camera hits | the confirmed point sat on the Verifier while the vehicle drove on 300 m ahead; Followers lost it | `belief._camera`, the stand-in with `camera.range` |
 | No bids beyond `max_verify_distance` | with Claims lost on a busy channel, drones from the far side of the reserve flew 7 km to the same poacher | `policy._tasks` (PolicyParams, off by default) |
 | Relevance-limited relaying | every Track went three hops through all twenty drones: 5.6 relays per Track, a broadcast storm | `store._relevant`, `radio.relay_radius_m` (off by default) |
+| One Observation per drone and sensor window | a drone hearing two things sent two 35 B frames; the channel was at 68 % | `messages.Observation` (up to two readings), `core.py` step 2, `belief.add_evidence` |
 
 The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]):
 
@@ -60,12 +61,17 @@ The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]
 |---|---|---|---|---|---|---|---|---|
 | Munich (`muc.yaml`, seeds 1000-1007) | before | 8/8 | 95 [85-267] | 21 | 31.5 | 3 | 26.3 | 8/8 |
 | | after | 8/8 | 87 [84-198] | 24.5 | 35 | 5 | 23.8 | 8/8 |
+| | one Observation per window | 8/8 | 87 [84-116] | 17.5 | 27.5 | 3 | 20.2 | 7/8 |
 | Random worlds (seeds 1000-1019) | before | 16/26 | 170 | 19 | 29.5 | 4 | 20.8 | 6/9 |
 | | after | 17/26 | 148 | 18.5 | 34 | 5 | 21.4 | 8/9 |
+| | one Observation per window | 16/26 | 189 | 15.5 | 27.5 | 5 | 18.6 | 7/9 |
 | Demo (`demo.yaml`, seeds 100-111) | before | 12/12 | 26 | 16 | 33.5 | 4 | 23.6 | 12/12 |
 | | after | 12/12 | 20 | 16 | 35.5 | 4 | 23.3 | 12/12 |
+| | one Observation per window | 12/12 | 22 | 14.5 | 34.5 | 4 | 21.5 | 12/12 |
 
 "Before" is `prototype` at 1b70338; stand-in sound and camera (lockstep), default PolicyParams. Reading it: the airport confirms its drone sooner and agrees after a jam more often, with a quieter channel; it flies a little more and sends up to one or two more drones away at once. Single seeds swing both ways (Munich seed 1001: 225 -> 198 s, seed 1006: 87 -> 119 s). An intermediate state without the healing change missed Munich's drone on one seed and agreed after only 6 of 8 jams: one-hop Explained Tracks made far drones ask for frames they could never get.
+
+"One Observation per window" (2026-10-21) is "after" plus a sensor window's readings sharing their frames; "after" re-run on `prototype` 348bfac gives the row above exactly. The channel is quieter in every set (load lower on 54 of 60 random worlds and 19 of 24 Munich seeds, clean receptions up 1-2 points), and there are fewer flights and false verifies. Confirmations and agreement after a jam moved by one run in the small sets, so both were run on more seeds: over 40 more random worlds (1020-1059) 35 -> 38 of 48 drones confirmed and 19/21 agreed both times; over 16 more Munich seeds (1008-1023) 15 -> 16 of 16 confirmed and 9 -> 14 of 16 agreed. All seeds together, paired per drone Source: Munich confirms sooner (mean 124 -> 104 s, 23 -> 24 of 24) and agrees after 21 instead of 17 of 24 jams; the random worlds confirm 54 instead of 52 of 74 drones (mean 148 -> 143 s, sooner in 29, later in 27) and agree after 26 instead of 27 of 30 jams. On a 125 kHz channel (`--bw 125`, demo seeds 100-111) it is no better: both variants run into the 10 % duty cycle (load 50 %), confirm 9 of 12 and never agree again after the jam.
 
 ## Results in the reserve
 
@@ -74,14 +80,16 @@ The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]
 | Variant | poacher1 confirmed | its t_confirm s | poacher2 | Flights | False verifies | Drones away (max) | Load % | Clean rx % |
 |---|---|---|---|---|---|---|---|---|
 | without the twenty-drone measures | 2/4 | 131, 122 | 0/4 | 56.5 | 53.5 | 4 | 83 | 40 |
-| **shipped**: `max_verify_distance` 3 km, `relay_radius_m` 4 km | **4/4** | 267, 103, 152, 113 | 0/4 | 12 | 11.5 | 2 | 68 | 48 |
+| `max_verify_distance` 3 km, `relay_radius_m` 4 km | **4/4** | 267, 103, 152, 113 | 0/4 | 12 | 11.5 | 2 | 68 | 48 |
 | also holding back irrelevant healing (dropped) | 2/4 | 199, 240 | 0/4 | 12.5 | 11 | 2.5 | 59 | 52 |
+| **shipped**: also one Observation per drone and sensor window (2026-10-21) | **4/4** | 118, 91, 266, 123 | 0/4 | 9.5 | 9.5 | 3 | 63.5 | 49 |
 
 Reading it:
-- **The poacher with a radio is found every time**, two to four minutes after it cuts the fence, confirmed by the camera as "poacher pickup", and followed. Seed 0 (`uv run earshot fast --scenario scenarios/savanna.yaml --log`, `runs/savanna-seed0.threats.jsonl`): a first check at 244 s finds nothing; at 275 s drone 1 confirms the pickup and follows it to the fence, the Confirmed Track 4-90 m from the vehicle all the way; a second drone confirming it at 464 s joins the same Threat Log entry and yields.
+- **The poacher with a radio is found every time**, one and a half to four and a half minutes after it cuts the fence, confirmed by the camera as "poacher pickup", and followed. Seed 0 (`uv run earshot fast --scenario scenarios/savanna.yaml --log`, `runs/savanna-seed0.threats.jsonl`): at 213 s drone 1 confirms the pickup and follows it to the end of the run, the Confirmed Track 20-300 m from the vehicle (median 118 m; before 2026-10-21 that run confirmed at 275 s and stayed 4-90 m from it); a second drone confirms a vehicle at 476 s, 300 m off, as an entry of its own, and yields after 4 s.
 - **The silent poacher is never found.** poacher2 drives to the elephants between towers 13 and 14, 1-1.5 km from each; nothing else is within 2 km. Two engine bearings that wide (σ 20-27° at SNR -1 to -7 dB) give about 3 log-odds where a Suspicion needs about 4 against the threat prior. Twenty towers over 100 km² leave such gaps for a quiet vehicle without a radio: a third tower within 1.5 km, a gunshot, or a phone would close it. This is the honest limit of sound alone at this density.
-- **False verifies are mostly flights toward the poacher.** The metric counts a dispatch with no intruder within 150 m at that moment; a vehicle at 8 m/s is 150-500 m ahead of its Suspicion, whose evidence fades over 30 s. In seed 1000 every one of the first 11 dispatches went toward poacher1.
-- **Before the twenty-drone measures** Claims lost on the busy channel sent drones from the far side of the reserve (7 km away) to the same poacher, and each Track was relayed 5.6 times. The channel is still busy (68 %): one aggregated Observation per drone per second is the next step.
+- **False verifies are mostly flights toward the poacher.** The metric counts a dispatch with no intruder within 150 m at that moment; a vehicle at 8 m/s is 150-500 m ahead of its Suspicion, whose evidence fades over 30 s. In seed 1000 (before 2026-10-21) every one of the first 11 dispatches went toward poacher1.
+- **Before the twenty-drone measures** Claims lost on the busy channel sent drones from the far side of the reserve (7 km away) to the same poacher, and each Track was relayed 5.6 times.
+- **One Observation per drone and sensor window** quiets the channel from 68 to 63.5 % (63-65 % on every seed, 66-70 % before) and lets a little more through (49 % of receptions clean instead of 48 %), with fewer flights. It can do no more: in seed 1000 (900 s) Observations were about a quarter of the frames and of the airtime, and 78 % of the drone-seconds in which a drone heard anything it heard one thing (sound 3548, UHF 484, camera 342 of 5627); two readings shared a second 1528 times, three 225 times. The rest of that run's 33 871 frames is what is left to quiet: healing (6306 resends and 3653 Requests, 29 %), relays (22 %) and own Tracks (19 %, half of them Explained).
 
 ## Limits
 
@@ -90,7 +98,7 @@ Reading it:
 - **The game is a Source with a constant level.** Real calls come in bursts (a lion roars for a minute, then not for an hour); elephants' rumble is mostly infrasound. Animals use the Nuisance acoustics of a fan (3.7 dB/km absorption).
 - **UHF calibration**: 50 % detection at 2.5 km in the open and 0.7 km behind a kopje, chosen, not measured; push-to-talk as a 40 % chance per second of any transmission.
 - **No people on foot.** Poachers who walk in from a road make little sound; gunshots (loud, short, heard 5 km away) would be the cue, as a fifth sound class or a short Source.
-- **Twenty drones on one LoRa channel** load it heavily (68 %, half the receptions collide); one aggregated Observation per drone per second (an open item since Munich) would help. Holding back healing of far-away Tracks quieted it further but lost poachers (table above).
+- **Twenty drones on one LoRa channel** load it heavily (63.5 %, half the receptions collide), even with a window's readings in one Observation. Healing (29 % of the frames) and relays (22 %) are what is left to quiet; holding back healing of far-away Tracks quieted it, but lost poachers (table above).
 - **A silent poacher between two towers is not found** (results above). Gunshots are not modelled.
 - **Followers are not checked against battery**: `follow_for` 900 s is within a 25-minute flight, but a long chase from a far tower is not.
 - **Belief size**: 50 m cells over 10 km, 20 origins per drone; a lockstep run of 900 s takes several minutes.

@@ -105,7 +105,7 @@ The Target Class a Scenario's swarm hunts: Drone at the airport, Vehicle in a Re
 _Avoid_: target type
 
 **Evidence**:
-A raw Observation; fused additively, exactly once per (origin, seq).
+One raw reading in an Observation (a bearing, an RF level, a camera sighting); fused additively, exactly once: its Observation is accepted once per (origin, seq).
 _Avoid_: measurement (when meaning the radio message)
 
 **Suspicion**:
@@ -131,7 +131,7 @@ The hypothesis that a Drone's own sensor, not the world, explains its reports.
 ## Radio
 
 **Observation**:
-The radio message carrying one Evidence item.
+The radio message carrying one Drone's Evidence from one sensor window: up to two readings, sent together.
 
 **Claim**:
 A Drone's bid to take a task, valid until its lease expires.
