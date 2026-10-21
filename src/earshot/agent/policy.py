@@ -223,7 +223,7 @@ class Policy:
     def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
         if self._follow_since is not None:
-            self._follow(t, tracks, d)
+            self._follow(t, s, tracks, active, d)
             return
         current = tasks.get(task.tid) or self._drifted(task, tasks) or self._held(task, tracks)
         if current is not None and task.claimed is not None and math.hypot(
@@ -279,7 +279,7 @@ class Policy:
                 d.events.append(self._event(t, "confirmed")
                                 | {"x": round(confirmed.x, 1), "y": round(confirmed.y, 1)})
                 self._follow_since, self._unseen_since = t, None
-                self._follow(t, tracks, d)
+                self._follow(t, s, tracks, {}, d)
                 return
             self._release(t, d, "confirmed", confirmed)
             return
@@ -297,9 +297,11 @@ class Policy:
         elif current is None and not self._settled:
             self._release(t, d, "obsolete")
 
-    def _follow(self, t, tracks, d: Decision) -> None:
+    def _follow(self, t, s, tracks, active, d: Decision) -> None:
         """Stay with the confirmed threat: fly to the nearest Confirmed Track of the Threat
-        Class within same_task_radius, keep the Claim alive, report once a second."""
+        Class within same_task_radius, keep the Claim alive, report once a second. Two
+        Verifiers that confirmed the same threat (Claims crossed on the air) do not both
+        follow it: the nearer keeps it, as in the auction."""
         task = self._task
         near = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
                 and tr.cls == self.swarm.threat
@@ -315,6 +317,12 @@ class Policy:
             return
         if t - self._follow_since >= self.p.follow_for:
             self._release(t, d, "handed_off")
+            return
+        self._my_bid = self._bid(task, s)
+        rival = self._rival(task, active)
+        if rival is not None and rival > (self._my_bid, -self.me):
+            self._lost = (t, task.x, task.y)
+            self._release(t, d, "outbid")
             return
         if t - self._follow_said >= 1.0:
             self._follow_said = t

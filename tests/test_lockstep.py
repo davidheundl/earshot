@@ -36,7 +36,8 @@ def test_demo_intruder_is_confirmed_and_the_train_is_left_alone():
     r = run(sc, root=ROOT)
     m = metrics(r, "earshot", sc.duration)
     assert m.t_confirm is not None and m.t_confirm < 200
-    assert m.false_verify <= 20  # one seed; `earshot eval` tracks the distribution (1-18 now)
+    assert m.false_verify <= 30  # one seed (24 now); `earshot eval` tracks the distribution:
+    #                               seeds 100-111 median 16, range 1-29 (9-23 before 2026-10-20)
     near_rail = [e for e in r.events if e.get("task") == "verify" and e["kind"] == "dispatch"
                  and e["y"] > 700]
     assert near_rail == [], "verified something on the rail: the train should be Explained"

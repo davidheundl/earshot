@@ -195,5 +195,5 @@ def load_detector(spec: dict | None) -> YoloDetector | None:
     Anything else (absent, "truth") keeps the ground-truth stand-in."""
     if not spec or spec.get("detector", "truth") != "yolo":
         return None
-    kw = {k: v for k, v in spec.items() if k not in ("detector", "standoff", "resolution")}
+    kw = {k: v for k, v in spec.items() if k not in ("detector", "standoff", "resolution", "range")}
     return YoloDetector(**kw)

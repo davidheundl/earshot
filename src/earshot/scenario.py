@@ -48,8 +48,13 @@ class Source:
     path: list[tuple[float, float]]  # visited at constant speed between start and end
     level_db: float  # sound power level, dB(A); see sensors.acoustics.SOUND_POWER
     rf_bands: tuple[str, ...] = ()  # emitting links, keys of sensors.rf.BANDS
-    intruder: bool = False  # truth: a threat the swarm should find (metrics, Threat Log)
+    intruder: bool | None = None  # truth: a threat the swarm should find (metrics, Threat
+    #                               Log); None: a drone is one (Scenario.load uses `threat:`)
     kind: str = ""  # what it is, free text: the camera stand-in's label, the Webots model
+
+    def __post_init__(self):
+        if self.intruder is None:
+            object.__setattr__(self, "intruder", self.cls == TargetClass.DRONE)
 
     def pose(self, t: float, back: float = 0.0) -> tuple[float, float, float] | None:
         """(x, y, heading_deg) at time t, `back` metres behind the head along the path

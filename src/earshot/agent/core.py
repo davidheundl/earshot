@@ -37,10 +37,13 @@ DIGEST_INTERVAL = 10.0
 TRACK_INTERVAL = 1.0  # s between track extractions
 TRACK_RESEND = 10.0  # unchanged Threat Class Tracks are re-broadcast this often
 EXPLAINED_RESEND = 30.0  # Explained ones (train, vehicle) only this often: nobody acts on them
+EXPLAINED_NEAR = 300.0  # m; and one per this radius: a moving train or patrol leaves a trail of
+#                         Explained peaks, each in a new 100 m cell (a new track id)
 MAX_TRACKS_SENT = 3  # most confident Threat Class Tracks per extraction
 TRACK_MOVED = 50.0  # m; a Track that moved more is re-broadcast at once
 OBS_HOPS = 1
 TRACK_HOPS = 3
+EXPLAINED_HOPS = 1  # an Explained Track only informs the neighbours; nobody acts on it
 CLAIM_HOPS = 3
 
 
@@ -70,6 +73,7 @@ class Agent:
         self._tracks: list[TrackEst] = []
         self._last_tracks = -1e9
         self._sent_tracks: dict[int, tuple[float, float, int, float]] = {}  # id -> x, y, status, t
+        self._sent_explained: list[tuple[float, float, float]] = []  # x, y, t of Explained sent
         self._heatmap: dict | None = None
         self._tracks_json: list[dict] = []
         self._merged: tuple[list[TrackEst], list[Track], list[TrackEst]] | None = None
@@ -166,10 +170,15 @@ class Agent:
                    for (_, tid), c in self._claims.items())
 
     def _broadcast_tracks(self, t: float, outbox: list[bytes]) -> None:
-        threats = sorted((tr for tr in self._tracks if tr.cls == self.threat),
+        threats = sorted((tr for tr in self._tracks if tr.cls == self.threat
+                          and tr.status != TrackStatus.EXPLAINED),
                          key=lambda tr: -tr.confidence)[:MAX_TRACKS_SENT]
         explained = [tr for tr in self._tracks if tr.status == TrackStatus.EXPLAINED]
+        self._sent_explained = [e for e in self._sent_explained if t - e[2] < EXPLAINED_RESEND]
         for tr in threats + explained:
+            if tr.status == TrackStatus.EXPLAINED and any(
+                    math.hypot(x - tr.x, y - tr.y) < EXPLAINED_NEAR for x, y, _ in self._sent_explained):
+                continue
             resend = EXPLAINED_RESEND if tr.status == TrackStatus.EXPLAINED else TRACK_RESEND
             status = tr.status
             if status == TrackStatus.SUSPECTED and self._verifying_near(tr.x, tr.y, t):
@@ -181,7 +190,10 @@ class Agent:
             if self._reported_by_others(tr, status, t):
                 continue  # Trickle-style suppression: a neighbour just said the same thing
             self._sent_tracks[tr.track_id] = (tr.x, tr.y, status, t)
-            self._emit(Track(self._next_header(TRACK_HOPS), t, tr.track_id, tr.x, tr.y,
+            if status == TrackStatus.EXPLAINED:
+                self._sent_explained.append((tr.x, tr.y, t))
+            hops = EXPLAINED_HOPS if status == TrackStatus.EXPLAINED else TRACK_HOPS
+            self._emit(Track(self._next_header(hops), t, tr.track_id, tr.x, tr.y,
                              tr.semi_major, tr.semi_minor, tr.angle, tr.cls, tr.confidence,
                              status, tr.strength), outbox)
 

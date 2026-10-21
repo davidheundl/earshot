@@ -9,7 +9,9 @@ World hands only the readings to Agents and keeps the truth for logs and metrics
 Sound, RF and the camera (only on the Verifier) report once per 1 s window per drone,
 staggered across drones. A camera that sees nothing reports that too: "looked, no threat
 within range" is what lets a Suspicion be dismissed; a recognised Nuisance (a fan, an
-elephant) is no threat, so it only names what was seen instead. Physics lives in `acoustics`
+elephant) is no threat, so it only names what was seen instead. Nor is a Source of the
+Threat Class that is no intruder: the stand-in assumes the Verifier's classifier knows the
+reserve's own marked vehicles (rangers, game drives). The COCO detector does not. Physics lives in `acoustics`
 and `rf`; this module only samples from it with the injected rng.
 
 A camera Detection's `label` says what the camera recognised (the stand-in: the Source's
@@ -96,6 +98,11 @@ class SensorSuite:
         self.audio = audio
         self.camera = camera  # a trained detector on rendered frames; else the stand-in
         self.confusion = {**CONFUSION, **scenario.confusion}  # the Scenario may override rows
+        # camera.range: how far the stand-in sees (a thermal camera sees a vehicle's engine
+        # much further than a quadcopter). Then it also geolocates ground targets, from its
+        # height and the depression angle: a hit's `level` is the range, a "nothing"'s the
+        # radius it cleared. 0: CAMERA_RANGE, bearings only, as at the airport.
+        self.camera_reach = float(scenario.camera.get("range", 0.0))
         self.windows: list[wf.AudioWindow] = []  # rendered audio, collected by the World
         self._window: dict[int, int] = {}
         self._cam_drone: int | None = None  # the Verifier the detector's view belongs to
@@ -248,24 +255,27 @@ class SensorSuite:
             seen = {m for m in frame["objects"] if m in TargetClass.__members__}
         for src, (sx, sy) in sources:
             d = math.hypot(sx - s.x, sy - s.y)
-            if d > CAMERA_RANGE:
+            if d > (self.camera_reach or CAMERA_RANGE):
                 continue
             if seen is not None:
                 if src.cls.name not in seen:
                     continue  # rendered and recognised, or not at all
             elif self.rng.random() >= CAMERA_P_DETECT:
                 continue
-            if src.cls == TargetClass.NOTHING:
+            if src.cls == TargetClass.NOTHING or (src.cls == self.scenario.threat
+                                                  and not src.intruder):
                 harmless.append(src)
                 continue
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, 0.0), src.id, 99.0,
-                                 _label(src)))
+            ranged = d if self.camera_reach and src.cls != TargetClass.DRONE else 0.0
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, ranged), src.id,
+                                 99.0, _label(src)))
         if not out:
             nothing = (0.0, 0.0, 0.0, 1.0)
-            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing, 0.0),
-                                 None, 0.0, ", ".join(sorted({_label(h) for h in harmless})) or None))
+            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
+                                               self.camera_reach), None, 0.0,
+                                 ", ".join(sorted({_label(h) for h in harmless})) or None))
         return out
 
     def _detected(self, s: DroneState, sources) -> list[Detection]:

@@ -26,9 +26,11 @@ Model (concept section 6):
 - Evidence is a bounded log-likelihood ratio. A sound bearing raises cells along its wedge and
   mildly lowers the other cells within hearing range (mildly: the reading may come from a
   different source or be an outlier). An RF reading raises the ring at the distance its band
-  implies and lowers cells inside and beyond it. A camera detection adds a blob, a camera
-  "nothing here" removes one within the radius it could check (the reading's level when > 0,
-  else CAMERA_RANGE), and drops a Confirmed point there that the camera no longer sees.
+  implies and lowers cells inside and beyond it. A camera detection adds a blob along its
+  bearing within CAMERA_RANGE, or, when it ranged a ground target (its level > 0: metres),
+  around the point it geolocated, where the confirmed point then goes too; a camera
+  "nothing here" removes one within the radius it could check (its level when > 0, else
+  CAMERA_RANGE), and drops a Confirmed point there that the camera no longer sees.
 - Everything decays with time constant TAU (moving sources); late evidence enters already
   decayed by its own age.
 - Priors come from the City: rail lines make trains likely, roads make vehicles likely. That
@@ -64,6 +66,7 @@ A_CAMERA = 6.0
 A_CAMERA_NONE = -8.0
 RF_SIGMA_DB = 7.0  # shadowing + unknown line of sight
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
+CAMERA_GEO_SIGMA = 0.1  # a geolocated ground target's position error per metre of range
 ASSUMED_BACKGROUND_DB = 40.0  # drones assume night; the gate only says "could not have heard"
 
 PRIOR_THREAT = -5.0  # the Threat Class wherever the City does not explain it
@@ -74,8 +77,10 @@ PRIOR_TRAIN_RAIL, PRIOR_TRAIN_ELSEWHERE, RAIL_WIDTH = -2.0, -10.0, 30.0
 TRACK_THRESHOLD = 0.3  # threat probability at the peak; one capped sensor alone reaches 0.27
 TRACK_RADIUS = 150.0
 TRACK_SUPPRESS = 200.0
-MAX_TRACKS = 6
-EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained
+MAX_TRACKS = 6  # Suspicions per extraction, and as many Explained peaks besides: a long
+#                 explained trail (a patrol on its track, a train) must not crowd out a Suspicion
+EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained, or
+#                          closer than its own semi-major axis: a road through its ellipse
 CONFIRM_RADIUS = 80.0  # a Threat Class Track this close to a camera confirmation is Confirmed
 CONFIRM_FOLLOW = 150.0  # m a confirmed threat may move between Track updates and stay Confirmed
 CONFIRM_SPEED = 15.0  # m/s a confirmed point moves at most: it follows the threat, not ghosts
@@ -386,14 +391,22 @@ class Belief:
             wgt += w * disc
             self._unconfirm(obs.x, obs.y, obs.t, radius)
             return
-        disc = d <= CAMERA_RANGE
-        delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
-        blob = np.exp(-0.5 * (delta / 15.0) ** 2) * disc
+        x, y = obs.x, obs.y  # where the confirmed point goes: the camera, unless it ranged it
+        if obs.level > 0:  # geolocated: a ground target's range from the gimbal's depression
+            b = math.radians(obs.bearing)
+            x, y = obs.x + obs.level * math.sin(b), obs.y + obs.level * math.cos(b)
+            spread = max(self.cell, CAMERA_GEO_SIGMA * obs.level, 20.0)
+            disc = d <= obs.level + 3 * spread
+            blob = np.exp(-0.5 * np.hypot(self.X - x, self.Y - y) ** 2 / spread**2) * disc
+        else:  # a bearing only: somewhere along it within the camera's range
+            disc = d <= CAMERA_RANGE
+            delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
+            blob = np.exp(-0.5 * (delta / 15.0) ** 2) * disc
         for i, k in enumerate(THREATS):
             g[i] += w * A_CAMERA * obs.class_probs[k] * blob
         wgt += w * disc
         if obs.class_probs[self.threat] >= 0.5:
-            self._confirm(obs.x, obs.y, obs.t)
+            self._confirm(x, y, obs.t)
 
     def set_track(self, track: Track) -> None:
         """A received Track replaces the same origin's older one in its place (same id, or
@@ -581,13 +594,19 @@ class Belief:
             support[key[0]] = support.get(key[0], 0) + c
         with np.errstate(divide="ignore"):  # -inf where every class is impossible: fine
             zt = np.log(np.exp(z).sum(axis=0))  # threat log-odds: sharp where bearings cross
-        for _ in range(MAX_TRACKS):
+        kept = {False: 0, True: 0}  # explained?: how many taken
+        for _ in range(4 * MAX_TRACKS):  # an explained trail can hold many peaks
+            if min(kept.values()) >= MAX_TRACKS:
+                break
             iy, ix = np.unravel_index(int(np.argmax(alive)), self.shape)
             peak = alive[iy, ix]
             if peak < TRACK_THRESHOLD:
                 break
             px, py = self.X[iy, ix], self.Y[iy, ix]
             dist = np.hypot(self.X - px, self.Y - py)
+            if kept[True] >= MAX_TRACKS and self._explained_peak(post, iy, ix, px, py):
+                alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)  # one more on a full list
+                continue
             near = dist <= TRACK_RADIUS
             # relative likelihood, not probability: probability saturates into a plateau
             wts = np.where(near, np.exp(np.clip(zt - zt[iy, ix], -30, 0)), 0.0)
@@ -611,14 +630,17 @@ class Belief:
             if abs(cam) >= 0.05:
                 by_sensor += ((-1, "camera", round(cam, 2)),)
             prior = round(float(self.prior[ci][iy, ix]), 2)
-            out.append(TrackEst(
-                track_id=cell_id(mx, my, self.city.bounds), x=float(mx), y=float(my),
-                semi_major=a, semi_minor=b, angle=ang, cls=cls,
-                confidence=float(post[ci][iy, ix]),
-                status=self._status(cls, mx, my), origins=origins,
-                strength=float(zt[iy, ix]),
-                support=by_sensor + ((-2, "prior", prior),),
-            ))
+            status = self._status(cls, mx, my, a)
+            explained = status == TrackStatus.EXPLAINED
+            if kept[explained] < MAX_TRACKS:
+                kept[explained] += 1
+                out.append(TrackEst(
+                    track_id=cell_id(mx, my, self.city.bounds), x=float(mx), y=float(my),
+                    semi_major=a, semi_minor=b, angle=ang, cls=cls,
+                    confidence=float(post[ci][iy, ix]), status=status, origins=origins,
+                    strength=float(zt[iy, ix]),
+                    support=by_sensor + ((-2, "prior", prior),),
+                ))
             alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
         out = self._follow_confirmed(out, t_now)
         self._track_cache = out  # raw peaks: the Faulty Sensor check wants tight ellipses
@@ -652,10 +674,22 @@ class Belief:
                 and self.confirmed_near(tr.x, tr.y, t_now, radius=CONFIRM_FOLLOW) else tr
                 for tr in out]
 
-    def _status(self, cls: TargetClass, x: float, y: float) -> TrackStatus:
-        if cls == TargetClass.TRAIN and self.city.distance_to_rail(x, y) <= EXPLAIN_DISTANCE:
+    def _explained_peak(self, post: np.ndarray, iy: int, ix: int, x: float, y: float) -> bool:
+        """Cheap guess whether a peak will be Explained: its most likely class at the peak
+        cell is one the City explains there (within EXPLAIN_DISTANCE; the full test also
+        allows the ellipse). Only used to skip peaks once the Explained list is full, so a
+        wrong guess costs at most an Explained Track the list had no room for, or one
+        Suspicion more checked the full way."""
+        return self._status(THREATS[int(np.argmax(post[:3, iy, ix]))], x, y) == TrackStatus.EXPLAINED
+
+    def _status(self, cls: TargetClass, x: float, y: float, reach: float = 0.0) -> TrackStatus:
+        """Explained when the City accounts for it: a train within EXPLAIN_DISTANCE of rail, a
+        vehicle of a road, or within `reach` (the Track's semi-major axis): a vehicle heard
+        from 2 km lands a few hundred metres beside the road it drives on."""
+        reach = max(EXPLAIN_DISTANCE, reach)
+        if cls == TargetClass.TRAIN and self.city.distance_to_rail(x, y) <= reach:
             return TrackStatus.EXPLAINED
-        if cls == TargetClass.VEHICLE and self.city.distance_to_road(x, y) <= EXPLAIN_DISTANCE:
+        if cls == TargetClass.VEHICLE and self.city.distance_to_road(x, y) <= reach:
             return TrackStatus.EXPLAINED
         return TrackStatus.SUSPECTED
 

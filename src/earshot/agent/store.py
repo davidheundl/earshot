@@ -9,7 +9,12 @@ Interface:
     frames = store.due(t)                       forwards and healing resends whose time has come
     reqs = store.on_digest(digest, t)           Requests for ranges a neighbour has and we lack
     store.on_request(request, t)                schedule resends of the Tracks/Claims asked for
-    store.digest()                              [(origin, highest seq held)]
+    store.digest()                              [(origin, highest healable seq held)]
+
+Healing covers only what every drone should hold: Claims and Tracks that are not Explained.
+Observations go one hop and an Explained Track too (agent/core.py): a drone out of their
+range never gets them and must not keep asking for them. So the Digest names, per origin,
+the newest healable frame held, and a Request is answered with healable frames only.
 
 Forwarding schemes (concept 8.1 / 8.3):
     "ours"      contention-based relaying: a receiver waits longer the stronger it heard the
@@ -25,17 +30,19 @@ from dataclasses import dataclass, field
 
 from earshot.messages import (
     BadFrame,
+    Claim,
     Digest,
     Message,
     MsgType,
     Request,
+    Track,
+    TrackStatus,
     decode,
     peek_key,
     with_hops,
 )
 
 STORED_TYPES = {MsgType.OBSERVATION, MsgType.TRACK, MsgType.CLAIM}
-RESENDABLE = {MsgType.TRACK, MsgType.CLAIM}  # state worth healing; Evidence stays local
 FWD_MIN_DELAY = 0.05  # s
 FWD_SPAN = 1.2  # s added for the strongest receivers
 FWD_FULL_MARGIN_DB = 30.0  # margin at which the full delay applies
@@ -46,6 +53,12 @@ RESEND_COOLDOWN = 10.0  # s before the same frame is resent again
 MAX_RESEND_PER_REQUEST = 5
 HORIZON = 600.0  # s a stored frame is kept: seqs wrap after 65536 frames (~55 min at 20/s)
 SEQ_MOD = 0x10000
+
+
+def healable(msg: Message) -> bool:
+    """Worth healing after a Partition: a Claim, or a Track that is not Explained."""
+    return isinstance(msg, Claim) or (isinstance(msg, Track)
+                                      and msg.status != TrackStatus.EXPLAINED)
 
 
 def seq_newer(a: int, b: int) -> bool:
@@ -75,6 +88,7 @@ class MessageStore:
         self._asked: dict[int, float] = {}  # origin -> last Request time
         self._resent: dict[tuple[int, int, int], float] = {}
         self._kept: dict[tuple[int, int, int], float] = {}  # when each stored frame came
+        self._healable: set[tuple[int, int, int]] = set()  # stored frames a Request may resend
         self._now = 0.0  # the latest time receive() or due() was called with
         self._pruned = 0.0
         self.stats = StoreStats()
@@ -86,7 +100,9 @@ class MessageStore:
         k = peek_key(frame)
         self._frames[k] = frame
         self._kept[k] = self._now
-        self._latest(k[1], k[2])  # in my own Digest too
+        if healable(decode(frame, self.key)):
+            self._healable.add(k)
+            self._latest(k[1], k[2])  # in my own Digest too
 
     def _latest(self, origin: int, seq: int) -> None:
         mine = self.stats.by_origin.get(origin)
@@ -105,6 +121,7 @@ class MessageStore:
             del self._kept[k]
             self._frames.pop(k, None)
             self._resent.pop(k, None)
+            self._healable.discard(k)
 
     # -- receiving ------------------------------------------------------------------------
 
@@ -130,7 +147,9 @@ class MessageStore:
         self._frames[k] = frame
         self._kept[k] = t
         self.stats.accepted += 1
-        self._latest(origin, seq)
+        if healable(msg):
+            self._healable.add(k)
+            self._latest(origin, seq)
         if msg.header.hops_left > 1:
             self._schedule_forward(k, with_hops(frame, msg.header.hops_left - 1), margin_db, t)
         return msg
@@ -184,10 +203,9 @@ class MessageStore:
     def on_request(self, r: Request, t: float) -> None:
         """Schedule resends (1 hop) of stored Tracks/Claims in the asked range, newest first."""
         hits = sorted(
-            (k for k in self._frames
+            (k for k in self._healable
              if k[1] == r.want_origin
              and (k[2] - r.from_seq) % SEQ_MOD <= (r.to_seq - r.from_seq) % SEQ_MOD
-             and MsgType(k[0]) in RESENDABLE
              and t - self._resent.get(k, -1e9) >= RESEND_COOLDOWN),
             key=lambda k: -((k[2] - r.from_seq) % SEQ_MOD),
         )[:MAX_RESEND_PER_REQUEST]

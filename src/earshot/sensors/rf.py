@@ -15,10 +15,10 @@ the UHF band (400-470 MHz handheld radios and their push-to-talk bursts) is peop
 vehicle, the poachers of a Reserve. A Probability Map adds a band's ring to that class only.
 UHF: a 2 W handheld at 1.5 m above the bush to a drone on a 12 m tower. Ground reflection
 and the bush make that path fall off with n of about 4 beyond a few hundred metres, which
-the single exponent here does not model; the noise floor (VHF/UHF repeater traffic in a
-25 MHz energy detector) is chosen so the 50 % range is about 5 km in the open and 1.2 km
-behind a kopje, what ranger radio networks report for handhelds. `duty` is the share of 1 s
-windows in which the emitter transmits at all (push-to-talk).
+the single exponent here does not model, and a passive detector has to catch a short
+push-to-talk burst somewhere in 70 MHz; the noise floor is chosen so the 50 % range is
+about 2.5 km in the open and 0.7 km behind a kopje (a receiver tuned to the channel hears a
+handheld further). `duty` is the share of 1 s windows in which the emitter transmits at all.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ BANDS = {
     "2g4": Band(Sensor.RF_2G4, 20.0, 2.44e9, -85.0),  # 100 mW video downlink
     "5g8": Band(Sensor.RF_5G8, 14.0, 5.80e9, -85.0),  # 25 mW analog FPV video
     "915": Band(Sensor.RF_915, 30.0, 0.915e9, -105.0),  # 1 W long-range control link
-    "uhf": Band(Sensor.RF_UHF, 33.0, 0.45e9, -71.0, TargetClass.VEHICLE, 0.4),  # handhelds
+    "uhf": Band(Sensor.RF_UHF, 33.0, 0.45e9, -63.5, TargetClass.VEHICLE, 0.4),  # handhelds
 }
 BAND_OF_SENSOR = {b.sensor: b for b in BANDS.values()}
 

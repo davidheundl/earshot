@@ -95,7 +95,9 @@ class Observation:
     class_probs: tuple[float, float, float, float]  # indexed by TargetClass
     sensor: Sensor
     mode: Mode
-    level: float = 0.0  # sound: received dB(A); RF: received power dBm (-> ring radius)
+    level: float = 0.0  # sound: received dB(A); RF: received power dBm (-> ring radius);
+    #                     camera hit: range in m to a ground target it geolocated (0: bearing
+    #                     only); camera "nothing": radius cleared (0: belief.CAMERA_RANGE); < 327
 
     TYPE = MsgType.OBSERVATION
     _S = struct.Struct("<Ihhb HB 4B BBh")

@@ -267,3 +267,60 @@ def test_the_camera_names_what_it_saw_and_animals_are_no_threat():
     alone = camera([rhino])
     assert alone and all(math.isnan(d.reading.bearing) for d in alone)  # "nothing here"
     assert sum(d.label == "rhino" for d in alone) > 0.8 * len(alone)
+
+
+def test_sources_built_in_code_count_drones_as_intruders():
+    # scenario_gen and eval build Sources directly: the airport's intruders are its drones
+    assert Source("d", TargetClass.DRONE, 0, 1, [(0.0, 0.0)], 82.0).intruder
+    assert not Source("t", V, 0, 1, [(0.0, 0.0)], 105.0).intruder
+    from earshot.scenario_gen import generate
+
+    sc = generate(Scenario.load(ROOT / "scenarios/demo.yaml"), 1000)
+    assert any(s.intruder for s in sc.sources)
+    assert all(s.intruder == (s.cls == TargetClass.DRONE) for s in sc.sources)
+
+
+def test_the_reserves_own_vehicles_are_no_threat_to_the_camera():
+    ranger = Source("r", V, 0, 100, [(0.0, 50.0)], 100.0, ("uhf",), False, "ranger Land Cruiser")
+    me = DroneState(0, 0.0, 0.0, 0.0, 40.0, 0.0, Mode.VERIFY, None, 1.0, 5700.0, True)
+    suite = _suite([ranger], threat=V)
+    seen = [d for k in range(20) for d in suite.sense(me, float(k)) if d.reading.sensor == Sensor.CAMERA]
+    assert seen and all(math.isnan(d.reading.bearing) for d in seen)
+    assert sum(d.label == "ranger Land Cruiser" for d in seen) > 0.8 * len(seen)
+
+
+def test_a_vehicle_heard_beside_its_road_is_explained_within_its_ellipse():
+    b = Belief(CITY, threat=V)  # the road runs along y = -40
+    assert b._status(V, 0.0, -190.0) == TrackStatus.SUSPECTED  # 150 m off, a tight fix
+    assert b._status(V, 0.0, -190.0, reach=200.0) == TrackStatus.EXPLAINED  # road in its ellipse
+    assert b._status(V, 0.0, -100.0) == TrackStatus.EXPLAINED  # within 60 m anyway
+
+
+def test_a_ranged_sighting_confirms_the_vehicle_where_it_is():
+    # a thermal camera geolocates the pickup 220 m ahead (level = range): the confirmed point
+    # and the Confirmed Track sit on the vehicle, so a Follower flies to it, not to itself
+    b = Belief(CITY, threat=V)
+    at, car = (-600.0, -700.0), (-380.0, -700.0)
+    seq = 0
+    for k in range(1, 20):
+        for o, frm in enumerate((WEST, SOUTH, EAST)):
+            seq += 1
+            b.add_evidence(_obs(o, seq, k, frm, car), k)
+        b.add_evidence(_obs(9, 100 + k, k, at, car, probs=(0.0167, 0.95, 0.0167, 0.0167),
+                            sigma=2.0, sensor=Sensor.CAMERA, mode=Mode.VERIFY, level=220.0), k)
+    assert b.confirmed_near(*car, 19.0, radius=30.0)
+    confirmed = [tr for tr in b.tracks(20) if tr.status == TrackStatus.CONFIRMED]
+    assert confirmed and math.hypot(confirmed[0].x - car[0], confirmed[0].y - car[1]) < 60
+
+
+def test_of_two_followers_the_farther_one_yields():
+    from earshot.messages import Claim
+
+    p = _policy(follow_for=600.0)
+    out = _follow_run(p, lambda t: (-150.0, -150.0), 80)  # confirmed at 5 s, following
+    assert any(k == "following" for _, k, _ in out)
+    tid = p._task.tid
+    near = {(4, tid): Claim(Header(4, 9, 3), 8.0, tid, 654.0, 10.0, -150.0, -150.0)}
+    d = p.decide(8.1, _near(-150.0, -40.0, 8.1), [_track(V, status=TrackStatus.CONFIRMED)],
+                 Belief(CITY), near)
+    assert [e["kind"] for e in d.events] == ["outbid"] and p._task is None
