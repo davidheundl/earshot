@@ -1,7 +1,9 @@
 """A Shot (a rifle fired, the `shot` Event) is heard for kilometres with a sharp bearing and
 is Evidence for the Threat Class where it was fired, in a family of its own: a tower's
 engine and animal bearings must not average it away, and it must not dent the map
-elsewhere. It is no Source, and it leaves every run without Shots as it was."""
+elsewhere. It is no Source and draws from its own random stream, so every other reading
+stays as it was. A poacher that fires stops at its kill: a Source may stop on its path,
+and one without stops moves as before."""
 
 import math
 from pathlib import Path
