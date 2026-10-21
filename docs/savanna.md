@@ -28,7 +28,7 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 ## The scenario (`scenarios/savanna.yaml`)
 
 - `threat: vehicle`: what the swarm hunts. Off the tracks a vehicle gets the threat prior (-5, as a drone does at the airport) instead of -8.
-- poacher1 cuts the south fence at 60 s, drives cross-country (8 m/s) to a white rhino in the thicket, circles it and leaves through the fence; its crew is on a UHF handheld. poacher2 comes through the east fence at 280 s for the elephant herd by the river, without a radio.
+- poacher1 cuts the south fence at 60 s, drives cross-country (8 m/s) to a white rhino in the thicket, circles it and leaves through the fence; its crew is on a UHF handheld. poacher2 comes through the east fence at 280 s for the elephant herd by the river, without a radio; at 560 s it stops 160 m from the herd, fires at 570 s (a Shot, `events:`) and stays five minutes at the kill (`[x, y, 300]` on its path).
 - ranger1 patrols the gravel spine in radio silence (a poacher's scanner would hear it too), safari1 (a game drive) the lodge's track: vehicles, but `intruder: false`.
 - Game as Nuisances with a `kind`: an elephant herd (105 dB(A)), a lion pride roaring (106), hyenas, buffalo, zebra, impala, a giraffe and the rhino (72). `confusion:` makes the sound stand-in hear them as an engine 45 % of the time: a classifier trained on European data has never heard a lion.
 - `params`: `same_task_radius` 1200 m (a poacher drives on while the Verifier flies out), `confirmed_shadow` 400 m (the followed vehicle's trail is no second poacher), `follow_for` 900 s, `max_verify_distance` 3000 m (a nearer tower is always there).
@@ -53,6 +53,8 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 | Geolocated camera hits | the confirmed point sat on the Verifier while the vehicle drove on 300 m ahead; Followers lost it | `belief._camera`, the stand-in with `camera.range` |
 | No bids beyond `max_verify_distance` | with Claims lost on a busy channel, drones from the far side of the reserve flew 7 km to the same poacher | `policy._tasks` (PolicyParams, off by default) |
 | Relevance-limited relaying | every Track went three hops through all twenty drones: 5.6 relays per Track, a broadcast storm | `store._relevant`, `radio.relay_radius_m` (off by default) |
+| Shots | a poacher without a radio between two towers was never found; a rifle shot is heard for kilometres with a sharp bearing, as acoustic gunshot detection in real reserves uses. As a sound bearing it vanished among the tower's thirty engine and animal bearings | `shot` Event (`Scenario.shots`, no Source), `acoustics.SHOT`, `SensorSuite._shots`, `Sensor.SHOT`, the Belief's `shot` family |
+| Stops on a path | a poacher that shoots stays at its kill; driving on at 9 m/s it was 450 m from the shot when the Verifier got there | `Source.waits` (`[x, y, s]`), lockstep `truth`, `eval` |
 
 The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]):
 
@@ -89,7 +91,9 @@ Reading it:
 - **The camera is the stand-in, in Webots too** (`camera.detector: truth`). The COCO detector (`yolo11n.pt`, `camera.classes`) is wired, but in a live Webots run on 2026-10-20 it saw the primitive pickups as "bird" and dismissed both checks near the poacher; it would need real vehicle models (the Range Rover PROTO failed to download, see the builder) or a detector trained on these renders. The stand-in also knows the reserve's own vehicles (ground truth `intruder: false`), as a classifier trained on their livery would.
 - **The game is a Source with a constant level.** Real calls come in bursts (a lion roars for a minute, then not for an hour); elephants' rumble is mostly infrasound. Animals use the Nuisance acoustics of a fan (3.7 dB/km absorption).
 - **UHF calibration**: 50 % detection at 2.5 km in the open and 0.7 km behind a kopje, chosen, not measured; push-to-talk as a 40 % chance per second of any transmission.
-- **No people on foot.** Poachers who walk in from a road make little sound; gunshots (loud, short, heard 5 km away) would be the cue, as a fifth sound class or a short Source.
+- **No people on foot.** Poachers who walk in from a road make little sound until they fire; a Shot would tell where, but nobody on foot is modelled for the camera to find.
+- **Shots are calibrated, not measured**, like UHF: the level is a 1 s window's sound exposure (134 dB(A)), 2 dB/km, a kopje 15 dB; a tower hears one almost surely at 3 km in the open, half the time at 6 km; bearings 2-6 deg. One impulse, heard once per tower after distance / 343 m/s; no echoes off the kopjes, no other bangs (thunder, a ranger's warning shot): every Shot counts for the Threat Class.
+- **The kill is not modelled**: the poacher's engine keeps its level while it stands, the herd walks on, no carcass.
 - **Twenty drones on one LoRa channel** load it heavily (68 %, half the receptions collide); one aggregated Observation per drone per second (an open item since Munich) would help. Holding back healing of far-away Tracks quieted it further but lost poachers (table above).
 - **A silent poacher between two towers is not found** (results above). Gunshots are not modelled.
 - **Followers are not checked against battery**: `follow_for` 900 s is within a 25-minute flight, but a long chase from a far tower is not.

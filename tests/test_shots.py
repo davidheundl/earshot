@@ -71,6 +71,18 @@ def test_the_shot_event_fires_from_its_source():
     assert len(sc.shots) == 2  # a bad op changes nothing
 
 
+def test_a_source_stops_where_its_path_says():
+    """A poacher stops at its kill: [x, y, s] on a path stands s seconds there and drives the
+    rest at the same speed as without the stop."""
+    drive = Source("d", V, 0, 30, [(0.0, 0.0), (100.0, 0.0), (300.0, 0.0)], 105.0)
+    stop = Source("s", V, 0, 40, [(0.0, 0.0), (100.0, 0.0, 10), (300.0, 0.0)], 105.0)
+    assert stop.waits == (0.0, 10.0, 0.0) and stop.path[1] == (100.0, 0.0)
+    assert drive.waits == () and stop.position(5.0) == drive.position(5.0) == (50.0, 0.0)
+    assert stop.position(10.0) == stop.position(19.9) == stop.pose(15.0)[:2] == (100.0, 0.0)
+    assert stop.position(25.0) == pytest.approx(drive.position(15.0))
+    assert stop.position(40.0) == (300.0, 0.0) and stop.position(40.1) is None
+
+
 def test_each_tower_hears_a_shot_once_when_its_sound_arrives(reserve):
     sc = Scenario("t", 1, "data/cities/savanna.json", 300.0, 0.1, [], [], threat=V)
     suite = SensorSuite(reserve, sc, np.random.default_rng(0))

@@ -113,7 +113,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
                     th.writelines(json.dumps(x) + "\n" for x in lines)
     truth = [{"id": s.id, "cls": s.cls.name, "start": s.start, "end": s.end,
               "path": [list(p) for p in s.path], "intruder": s.intruder,
-              **({"kind": s.kind} if s.kind else {})} for s in scenario.sources]
+              **({"kind": s.kind} if s.kind else {}),
+              **({"waits": list(s.waits)} if s.waits else {})} for s in scenario.sources]
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
     jams = [(j.start, j.end) for j in scenario.jamming]
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
