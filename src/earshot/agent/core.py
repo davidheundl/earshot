@@ -14,8 +14,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from earshot.agent.belief import TRACK_SAME, Belief, TrackEst, merge_overlapping, mergeable
-from earshot.agent.policy import VERIFY, Policy, task_kind
+from earshot.agent.belief import (
+    RX_MAX_AGE,
+    TRACK_SAME,
+    Belief,
+    TrackEst,
+    merge_overlapping,
+    mergeable,
+)
+from earshot.agent.policy import LEASE, VERIFY, Policy, task_kind
 from earshot.agent.store import MessageStore
 from earshot.city import City
 from earshot.messages import (
@@ -61,7 +68,9 @@ class Agent:
         self.key = key
         self.city = city
         self.scheme = swarm.radio_scheme
-        self.store = MessageStore(me, key, swarm.radio_scheme, swarm.relay_radius)
+        # heal a Track only while a receiver still counts it, a Claim while its lease runs
+        self.store = MessageStore(me, key, swarm.radio_scheme, swarm.relay_radius,
+                                  track_life=RX_MAX_AGE, release_life=LEASE)
         self.threat = swarm.threat
         self.belief = Belief(city, cell=swarm.map_cell, threat=swarm.threat)
         self.policy = Policy(me, city, swarm)
@@ -142,11 +151,12 @@ class Agent:
         outbox.extend(self.store.due(t))
         if t - self._last_digest >= DIGEST_INTERVAL:
             self._last_digest = t
-            held = self.store.digest()
-            start = (self._digests * Digest.MAX_ENTRIES) % max(1, len(held))
-            self._digests += 1  # rotate: with more than 6 origins, successive Digests cover all
-            entries = tuple((held[start:] + held[:start])[: Digest.MAX_ENTRIES])
-            outbox.append(encode(Digest(Header(self.me, 0, 1), t, entries), self.key))
+            held = self.store.digest(t)
+            if held:  # nothing worth healing: nobody needs to hear that
+                start = (self._digests * Digest.MAX_ENTRIES) % len(held)
+                self._digests += 1  # rotate: with more than 6 origins, successive Digests cover all
+                entries = tuple((held[start:] + held[:start])[: Digest.MAX_ENTRIES])
+                outbox.append(encode(Digest(Header(self.me, 0, 1), t, entries), self.key))
 
         telemetry = {
             "mode": decision.command.mode.name,

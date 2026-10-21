@@ -56,3 +56,12 @@ def test_an_observation_is_fused_once_with_all_its_readings():
     rx.step(1.2, _sensed(0, 1.2, []), [(frame, 10.0)])
     assert rx.belief.n_evidence == 2
     assert set(rx.belief._newest) == {(1, "sound"), (1, "rf")}
+
+
+def test_a_drone_with_nothing_worth_healing_sends_no_digest():
+    from earshot.agent.core import DIGEST_INTERVAL
+
+    me = Agent(1, CITY, KEY, SWARM)
+    sent = [peek_key(f)[0] for i in range(round(3 * DIGEST_INTERVAL))
+            for f in me.step(float(i), _sensed(1, float(i), []), []).outbox]
+    assert MsgType.DIGEST not in sent
