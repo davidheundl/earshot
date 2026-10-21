@@ -89,7 +89,6 @@ N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
 VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
-TARGET_DROP_M = 10.0  # a Verifier cruises 10 m above an intruder (40 m vs. 30 m above ground)
 PILOT = {"ahead": 0.6, "up": -0.15, "pitch": 10.0}  # just ahead of the props
 CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills the lower third
 CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
@@ -116,8 +115,12 @@ class WebotsBackend:
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
         self._verifier_heading = 0.0
-        # the camera looks down at the point it keeps its standoff from: 14 deg at 40 m
-        self._verify_pitch = math.degrees(math.atan2(TARGET_DROP_M, self.twin.kin.standoff))
+        self._rig_at = (0.0, 0.0, 0.0)  # where the Verifier camera is (x, y, z)
+        # the camera looks down at the point it keeps its standoff from, at the height the
+        # hunted class has there: an intruder drone 10 m below (14 deg at 40 m), a vehicle on
+        # the ground (18 deg at 120 m; at 30 m it would pass under the view)
+        drop = self.twin.kin.cruise_alt - SOURCE_Z[scenario.threat.name]
+        self._verify_pitch = math.degrees(math.atan2(drop, self.twin.kin.standoff))
         self.detector_frames = False  # set by the World when a trained detector reads images
         ids = [d.id for d in scenario.drones]
         self.views: list[list] = [[ids[k % len(ids)], "chase" if k == 0 else "pilot"]
@@ -251,15 +254,18 @@ class WebotsBackend:
 
     def camera_frame(self, drone_id: int) -> object | None:
         """{"w", "h", "objects"}: what the Verifier recognises. With `detector_frames` (a trained
-        detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad)}; else
-        the image is copied only on request (`camera_image`, the dashboard preview)."""
+        detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad),
+        "height" (m the camera is above the ground below it)}; else the image is copied only
+        on request (`camera_image`, the dashboard preview)."""
         if self._quit or drone_id != self._verifier:
             return None
         c = self.camera
         frame = {"w": c.getWidth(), "h": c.getHeight()}
         if self.detector_frames:
+            x, y, z = self._rig_at
             frame.update(bgra=c.getImage(), fov=c.getFov(), yaw=self._verifier_heading,
-                         pitch=math.radians(self._verify_pitch))
+                         pitch=math.radians(self._verify_pitch),
+                         height=z - float(self.twin.city.ground(x, y)))
         if c.hasRecognition():
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
@@ -358,6 +364,7 @@ class WebotsBackend:
             else:
                 s = states[verifier]
                 self._verifier_heading = s.heading
-                self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
+                self._rig_at = (s.x, s.y, s.z - 0.3)
+                self._camv[0].setSFVec3f(list(self._rig_at))
                 self._camv[1].setSFRotation(look_rotation(s.heading, self._verify_pitch))
         self._place_views(states)

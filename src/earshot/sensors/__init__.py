@@ -280,9 +280,10 @@ class SensorSuite:
 
     def _detected(self, s: DroneState, sources) -> list[Detection]:
         """The trained detector's verdict for this window: verified tracks as bearings of
-        their class (the detector's `classes`), "nothing" with the radius it really cleared,
-        or no reading when inconclusive. Truth (logs and metrics only) is the active Source
-        nearest in bearing, within 5 deg."""
+        their class (the detector's `classes`), geolocated as the stand-in's are when the
+        Scenario's camera ranges ground targets (`camera.range`), "nothing" with the radius it
+        really cleared, or no reading when inconclusive. Truth (logs and metrics only) is the
+        active Source nearest in bearing, within 5 deg."""
         moved = (math.inf if self._cam_pos is None
                  else math.hypot(s.x - self._cam_pos[0], s.y - self._cam_pos[1]))
         self._cam_pos = (s.x, s.y)
@@ -290,18 +291,19 @@ class SensorSuite:
         # the way in it has not yet looked at the place
         v = self.camera.verdict(hovering=moved <= CAMERA_HOVER_M)
         out = []
-        for b, sigma, _, label in v.hits:
+        for b, sigma, _, label, rng in v.hits:
             truth, best = None, CAMERA_MATCH_DEG
             for src, (sx, sy) in sources:
                 d = math.hypot(sx - s.x, sy - s.y)
                 err = abs((math.degrees(math.atan2(sx - s.x, sy - s.y)) - b + 180.0) % 360.0
                           - 180.0)
-                if d <= CAMERA_RANGE and err <= best:
+                if d <= (self.camera_reach or CAMERA_RANGE) and err <= best:
                     truth, best = src.id, err
             cls = self.camera.class_of(label)
             probs = tuple(0.95 if c == cls else 0.05 / 3 for c in TargetClass)
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0), truth, 99.0,
-                                 label))
+            ranged = rng if self.camera_reach and cls != TargetClass.DRONE else 0.0
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, ranged), truth,
+                                 99.0, label))
         if not out and v.clear_radius is not None:
             nothing = (0.0, 0.0, 0.0, 1.0)
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,

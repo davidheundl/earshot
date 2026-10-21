@@ -75,14 +75,52 @@ def test_a_short_run_goes_through():
     assert r.steps == 80 and r.radio["sent"] > 0 and r.threats == []
 
 
-def test_the_reserves_coco_mapping_builds_a_detector(world):
-    # scenarios/savanna.yaml keeps the stand-in; its commented YOLO block must still load
+def test_the_reserves_camera_is_coco_yolo(world):
     from earshot.sensors.camera import load_detector
 
     sc, _ = world
-    assert load_detector(sc.camera) is None  # detector: truth
-    det = load_detector({**sc.camera, "detector": "yolo", "weights": "yolo11n.pt",
-                         "classes": {"car": "vehicle", "truck": "vehicle", "elephant": "nothing"}})
+    det = load_detector(sc.camera)  # the keys the world and the kinematics read are not its own
+    assert str(det.weights) == "yolo11n.pt" and det.verify_conf >= 0.25  # ByteTrack's new track
     assert det.class_of("truck") == TargetClass.VEHICLE
     assert det.class_of("elephant") == TargetClass.NOTHING
     assert det.class_of("quadcopter") == TargetClass.NOTHING  # not in this model's map
+    # a Verifier holding its standoff counts as arrived, and its camera looks at that point
+    assert sc.params["arrive"] > Kinematics.for_scenario(sc).standoff
+
+
+def test_a_yolo_car_in_the_reserve_is_geolocated(world):
+    # the camera 40 m up, aimed at the ground 120 m ahead, a car box standing on the image centre
+    # three frames running: a vehicle reading 120 m along the bearing, as the stand-in's
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from earshot.messages import Sensor
+    from earshot.sensors import SensorSuite
+    from earshot.sensors.camera import load_detector
+    from earshot.state import DroneState
+
+    class Car:
+        def __init__(self):
+            self.names = {0: "car"}
+
+        def track(self, img, **kw):
+            box = SimpleNamespace(cls=[0], conf=[0.4], id=[1],
+                                  xyxy=[SimpleNamespace(tolist=lambda: [620, 370, 660, 384])])
+            return [SimpleNamespace(boxes=[box], speed={})]
+
+    sc, city = world
+    det = load_detector(sc.camera)
+    det.model, det.device = Car(), "cpu"
+    suite = SensorSuite(city, sc, np.random.default_rng(0), camera=det)
+    frame = {"bgra": bytes(1280 * 768 * 4), "w": 1280, "h": 768, "fov": 1.0, "yaw": 90.0,
+             "pitch": math.atan2(40.0, 120.0), "height": 40.0}
+    cams = []
+    for k in range(12):
+        t = 100.0 + k * 0.1
+        me = DroneState(3, t, 0.0, 0.0, 400.0, 90.0, Mode.VERIFY, None, 1.0, 5700.0, True)
+        cams += [d for d in suite.sense(me, t, frame) if d.reading.sensor == Sensor.CAMERA]
+    assert cams and all(d.label == "car" for d in cams)
+    r = cams[0].reading
+    assert int(np.argmax(r.class_probs)) == TargetClass.VEHICLE
+    assert r.bearing == pytest.approx(90.0, abs=1.0) and r.level == pytest.approx(120.0, rel=0.02)

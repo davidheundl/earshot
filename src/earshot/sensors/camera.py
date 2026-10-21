@@ -4,7 +4,7 @@ World side only: the World feeds it the Verifier's camera images (Webots renders
 turns its verdicts into CAMERA SensorReadings; Agents never see an image (ADR 0001).
 
     det = YoloDetector()                 # lazy: ultralytics loads on the first frame
-    det.observe(frame)                   # every rendered tick: {"bgra", "w", "h", "fov", "yaw", "pitch"}
+    det.observe(frame)                   # every rendered tick: {"bgra", "w", "h", "fov", "yaw", "pitch"[, "height"]}
     det.verdict() -> CameraVerdict       # once per 1 s sensor window
 
 Verification is multi-frame, as in Nikolas' tools/cv_demos.py: a box counts once ByteTrack has
@@ -21,6 +21,8 @@ of a threat class (anything but nothing) are what a track streak verifies and wh
 view from counting as empty; labels mapped to nothing (an elephant, a zebra) are only named
 in the verdict (`others`), for the Threat Log; unmapped labels are ignored. A Reserve uses
 the COCO model (yolo11n.pt): car, truck, motorcycle, bus -> vehicle, the animals -> nothing.
+A frame that says how high the camera is (`height`) also gets each hit's ground range from
+the box's bottom edge: where a vehicle stands, not only its bearing.
 """
 
 from __future__ import annotations
@@ -42,7 +44,8 @@ MIN_SIGMA_DEG = 2.0
 
 @dataclass(frozen=True)
 class CameraVerdict:
-    hits: list[tuple[float, float, float, str]]  # (bearing deg, sigma deg, confidence, label)
+    # (bearing deg, sigma deg, confidence, label, ground range m; 0 = a bearing only)
+    hits: list[tuple[float, float, float, str, float]]
     clear_radius: float | None  # m looked at and empty; None = inconclusive
     others: tuple[str, ...] = ()  # harmless labels seen this window (classes -> nothing)
 
@@ -59,6 +62,21 @@ def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, fl
     off = math.degrees(math.atan2(xc, math.cos(p) - yc * math.sin(p)))
     sigma = max(MIN_SIGMA_DEG, math.degrees(math.atan2(bw / 2.0, f)))
     return (frame["yaw"] + off) % 360.0, sigma
+
+
+def ground_range(cx: float, by: float, frame: dict) -> float:
+    """Horizontal distance (m) to where the ray through (cx, by), a box's bottom centre,
+    meets flat ground `height` m below the camera: a ground target geolocated from the
+    gimbal's depression angle. 0 when the frame has no height or the ray does not come down."""
+    height = frame.get("height")
+    if not height or height <= 0:
+        return 0.0
+    w, h = frame["w"], frame["h"]
+    f = w / (2.0 * math.tan(frame["fov"] / 2.0))
+    xc, yc = (cx - w / 2.0) / f, (by - h / 2.0) / f
+    p = frame.get("pitch", 0.0)
+    ahead, down = math.cos(p) - yc * math.sin(p), math.sin(p) + yc * math.cos(p)
+    return height * math.hypot(ahead, xc) / down if down > 1e-3 else 0.0
 
 
 @dataclass
@@ -138,7 +156,8 @@ class YoloDetector:
             if current[key] >= self.confirm_frames:
                 x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
                 b, s = box_bearing((x1 + x2) / 2.0, (y1 + y2) / 2.0, x2 - x1, frame)
-                self._window_hits[key] = (b, s, score, label)
+                rng = ground_range((x1 + x2) / 2.0, y2, frame)
+                self._window_hits[key] = (b, s, score, label, rng)
         self._streaks = current  # a missed frame resets a track's streak
 
     def verdict(self, hovering: bool = True) -> CameraVerdict:
