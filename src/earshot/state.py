@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from earshot.messages import Mode, Sensor
+from earshot.messages import Mode, Sensor, TargetClass
 
 
 @dataclass(frozen=True)
@@ -78,6 +78,7 @@ class PolicyParams:
     dismiss_after: float = 8.0  # s at the target with no Suspicion left -> dismissed
     outbid_cooldown: float = 5.0  # s an outbid drone leaves that place alone
     verify_timeout: float = 90.0  # s at the target without confirming -> given up (Ghost held up)
+    follow_for: float = 0.0  # s a Verifier stays with what it confirmed (Follow); 0: hand off at once
 
     @classmethod
     def from_dict(cls, d: dict | None) -> PolicyParams:
@@ -100,11 +101,13 @@ class SwarmConfig:
     fixed: frozenset = frozenset()  # drones that never leave their home roof
     map_cell: float = 20.0  # m, Probability Map cell
     params: PolicyParams = field(default_factory=PolicyParams)
+    threat: TargetClass = TargetClass.DRONE  # the Threat Class: what the swarm verifies
 
     @classmethod
     def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
                    radio_scheme: str = "ours", map_cell: float = 20.0,
-                   params: PolicyParams | None = None) -> SwarmConfig:
+                   params: PolicyParams | None = None,
+                   threat: TargetClass = TargetClass.DRONE) -> SwarmConfig:
         return cls(
             homes={d.id: d.home or (d.x, d.y) for d in specs},
             defaults={d.id: d.default for d in specs},
@@ -113,4 +116,5 @@ class SwarmConfig:
             fixed=frozenset(d.id for d in specs if d.fixed),
             map_cell=map_cell,
             params=params or PolicyParams(),
+            threat=threat,
         )

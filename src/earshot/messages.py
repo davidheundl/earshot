@@ -41,9 +41,10 @@ class Sensor(IntEnum):
     CAMERA = 2
     RF_5G8 = 3
     RF_915 = 4
+    RF_UHF = 5  # 400-470 MHz handheld radios (poachers, rangers): sensors/rf.py
 
 
-RF_SENSORS = frozenset({Sensor.RF_2G4, Sensor.RF_5G8, Sensor.RF_915})
+RF_SENSORS = frozenset({Sensor.RF_2G4, Sensor.RF_5G8, Sensor.RF_915, Sensor.RF_UHF})
 
 
 class Mode(IntEnum):

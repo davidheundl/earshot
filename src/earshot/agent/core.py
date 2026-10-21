@@ -25,7 +25,6 @@ from earshot.messages import (
     Message,
     Observation,
     Request,
-    TargetClass,
     Track,
     TrackStatus,
     encode,
@@ -36,9 +35,9 @@ OBS_MIN_INTERVAL = 1.0  # s, per sensor (concept 8.2: <= 1/s while listening)
 OBS_SLACK = 0.15  # s; 1 s windows on a 0.1 s float clock arrive 0.9-1.1 s apart, never drop one
 DIGEST_INTERVAL = 10.0
 TRACK_INTERVAL = 1.0  # s between track extractions
-TRACK_RESEND = 10.0  # unchanged drone Tracks are re-broadcast this often
+TRACK_RESEND = 10.0  # unchanged Threat Class Tracks are re-broadcast this often
 EXPLAINED_RESEND = 30.0  # Explained ones (train, vehicle) only this often: nobody acts on them
-MAX_TRACKS_SENT = 3  # most confident drone Tracks per extraction
+MAX_TRACKS_SENT = 3  # most confident Threat Class Tracks per extraction
 TRACK_MOVED = 50.0  # m; a Track that moved more is re-broadcast at once
 OBS_HOPS = 1
 TRACK_HOPS = 3
@@ -60,7 +59,8 @@ class Agent:
         self.city = city
         self.scheme = swarm.radio_scheme
         self.store = MessageStore(me, key, swarm.radio_scheme)
-        self.belief = Belief(city, cell=swarm.map_cell)
+        self.threat = swarm.threat
+        self.belief = Belief(city, cell=swarm.map_cell, threat=swarm.threat)
         self.policy = Policy(me, city, swarm)
         self._seq = 0
         self._last_obs: dict[int, float] = {}
@@ -166,10 +166,10 @@ class Agent:
                    for (_, tid), c in self._claims.items())
 
     def _broadcast_tracks(self, t: float, outbox: list[bytes]) -> None:
-        drones = sorted((tr for tr in self._tracks if tr.cls == TargetClass.DRONE),
-                        key=lambda tr: -tr.confidence)[:MAX_TRACKS_SENT]
+        threats = sorted((tr for tr in self._tracks if tr.cls == self.threat),
+                         key=lambda tr: -tr.confidence)[:MAX_TRACKS_SENT]
         explained = [tr for tr in self._tracks if tr.status == TrackStatus.EXPLAINED]
-        for tr in drones + explained:
+        for tr in threats + explained:
             resend = EXPLAINED_RESEND if tr.status == TrackStatus.EXPLAINED else TRACK_RESEND
             status = tr.status
             if status == TrackStatus.SUSPECTED and self._verifying_near(tr.x, tr.y, t):
@@ -205,11 +205,11 @@ class Agent:
             status = TrackStatus.SUSPECTED if tr.status == TrackStatus.VERIFYING else tr.status
             est = TrackEst(tr.track_id, tr.x, tr.y, tr.semi_major, tr.semi_minor, tr.angle,
                            tr.cls, tr.confidence, status, origins=2, strength=tr.strength)
-            if not mergeable(est) and any(math.hypot(o.x - tr.x, o.y - tr.y) <= 150.0
-                                           for o in out):
+            if not mergeable(est, self.threat) and any(math.hypot(o.x - tr.x, o.y - tr.y) <= 150.0
+                                                        for o in out):
                 continue
             out.append(est)
-        merged = merge_overlapping(out, self.city.bounds)
+        merged = merge_overlapping(out, self.city.bounds, self.threat)
         self._merged = (self._tracks, rx, merged)
         return merged
 

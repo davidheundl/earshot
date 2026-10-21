@@ -1,7 +1,7 @@
 """Belief: one drone's Probability Map and the Tracks extracted from it.
 
 Interface:
-    belief = Belief(city, cell=20.0)
+    belief = Belief(city, cell=20.0, threat=TargetClass.DRONE)
     belief.add_evidence(obs, t_now)   Observation from anyone (own or received), each exactly once
     belief.set_track(track)           a received Track; replaces that origin's older one there
     belief.advance(t_now)             decay to t_now (call before reading)
@@ -33,6 +33,10 @@ Model (concept section 6):
   decayed by its own age.
 - Priors come from the City: rail lines make trains likely, roads make vehicles likely. That
   is what explains rumble away (concept 6, "explaining away").
+- The Threat Class (`threat`: drone at the airport, vehicle in a Reserve) is what a camera
+  confirms, what a confirmed point follows and what merges: a Suspicion is a Track of that
+  class. Off the places the City explains it, its prior is PRIOR_THREAT, the drone's.
+- An RF band's ring goes to the class its emitters are (sensors.rf.Band.emitter).
 - Faulty Sensor: an origin whose bearings keep missing what the others' map shows is excluded
   (step: `_check_faults`).
 """
@@ -62,7 +66,8 @@ RF_SIGMA_DB = 7.0  # shadowing + unknown line of sight
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
 ASSUMED_BACKGROUND_DB = 40.0  # drones assume night; the gate only says "could not have heard"
 
-PRIOR_DRONE = -5.0
+PRIOR_THREAT = -5.0  # the Threat Class wherever the City does not explain it
+PRIOR_DRONE = PRIOR_THREAT
 PRIOR_VEHICLE_ROAD, PRIOR_VEHICLE_ELSEWHERE, ROAD_WIDTH = -2.0, -8.0, 25.0
 PRIOR_TRAIN_RAIL, PRIOR_TRAIN_ELSEWHERE, RAIL_WIDTH = -2.0, -10.0, 30.0
 
@@ -71,9 +76,9 @@ TRACK_RADIUS = 150.0
 TRACK_SUPPRESS = 200.0
 MAX_TRACKS = 6
 EXPLAIN_DISTANCE = 60.0  # a vehicle/train blob this close to its road/rail is Explained
-CONFIRM_RADIUS = 80.0  # a drone Track this close to a camera confirmation is Confirmed
-CONFIRM_FOLLOW = 150.0  # m a confirmed drone may move between Track updates and stay Confirmed
-CONFIRM_SPEED = 15.0  # m/s a confirmed point moves at most: it follows the drone, not ghosts
+CONFIRM_RADIUS = 80.0  # a Threat Class Track this close to a camera confirmation is Confirmed
+CONFIRM_FOLLOW = 150.0  # m a confirmed threat may move between Track updates and stay Confirmed
+CONFIRM_SPEED = 15.0  # m/s a confirmed point moves at most: it follows the threat, not ghosts
 CONFIRM_GRACE = 2.0  # s without a sighting before a camera "nothing" drops a confirmed point
 CONFIRM_HOLD = 120.0  # s a confirmed point lives after the camera last saw it
 TRACK_SAME = 60.0  # m; a Track this close with the same class is "the same" (and replaces it)
@@ -136,8 +141,9 @@ def cell_center(cid: int, bounds) -> tuple[float, float]:
     return x0 + (cid % nx) * 100.0 + 50.0, y0 + (cid // nx) * 100.0 + 50.0
 
 
-def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
-    """Overlapping drone Suspicions are one danger seen several times (Ghosts beside the
+def merge_overlapping(tracks: list[TrackEst], bounds,
+                      threat: TargetClass = TargetClass.DRONE) -> list[TrackEst]:
+    """Overlapping Suspicions (Tracks of the Threat Class) are one danger seen several times (Ghosts beside the
     truth, neighbours' reports of it): they become one Suspicion at the likelihood-weighted
     mean of their positions (weight exp(log-odds)), the most likely place to find it: zones
     of similar strength average evenly, a clearly weaker Ghost barely pulls (the peak
@@ -146,7 +152,7 @@ def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
     only with Confirmed ones: a Suspicion beside it may be a second drone, and the policy's
     confirmed_shadow decides whether it is a side lobe. Other Tracks pass unchanged; a merged
     one takes its first member's place."""
-    idx = [i for i, tr in enumerate(tracks) if mergeable(tr)]
+    idx = [i for i, tr in enumerate(tracks) if mergeable(tr, threat)]
     root = {i: i for i in idx}
 
     def find(i: int) -> int:
@@ -170,8 +176,8 @@ def merge_overlapping(tracks: list[TrackEst], bounds) -> list[TrackEst]:
     return out
 
 
-def mergeable(tr: TrackEst) -> bool:
-    return tr.cls == TargetClass.DRONE and tr.status != TrackStatus.EXPLAINED
+def mergeable(tr: TrackEst, threat: TargetClass = TargetClass.DRONE) -> bool:
+    return tr.cls == threat and tr.status != TrackStatus.EXPLAINED
 
 
 def _toward(x: float, y: float, gx: float, gy: float, t0: float, t1: float):
@@ -214,13 +220,16 @@ def _merged(group: list[TrackEst], bounds) -> TrackEst:
                    origins=max(tr.origins for tr in group))
 
 
-_PRIORS: tuple[City, float, np.ndarray] | None = None  # the last (City, cell)'s priors
+_PRIORS: tuple[City, float, TargetClass, np.ndarray] | None = None  # the last (City, cell, threat)'s
 
 
 class Belief:
-    def __init__(self, city: City, cell: float = 20.0):
+    def __init__(self, city: City, cell: float = 20.0, threat: TargetClass = TargetClass.DRONE):
+        if threat not in THREATS:
+            raise ValueError(f"the Threat Class must be one of {[c.name for c in THREATS]}")
         self.city = city
         self.cell = cell
+        self.threat = threat
         xs, ys = city.grid(cell)
         self.X, self.Y = np.meshgrid(xs, ys)
         self.shape = self.X.shape
@@ -252,16 +261,23 @@ class Belief:
     def _priors(self) -> np.ndarray:
         """Read-only; the drones of one process share them (lockstep runs ten Beliefs)."""
         global _PRIORS
-        if _PRIORS is not None and _PRIORS[0] is self.city and _PRIORS[1] == self.cell:
-            return _PRIORS[2]
+        if (_PRIORS is not None and _PRIORS[0] is self.city and _PRIORS[1] == self.cell
+                and _PRIORS[2] == self.threat):
+            return _PRIORS[3]
+
+        def elsewhere(cls: TargetClass, p: float) -> float:
+            return max(p, PRIOR_THREAT) if cls == self.threat else p
+
         prior = np.empty((3, *self.shape))
         prior[0] = PRIOR_DRONE
         d_road = self._distance_to(self.city.roads)
         d_rail = self._distance_to(self.city.rails)
-        prior[1] = np.where(d_road <= ROAD_WIDTH, PRIOR_VEHICLE_ROAD, PRIOR_VEHICLE_ELSEWHERE)
-        prior[2] = np.where(d_rail <= RAIL_WIDTH, PRIOR_TRAIN_RAIL, PRIOR_TRAIN_ELSEWHERE)
+        prior[1] = np.where(d_road <= ROAD_WIDTH, PRIOR_VEHICLE_ROAD,
+                            elsewhere(TargetClass.VEHICLE, PRIOR_VEHICLE_ELSEWHERE))
+        prior[2] = np.where(d_rail <= RAIL_WIDTH, PRIOR_TRAIN_RAIL,
+                            elsewhere(TargetClass.TRAIN, PRIOR_TRAIN_ELSEWHERE))
         prior.flags.writeable = False
-        _PRIORS = (self.city, self.cell, prior)
+        _PRIORS = (self.city, self.cell, self.threat, prior)
         return prior
 
     def _distance_to(self, lines) -> np.ndarray:
@@ -341,7 +357,7 @@ class Belief:
         wgt += w * gate_any
 
     def _rf(self, obs: Observation, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
-        band = next(b for b in rf.BANDS.values() if b.sensor == obs.sensor)
+        band = rf.BAND_OF_SENSOR[obs.sensor]
         d, _ = self._geometry(obs)
         at_1m = rf.mean_rx_power(band, 1.0, False)
         logd = np.log10(np.maximum(d, 1))
@@ -351,7 +367,8 @@ class Belief:
             np.exp(-0.5 * ((obs.level - (at_1m - 10 * rf.EXP_LOS * logd)) / RF_SIGMA_DB) ** 2),
         )
         llr = (RF_ON_RING - RF_OFF_RING) * ring + RF_OFF_RING
-        g[0] += w * obs.class_probs[TargetClass.DRONE] * llr  # RF links come from drones
+        # the drone links come from drones, handheld radios from people in vehicles
+        g[THREATS.index(band.emitter)] += w * obs.class_probs[band.emitter] * llr
         wgt += w
 
     def _camera(self, obs: Observation, w: float) -> None:
@@ -375,7 +392,7 @@ class Belief:
         for i, k in enumerate(THREATS):
             g[i] += w * A_CAMERA * obs.class_probs[k] * blob
         wgt += w * disc
-        if obs.class_probs[TargetClass.DRONE] >= 0.5:
+        if obs.class_probs[self.threat] >= 0.5:
             self._confirm(obs.x, obs.y, obs.t)
 
     def set_track(self, track: Track) -> None:
@@ -392,8 +409,8 @@ class Belief:
             self._confirm(track.x, track.y, track.t, seen=False)
 
     def _confirm(self, x: float, y: float, t: float, seen: bool = True) -> None:
-        """Remember a camera-confirmed drone. A report near a known one moves it along (the
-        drone flies on); it never seeds a second point, so 'confirmed' cannot spread. A
+        """Remember a camera-confirmed threat. A report near a known one moves it along (it
+        moves on); it never seeds a second point, so 'confirmed' cannot spread. A
         neighbour's Confirmed Track (not `seen` by a camera) only moves an existing point, no
         faster than CONFIRM_SPEED (its Track is a map peak, which can sit on a Ghost), and
         never extends its hold: only a camera frame adds a point or keeps it alive."""
@@ -410,7 +427,7 @@ class Belief:
 
     def _unconfirm(self, x: float, y: float, t: float, radius: float) -> None:
         """The camera looked within `radius` of a confirmed point and saw nothing: unless it
-        saw the drone within CONFIRM_GRACE (one missed frame), the drone is no longer there."""
+        saw the threat within CONFIRM_GRACE (one missed frame), it is no longer there."""
         self._confirmed = [c for c in self._confirmed
                            if math.hypot(c[0] - x, c[1] - y) > radius
                            or t - c[2] < CONFIRM_GRACE]
@@ -605,22 +622,23 @@ class Belief:
             alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
         out = self._follow_confirmed(out, t_now)
         self._track_cache = out  # raw peaks: the Faulty Sensor check wants tight ellipses
-        return merge_overlapping(out, self.city.bounds)
+        return merge_overlapping(out, self.city.bounds, self.threat)
 
     def _follow_confirmed(self, peaks: list[TrackEst], t_now: float) -> list[TrackEst]:
-        """A confirmed drone stays confirmed as it flies on: each confirmed point takes the
-        nearest drone peak within CONFIRM_FOLLOW, once per extraction, and moves toward it
-        (at most CONFIRM_SPEED). That peak is CONFIRMED; other drone peaks that close to a
-        confirmed point are its side lobes, Explained. So the point cannot hop from peak to
-        peak onto a second drone, and side lobes are not broadcast as Confirmed. Following
-        does not extend the hold: without a new camera sighting the point expires."""
+        """A confirmed threat stays confirmed as it moves on: each confirmed point takes the
+        nearest peak of the Threat Class within CONFIRM_FOLLOW, once per extraction, and moves
+        toward it (at most CONFIRM_SPEED). That peak is CONFIRMED, also where the City would
+        explain it (a poacher on a track); other such peaks that close to a confirmed point
+        are its side lobes, Explained. So the point cannot hop from peak to peak onto a
+        second intruder, and side lobes are not broadcast as Confirmed. Following does not
+        extend the hold: without a new camera sighting the point expires."""
         self.confirmed_near(0.0, 0.0, t_now)  # drop expired points
         out = list(peaks)
         taken: set[int] = set()
         for i, (cx, cy, seen_t, moved_t) in enumerate(list(self._confirmed)):
             near = [(math.hypot(tr.x - cx, tr.y - cy), j) for j, tr in enumerate(out)
-                    if j not in taken and tr.cls == TargetClass.DRONE
-                    and tr.status == TrackStatus.SUSPECTED
+                    if j not in taken and tr.cls == self.threat
+                    and tr.status in (TrackStatus.SUSPECTED, TrackStatus.EXPLAINED)
                     and math.hypot(tr.x - cx, tr.y - cy) <= CONFIRM_FOLLOW]
             if not near:
                 continue
@@ -630,7 +648,7 @@ class Belief:
             self._confirmed[i] = (*_toward(cx, cy, out[j].x, out[j].y, moved_t, t_now), seen_t,
                                   t_now)
         return [replace(tr, status=TrackStatus.EXPLAINED)
-                if tr.cls == TargetClass.DRONE and tr.status == TrackStatus.SUSPECTED
+                if tr.cls == self.threat and tr.status == TrackStatus.SUSPECTED
                 and self.confirmed_near(tr.x, tr.y, t_now, radius=CONFIRM_FOLLOW) else tr
                 for tr in out]
 

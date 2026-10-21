@@ -15,6 +15,12 @@ quadcopter box, and only for `clear_radius`, the range the model actually sees a
 
 The model is TomSmail/drone-yolo-v1 (YOLOv8n, classes quadcopter / fixed-wing, CC BY 4.0),
 fetched by Nikolas into data/cv/verifier-demo-20261015/evaluation/. Needs `uv sync --group cv`.
+
+`classes` maps the model's labels to Target Classes (default: quadcopter -> drone). Labels
+of a threat class (anything but nothing) are what a track streak verifies and what keeps a
+view from counting as empty; labels mapped to nothing (an elephant, a zebra) are only named
+in the verdict (`others`), for the Threat Log; unmapped labels are ignored. A Reserve uses
+the COCO model (yolo11n.pt): car, truck, motorcycle, bus -> vehicle, the animals -> nothing.
 """
 
 from __future__ import annotations
@@ -26,6 +32,8 @@ from pathlib import Path
 
 import numpy as np
 
+from earshot.messages import TargetClass
+
 DEFAULT_WEIGHTS = (Path(__file__).resolve().parents[3]
                    / "data/cv/verifier-demo-20261015/evaluation/drone-best.pt")
 TARGET = "quadcopter"
@@ -34,8 +42,9 @@ MIN_SIGMA_DEG = 2.0
 
 @dataclass(frozen=True)
 class CameraVerdict:
-    hits: list[tuple[float, float, float]]  # (bearing deg, sigma deg, confidence), verified tracks
+    hits: list[tuple[float, float, float, str]]  # (bearing deg, sigma deg, confidence, label)
     clear_radius: float | None  # m looked at and empty; None = inconclusive
+    others: tuple[str, ...] = ()  # harmless labels seen this window (classes -> nothing)
 
 
 def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, float]:
@@ -64,11 +73,13 @@ class YoloDetector:
     imgsz: int | None = None  # default: the image width
     every: int = 1  # process every n-th rendered frame (inference cost vs. streak speed)
     device: str | None = None  # default: EARSHOT_CV_DEVICE, else mps when available, else cpu
+    classes: dict | None = None  # model label -> Target Class name; default {TARGET: "drone"}
     model: object | None = None  # injected in tests; else loaded on first use
 
     _streaks: dict[int, int] = field(default_factory=dict)
     _window_hits: dict[int, tuple[float, float, float]] = field(default_factory=dict)
     _window_boxes: int = 0
+    _window_others: set = field(default_factory=set)
     _empty_windows: int = 0
     _frames: int = 0
     _fresh: bool = True  # next track call re-initialises ByteTrack
@@ -79,9 +90,19 @@ class YoloDetector:
         self._streaks.clear()
         self._window_hits.clear()
         self._window_boxes = 0
+        self._window_others.clear()
         self._empty_windows = 0
         self._frames = 0
         self._fresh = True
+
+    def class_of(self, label: str) -> TargetClass:
+        """The Target Class a model label stands for (NOTHING if unmapped)."""
+        name = self._classes().get(label)
+        return TargetClass[name.upper()] if name else TargetClass.NOTHING
+
+    def _classes(self) -> dict[str, str]:
+        return {str(k).lower(): str(v).lower()
+                for k, v in (self.classes or {TARGET: "drone"}).items()}
 
     def observe(self, frame: dict) -> None:
         if not frame.get("bgra"):
@@ -99,9 +120,14 @@ class YoloDetector:
         if "inference" in speed:
             self.infer_ms.append(float(speed["inference"]))
         names = {int(k): str(v).lower() for k, v in model.names.items()}
+        classes = self._classes()
         current: dict[int, int] = {}
         for box in res.boxes:
-            if names.get(int(box.cls[0])) != TARGET:
+            label = names.get(int(box.cls[0]))
+            if label not in classes:
+                continue
+            if classes[label] == "nothing":
+                self._window_others.add(label)
                 continue
             self._window_boxes += 1
             score = float(box.conf[0])
@@ -112,7 +138,7 @@ class YoloDetector:
             if current[key] >= self.confirm_frames:
                 x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
                 b, s = box_bearing((x1 + x2) / 2.0, (y1 + y2) / 2.0, x2 - x1, frame)
-                self._window_hits[key] = (b, s, score)
+                self._window_hits[key] = (b, s, score, label)
         self._streaks = current  # a missed frame resets a track's streak
 
     def verdict(self, hovering: bool = True) -> CameraVerdict:
@@ -124,9 +150,11 @@ class YoloDetector:
         else:
             self._empty_windows += 1
         clear = self.clear_radius if self._empty_windows >= self.clear_windows else None
+        others = tuple(sorted(self._window_others))
         self._window_hits.clear()
         self._window_boxes = 0
-        return CameraVerdict(hits, clear)
+        self._window_others.clear()
+        return CameraVerdict(hits, clear, others)
 
     def warm(self, w: int = 1280, h: int = 768) -> None:
         """Load the model and run it once on a blank frame now (and fail now: a missing

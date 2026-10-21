@@ -47,7 +47,7 @@ def build(scenario: Scenario, root: Path = Path("."), audio=None):
     )
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
                                    scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(scenario.params))
+                                   PolicyParams.from_dict(scenario.params), scenario.threat)
     agents = {d.id: Agent(d.id, city, config.KEY, swarm) for d in scenario.drones}
     return city, world, radio, agents
 
@@ -97,7 +97,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
                 snap["radio"] = radio.stats()
                 fh.write(json.dumps(snap) + "\n")
     truth = [{"id": s.id, "cls": s.cls.name, "start": s.start, "end": s.end,
-              "path": [list(p) for p in s.path]} for s in scenario.sources]
+              "path": [list(p) for p in s.path], "intruder": s.intruder,
+              **({"kind": s.kind} if s.kind else {})} for s in scenario.sources]
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
     jams = [(j.start, j.end) for j in scenario.jamming]
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
@@ -105,11 +106,11 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
 
 
 def _spread(agents) -> float | None:
-    """How far apart the drones' strongest drone Suspicions are (inf: some see one, some
-    don't; None: nobody sees one). Agreement = small spread."""
+    """How far apart the drones' strongest Suspicions (Threat Class) are (inf: some see one,
+    some don't; None: nobody sees one). Agreement = small spread."""
     tops = []
     for a in agents.values():
-        drones = [tr for tr in a._tracks if tr.cls.name == "DRONE" and tr.status.name != "EXPLAINED"]
+        drones = [tr for tr in a._tracks if tr.cls == a.threat and tr.status.name != "EXPLAINED"]
         tops.append(max(drones, key=lambda tr: tr.strength) if drones else None)
     if all(t is None for t in tops):
         return None

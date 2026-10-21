@@ -4,13 +4,21 @@ A scenario is a YAML file (see scenarios/). Ground truth lives here and nowhere 
 agents never see it, only the sensor models and the dashboard do. An optional `params:` map
 overrides the decision thresholds (state.PolicyParams) for every drone.
 
+`threat:` names the Threat Class the swarm hunts (default drone: the airport; vehicle: a
+Reserve, where poachers drive in). Every drone knows it before take-off (SwarmConfig). A
+Source's `intruder:` (default: its class is the Threat Class) is ground truth for metrics and
+the Threat Log: a ranger's vehicle in a Reserve is a Vehicle but no intruder. `kind:` says
+what a Source is ("elephant herd", "poacher pickup"): the camera stand-in's label for the
+Threat Log and the model the Webots builder draws. `confusion:` overrides rows of the sound
+stand-in's confusion table (sensors.CONFUSION), e.g. animals that sound like an engine.
+
 Events change a scenario while it runs. The same op dicts come from three places: the YAML
 `events:` list (applied at their `t`), live hotkeys on the dashboard (applied at the next
 tick), and a recorded live session (`runs/live-*.events.jsonl`, replayable with
 `earshot fast --events`). `Scenario.apply(op, t)` is the one place they take effect.
 
     {op: add_source, cls: drone, x: 100, y: 200}          # or path: [[x, y], ...]
-        optional: to: [x, y], duration (120 s), level_db, rf: [2g4], id
+        optional: to: [x, y], duration (120 s), level_db, rf: [2g4], id, kind, intruder
     {op: jam, x: 0, y: 0}                                  optional: r (300 m), duration (30 s)
     {op: clear_jam}
     {op: fault, drone: 3, kind: stuck_bearing}             kinds: stuck_bearing | deaf | phantom
@@ -40,6 +48,8 @@ class Source:
     path: list[tuple[float, float]]  # visited at constant speed between start and end
     level_db: float  # sound power level, dB(A); see sensors.acoustics.SOUND_POWER
     rf_bands: tuple[str, ...] = ()  # emitting links, keys of sensors.rf.BANDS
+    intruder: bool = False  # truth: a threat the swarm should find (metrics, Threat Log)
+    kind: str = ""  # what it is, free text: the camera stand-in's label, the Webots model
 
     def pose(self, t: float, back: float = 0.0) -> tuple[float, float, float] | None:
         """(x, y, heading_deg) at time t, `back` metres behind the head along the path
@@ -148,6 +158,19 @@ def _target_class(v) -> TargetClass:
     return TargetClass[name]
 
 
+def _confusion(d: dict | None) -> dict:
+    """`confusion: {nuisance: {drone: 0.05, vehicle: 0.3, train: 0, nothing: 0.65}}`: whole
+    rows by true class, each row's weights over all four predicted classes."""
+    out = {}
+    for true, row in (d or {}).items():
+        cls = _target_class(true)
+        if not isinstance(row, dict) or {_target_class(k) for k in row} != set(TargetClass):
+            raise ValueError(f"confusion row {true!r} must give a weight for each of "
+                             f"{[c.name.lower() for c in TargetClass]}")
+        out[cls] = {_target_class(k): _float(v, f"confusion {true}.{k}") for k, v in row.items()}
+    return out
+
+
 @dataclass
 class Scenario:
     name: str
@@ -165,6 +188,8 @@ class Scenario:
     params: dict = field(default_factory=dict)  # state.PolicyParams overrides
     audio: dict = field(default_factory=dict)  # {classifier: "mod:attr", sounds: dir}
     camera: dict = field(default_factory=dict)  # {detector: yolo, ...}: sensors/camera.py
+    threat: TargetClass = TargetClass.DRONE  # the Threat Class the swarm hunts
+    confusion: dict = field(default_factory=dict)  # sound stand-in rows: sensors.CONFUSION
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     _live_count: int = 0
@@ -187,6 +212,9 @@ class Scenario:
             pts = [tuple(q) for q in city_raw[kind][int(p.get("road", p.get("rail", 0)))]]
             return pts[::-1] if p.get("reverse") else pts
 
+        threat = _target_class(d.get("threat", "drone"))
+        if threat == TargetClass.NOTHING:
+            raise ValueError("threat must be drone, vehicle or train")
         sc = cls(
             name=d["name"],
             seed=d.get("seed", 0) if seed is None else seed,
@@ -205,13 +233,16 @@ class Scenario:
             params=dict(d.get("params") or {}),
             audio=dict(d.get("audio") or {}),
             camera=dict(d.get("camera") or {}),
+            threat=threat,
+            confusion=_confusion(d.get("confusion")),
             sources=[
                 Source(
                     id=s["id"],
-                    cls=TargetClass[_CLASS_ALIASES.get(s["cls"].lower(), s["cls"].upper())],
+                    cls=(c := TargetClass[_CLASS_ALIASES.get(s["cls"].lower(), s["cls"].upper())]),
                     start=float(s["start"]), end=float(s["end"]),
                     path=resolve(s["path"]),
                     level_db=float(s["level_db"]), rf_bands=_rf_bands(s.get("rf")),
+                    intruder=bool(s.get("intruder", c == threat)), kind=str(s.get("kind", "")),
                 )
                 for s in d.get("sources", [])
             ],
@@ -287,8 +318,14 @@ class Scenario:
                 raise ValueError(f"id must be a string, got {sid!r}")
             if any(s.id == sid for s in self.sources):
                 raise ValueError(f"source id {sid!r} already exists")
+            intruder = op.get("intruder", cls == self.threat)
+            if not isinstance(intruder, bool):
+                raise ValueError(f"intruder must be true or false, got {intruder!r}")
+            kind = op.get("kind", "")
+            if not isinstance(kind, str):
+                raise ValueError(f"kind must be a string, got {kind!r}")
             self._live_count += 1
-            src = Source(sid, cls, t, t + duration, path, level, bands)
+            src = Source(sid, cls, t, t + duration, path, level, bands, intruder, kind)
             self.sources.append(src)
             return f"{sid}: {cls.name.lower()} at {path[0][0]:.0f}, {path[0][1]:.0f}"
         if kind == "jam":

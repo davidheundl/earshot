@@ -4,7 +4,9 @@
                  [--jobs N]
 
 Per run, from the lockstep RunResult (decision events + ground truth), with the scenario's
-`duration` as the censoring value for anything that never happened:
+`duration` as the censoring value for anything that never happened. "Drone Sources" below
+are the intruder Sources (Scenario `intruder:`, by default those of the Threat Class): the
+drones at the airport, the poachers' vehicles in a Reserve:
     t_confirm      mean over drone Sources of s from the Source appearing to the first camera
                    confirmation within CONFIRM_MATCH of it; a never-confirmed Source counts as
                    `duration` (censored, as tune's cost does). None: no drone Source in the run
@@ -69,11 +71,12 @@ def censored_mean(vals: list[float | None], cap: float) -> float | None:
 
 def _sources(r: RunResult) -> list[Source]:
     return [Source(s["id"], TargetClass[s["cls"]], s["start"], s["end"],
-                   [tuple(p) for p in s["path"]], 0.0) for s in r.truth]
+                   [tuple(p) for p in s["path"]], 0.0,
+                   intruder=s.get("intruder", s["cls"] == "DRONE")) for s in r.truth]
 
 
-def _nearest_drone(sources, x, y, t) -> float:
-    d = [math.hypot(p[0] - x, p[1] - y) for s in sources if s.cls == TargetClass.DRONE
+def _nearest_intruder(sources, x, y, t) -> float:
+    d = [math.hypot(p[0] - x, p[1] - y) for s in sources if s.intruder
          for p in [s.position(t)] if p is not None]
     return min(d, default=math.inf)
 
@@ -89,13 +92,13 @@ def _first(events, s: Source, radius: float) -> float | None:
 def metrics(r: RunResult, policy: str, duration: float) -> RunMetrics:
     """`duration`: the scenario's length, the value a censored latency counts as."""
     sources = _sources(r)
-    drones = [s for s in sources if s.cls == TargetClass.DRONE]
+    drones = [s for s in sources if s.intruder]
     dispatches = [e for e in r.events if e["kind"] == "dispatch" and e["task"] == "verify"]
     confirms = [e for e in r.events if e["kind"] == "confirmed"]
 
     t_conf = [_first(confirms, s, CONFIRM_MATCH) for s in drones]
     t_disp = [_first(dispatches, s, FALSE_RADIUS) for s in drones]
-    errs = [_nearest_drone(sources, e["x"], e["y"], e["t"]) for e in dispatches]
+    errs = [_nearest_intruder(sources, e["x"], e["y"], e["t"]) for e in dispatches]
     t_agree, agreed = _time_to_agree(r, duration)
     confirmed = sum(t is not None for t in t_conf)
     return RunMetrics(

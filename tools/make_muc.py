@@ -577,7 +577,7 @@ def building_meshes(blds: list[dict], bounds, tile_m: float = 1000.0) -> list[di
 def main() -> None:
     bx0, by0, bx1, by1 = BOUNDS
     cells = math.ceil((bx1 - bx0) / 100) * math.ceil((by1 - by0) / 100)
-    assert cells <= 4096, f"{cells} 100 m cells: task ids allow 4096 per kind"
+    assert cells <= 16384, f"{cells} 100 m cells: task ids allow 16384 per kind"
     print(f"[muc] bounds {BOUNDS}: {cells} task cells")
 
     nodes, ways, rels = load_osm()

@@ -6,10 +6,11 @@ Interface:
 
 Concept section 7, as reworked on 2026-10-11:
 - One drone per danger, the nearest; everyone else holds their post (perched drones stay on
-  their roof, patrollers in their Sector) to catch further dangers. A Suspicion (a drone-class
-  Track that is not Explained or Confirmed; overlapping ones are already merged, see
-  belief.merge_overlapping) becomes a VERIFY task once it is likely and strong. Task ids are
-  kind * 4096 + the Suspicion's 100 m cell, so every bidder can decode where a task is.
+  their roof, patrollers in their Sector) to catch further dangers. A Suspicion (a Track of
+  the Threat Class, SwarmConfig.threat, that is not Explained or Confirmed; overlapping ones
+  are already merged, see belief.merge_overlapping) becomes a VERIFY task once it is likely
+  and strong. Task ids are kind * 16384 + the Suspicion's 100 m cell, so every bidder can
+  decode where a task is.
 - Allocation without a central node: each free drone bids on its nearest task and broadcasts a
   Claim (task, bid, lease, target point). Bid = NEAREST_BID - metres / 10, so the highest bid
   is the nearest drone (ties to the lower id); it follows the Verifier's distance as it flies.
@@ -21,6 +22,11 @@ Concept section 7, as reworked on 2026-10-11:
   takes over. An outbid drone waits outbid_cooldown before bidding near that place again.
 - A task follows its Suspicion as it drifts, but at most same_task_radius from where it was
   claimed; beyond that it is dropped and re-auctioned.
+- Follow (follow_for > 0): a Verifier that confirmed its threat stays with it, camera on,
+  flying to the nearest Confirmed Track of the Threat Class and renewing its Claim, until
+  follow_for has passed ("handed_off") or no Confirmed Track is near for dismiss_after
+  ("lost"). It reports where it is once a second ("following"); the runners log that as the
+  Threat Log. follow_for 0 releases at confirmation, as before.
 - Sectors are Voronoi cells of the homes of available drones (no active Claim); when a drone
   leaves, its neighbours' cells grow and patrollers fly Fill Gap.
 
@@ -39,7 +45,7 @@ import numpy as np
 
 from earshot.agent.belief import CONFIRM_RADIUS, TrackEst, cell_center
 from earshot.city import City
-from earshot.messages import Claim, Mode, TargetClass, TrackStatus
+from earshot.messages import Claim, Mode, TrackStatus
 from earshot.state import Command, DroneState, SwarmConfig
 
 VERIFY = 0  # the only task kind (listening tasks were dropped: listeners hold their posts)
@@ -51,7 +57,7 @@ NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nea
 SECTOR_CELL = 100.0
 
 
-TASK_STRIDE = 4096  # 100 m cells per task kind: cities up to 6.4 x 6.4 km; ids stay 14 bits
+TASK_STRIDE = 16384  # 100 m cells per task kind: cities up to 12.8 x 12.8 km; one kind fits u16
 
 
 def task_id(kind: int, cid: int) -> int:
@@ -106,6 +112,9 @@ class Policy:
         self._my_bid = 0.0
         self._arrived_at: float | None = None
         self._lost: tuple[float, float, float] | None = None  # (t, x, y) of the last outbid
+        self._follow_since: float | None = None  # Follow: when the task's threat was confirmed
+        self._unseen_since: float | None = None  # Follow: no Confirmed Track near since then
+        self._follow_said = -1e9  # Follow: last "following" event
         self._cooldown = self.p.outbid_cooldown
         xs = np.arange(city.bounds[0] + SECTOR_CELL / 2, city.bounds[2], SECTOR_CELL)
         ys = np.arange(city.bounds[1] + SECTOR_CELL / 2, city.bounds[3], SECTOR_CELL)
@@ -133,6 +142,8 @@ class Policy:
             d.task = {"kind": KIND_NAME[self._task.kind], "tid": self._task.tid,
                       "x": self._task.target[0], "y": self._task.target[1],
                       "settled": self._settled, "bid": round(self._my_bid, 2)}
+            if self._follow_since is not None:
+                d.task["following"] = True
         return d
 
     # -- tasks ----------------------------------------------------------------------------
@@ -144,7 +155,7 @@ class Policy:
             math.hypot(c.x - tr.x, c.y - tr.y) <= self.p.confirmed_shadow for c in confirmed)),
             key=lambda tr: -tr.strength)
         if self.swarm.policy != "nearest":
-            tracks = [tr for tr in tracks if tr.cls == TargetClass.DRONE
+            tracks = [tr for tr in tracks if tr.cls == self.swarm.threat
                       and tr.status == TrackStatus.SUSPECTED][:self.p.top_suspicions]
         for tr in tracks:
             if tr.status == TrackStatus.CONFIRMED:
@@ -154,7 +165,7 @@ class Policy:
                     tid = task_id(VERIFY, tr.track_id)
                     out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
                 continue
-            if tr.cls != TargetClass.DRONE or tr.status != TrackStatus.SUSPECTED:
+            if tr.cls != self.swarm.threat or tr.status != TrackStatus.SUSPECTED:
                 continue  # Explained: not every alarm deserves a drone
             # one Verifier per Suspicion and nobody else moves: the other drones hold their
             # posts to catch further dangers (no listening tasks)
@@ -211,6 +222,9 @@ class Policy:
 
     def _continue(self, t, s, tasks, active, tracks, d: Decision) -> None:
         task = self._task
+        if self._follow_since is not None:
+            self._follow(t, tracks, d)
+            return
         current = tasks.get(task.tid) or self._drifted(task, tasks) or self._held(task, tracks)
         if current is not None and task.claimed is not None and math.hypot(
                 current.x - task.claimed[0], current.y - task.claimed[1]) > self.p.same_task_radius:
@@ -248,7 +262,7 @@ class Policy:
     def _held(self, task: _Task, tracks) -> _Task | None:
         """A task once claimed lasts while its Suspicion does, below the strength gate too:
         strengths hover around the gate, and a claim dropped before it settles flies nobody."""
-        same = [tr for tr in tracks if tr.cls == TargetClass.DRONE
+        same = [tr for tr in tracks if tr.cls == self.swarm.threat
                 and tr.status == TrackStatus.SUSPECTED
                 and tr.confidence >= self.p.verify_min_confidence
                 and math.hypot(tr.x - task.x, tr.y - task.y) <= self.p.same_task_radius]
@@ -261,6 +275,12 @@ class Policy:
         confirmed = next((tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
                           and math.hypot(tr.x - task.x, tr.y - task.y) <= CONFIRM_RADIUS), None)
         if confirmed is not None and self._settled:
+            if self.p.follow_for > 0:  # stay with it: Follow
+                d.events.append(self._event(t, "confirmed")
+                                | {"x": round(confirmed.x, 1), "y": round(confirmed.y, 1)})
+                self._follow_since, self._unseen_since = t, None
+                self._follow(t, tracks, d)
+                return
             self._release(t, d, "confirmed", confirmed)
             return
         dist = math.hypot(task.target[0] - s.x, task.target[1] - s.y)
@@ -277,6 +297,31 @@ class Policy:
         elif current is None and not self._settled:
             self._release(t, d, "obsolete")
 
+    def _follow(self, t, tracks, d: Decision) -> None:
+        """Stay with the confirmed threat: fly to the nearest Confirmed Track of the Threat
+        Class within same_task_radius, keep the Claim alive, report once a second."""
+        task = self._task
+        near = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
+                and tr.cls == self.swarm.threat
+                and math.hypot(tr.x - task.x, tr.y - task.y) <= self.p.same_task_radius]
+        conf = min(near, key=lambda tr: math.hypot(tr.x - task.x, tr.y - task.y), default=None)
+        if conf is not None:
+            task.x, task.y, task.track, task.target = conf.x, conf.y, conf, (conf.x, conf.y)
+            self._unseen_since = None
+        elif self._unseen_since is None:
+            self._unseen_since = t
+        if self._unseen_since is not None and t - self._unseen_since >= self.p.dismiss_after:
+            self._release(t, d, "lost")
+            return
+        if t - self._follow_since >= self.p.follow_for:
+            self._release(t, d, "handed_off")
+            return
+        if t - self._follow_said >= 1.0:
+            self._follow_said = t
+            d.events.append(self._event(t, "following"))
+        if t - self._last_claim >= RENEW:
+            self._send_claim(t, d, LEASE)
+
     def _release(self, t, d: Decision, why: str, track: TrackEst | None = None) -> None:
         ev = self._event(t, why)
         if track is not None:
@@ -285,6 +330,7 @@ class Policy:
         self._send_claim(t, d, 0.0)
         self._task = None
         self._settled = False
+        self._follow_since = None
 
     def _send_claim(self, t, d: Decision, lease: float) -> None:
         task = self._task
@@ -295,6 +341,8 @@ class Policy:
         task = self._task
         ev = {"t": round(t, 2), "kind": kind, "drone": self.me, "task": KIND_NAME[task.kind],
               "tid": task.tid, "x": round(task.x, 1), "y": round(task.y, 1)}
+        if self._follow_since is not None:
+            ev["cls"] = self.swarm.threat.name
         if task.track is not None:
             ev.update(conf=round(task.track.confidence, 2), ellipse=round(task.track.semi_major))
         return ev

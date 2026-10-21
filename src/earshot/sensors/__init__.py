@@ -8,8 +8,12 @@ World hands only the readings to Agents and keeps the truth for logs and metrics
 
 Sound, RF and the camera (only on the Verifier) report once per 1 s window per drone,
 staggered across drones. A camera that sees nothing reports that too: "looked, no threat
-within range" is what lets a Suspicion be dismissed. Physics lives in `acoustics` and `rf`;
-this module only samples from it with the injected rng.
+within range" is what lets a Suspicion be dismissed; a recognised Nuisance (a fan, an
+elephant) is no threat, so it only names what was seen instead. Physics lives in `acoustics`
+and `rf`; this module only samples from it with the injected rng.
+
+A camera Detection's `label` says what the camera recognised (the stand-in: the Source's
+`kind`; the detector: its class names). It stays in the world process, for the Threat Log.
 """
 
 from __future__ import annotations
@@ -70,6 +74,17 @@ class Detection:
     reading: SensorReading
     truth: str | None  # source id, None for phantom (Fault) readings
     snr_db: float
+    label: str | None = None  # camera: what it recognised (world side only, never on the radio)
+
+
+def _label(src) -> str:
+    return src.kind or src.cls.name.lower()
+
+
+def _rf_probs(emitter: TargetClass) -> tuple[float, float, float, float]:
+    """0.9 on the band's emitter class, the rest spread as for the drone links."""
+    rest = iter((0.0333, 0.0333, 0.0334))
+    return tuple(0.9 if c == emitter else next(rest) for c in TargetClass)  # type: ignore[return-value]
 
 
 class SensorSuite:
@@ -80,6 +95,7 @@ class SensorSuite:
         self.rng = rng
         self.audio = audio
         self.camera = camera  # a trained detector on rendered frames; else the stand-in
+        self.confusion = {**CONFUSION, **scenario.confusion}  # the Scenario may override rows
         self.windows: list[wf.AudioWindow] = []  # rendered audio, collected by the World
         self._window: dict[int, int] = {}
         self._cam_drone: int | None = None  # the Verifier the detector's view belongs to
@@ -169,7 +185,7 @@ class SensorSuite:
 
     def _class_probs(self, true_cls: TargetClass, snr: float) -> tuple[float, float, float, float]:
         q = 1.0 / (1.0 + math.exp(-(snr - ac.ACOUSTICS[true_cls].snr50_db) / 3.0))
-        row = np.array([CONFUSION[true_cls][c] for c in TargetClass])
+        row = np.array([self.confusion[true_cls][c] for c in TargetClass])
         w = q * row + (1 - q) * np.full(len(row), 1 / len(row))
         pred = int(self.rng.choice(len(row), p=w / w.sum()))
         conf = 0.4 + 0.5 * q
@@ -187,11 +203,13 @@ class SensorSuite:
             los = nb == 0
             for key in src.rf_bands:
                 band = rf.BANDS[key]
+                if band.duty < 1.0 and self.rng.random() >= band.duty:
+                    continue  # push-to-talk: nothing on the air this window
                 p = rf.mean_rx_power(band, d, los) + self.rng.normal(0, rf.shadowing_sigma(los))
                 if self.rng.random() >= rf.detection_probability(band, p):
                     continue
-                r = SensorReading(band.sensor, float("nan"), 0.0,
-                                  (0.9, 0.0333, 0.0333, 0.0334), level=p)
+                r = SensorReading(band.sensor, float("nan"), 0.0, _rf_probs(band.emitter),
+                                  level=p)
                 out.append(Detection(r, src.id, p - band.noise_floor_dbm))
         return out
 
@@ -224,6 +242,7 @@ class SensorSuite:
             # has it) stays inconclusive rather than falling back to ground truth
             return self._detected(s, sources) if self._cam_drone == s.id else []
         out = []
+        harmless = []  # recognised Nuisances: no threat, only named in the "nothing" reading
         seen = None
         if frame is not None and "objects" in frame:
             seen = {m for m in frame["objects"] if m in TargetClass.__members__}
@@ -236,19 +255,24 @@ class SensorSuite:
                     continue  # rendered and recognised, or not at all
             elif self.rng.random() >= CAMERA_P_DETECT:
                 continue
+            if src.cls == TargetClass.NOTHING:
+                harmless.append(src)
+                continue
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, 0.0), src.id, 99.0))
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, 0.0), src.id, 99.0,
+                                 _label(src)))
         if not out:
             nothing = (0.0, 0.0, 0.0, 1.0)
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing, 0.0),
-                                 None, 0.0))
+                                 None, 0.0, ", ".join(sorted({_label(h) for h in harmless})) or None))
         return out
 
     def _detected(self, s: DroneState, sources) -> list[Detection]:
-        """The trained detector's verdict for this window: verified tracks as drone bearings,
-        "nothing" with the radius it really cleared, or no reading when inconclusive. Truth
-        (logs and metrics only) is the active Source nearest in bearing, within 5 deg."""
+        """The trained detector's verdict for this window: verified tracks as bearings of
+        their class (the detector's `classes`), "nothing" with the radius it really cleared,
+        or no reading when inconclusive. Truth (logs and metrics only) is the active Source
+        nearest in bearing, within 5 deg."""
         moved = (math.inf if self._cam_pos is None
                  else math.hypot(s.x - self._cam_pos[0], s.y - self._cam_pos[1]))
         self._cam_pos = (s.x, s.y)
@@ -256,7 +280,7 @@ class SensorSuite:
         # the way in it has not yet looked at the place
         v = self.camera.verdict(hovering=moved <= CAMERA_HOVER_M)
         out = []
-        for b, sigma, _ in v.hits:
+        for b, sigma, _, label in v.hits:
             truth, best = None, CAMERA_MATCH_DEG
             for src, (sx, sy) in sources:
                 d = math.hypot(sx - s.x, sy - s.y)
@@ -264,12 +288,15 @@ class SensorSuite:
                           - 180.0)
                 if d <= CAMERA_RANGE and err <= best:
                     truth, best = src.id, err
-            probs = tuple(0.95 if c == TargetClass.DRONE else 0.05 / 3 for c in TargetClass)
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0), truth, 99.0))
+            cls = self.camera.class_of(label)
+            probs = tuple(0.95 if c == cls else 0.05 / 3 for c in TargetClass)
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0), truth, 99.0,
+                                 label))
         if not out and v.clear_radius is not None:
             nothing = (0.0, 0.0, 0.0, 1.0)
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
-                                               v.clear_radius), None, 0.0))
+                                               v.clear_radius), None, 0.0,
+                                 ", ".join(v.others) or None))
         return out
 
 
