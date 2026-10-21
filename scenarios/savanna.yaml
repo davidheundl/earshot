@@ -67,6 +67,11 @@ sources:           # path: list of points, or {road: i}; kind: what it is (camer
   - {id: giraffe, cls: nuisance, kind: giraffe, start: 0, end: 900, level_db: 70, path: [[2000, -2800], [2300, -2600]]}
   - {id: rhino, cls: nuisance, kind: white rhino, start: 0, end: 900, level_db: 72, path: [[-1880, -2330], [-1920, -2300], [-1860, -2290], [-1880, -2330]]}
 
+# poacher2 fires at the elephants as it passes the herd, 150 m off: a Shot every tower within
+# a few km hears, with a sharp bearing (sensors/acoustics.py SHOT)
+events:
+  - {t: 560, op: shot, source: poacher2}
+
 # the stand-in sound classifier (no trained head for African wildlife): animal calls are
 # heard as an engine 45 % of the time
 confusion:

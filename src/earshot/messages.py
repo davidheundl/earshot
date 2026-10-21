@@ -42,6 +42,7 @@ class Sensor(IntEnum):
     RF_5G8 = 3
     RF_915 = 4
     RF_UHF = 5  # 400-470 MHz handheld radios (poachers, rangers): sensors/rf.py
+    SHOT = 6  # a rifle Shot: one impulse with a sharp bearing (sensors/acoustics.py SHOT)
 
 
 RF_SENSORS = frozenset({Sensor.RF_2G4, Sensor.RF_5G8, Sensor.RF_915, Sensor.RF_UHF})

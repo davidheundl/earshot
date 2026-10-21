@@ -89,7 +89,7 @@ class World:
         for w in self.audio:
             self._spectra[w.drone] = spectrum(w.mix)
         self._recent = [d for d in self._recent if self.t - d["t"] < 3.0] + [
-            d for d in self.detections if d["sensor"] == "SOUND"
+            d for d in self.detections if d["sensor"] in ("SOUND", "SHOT")
         ]
         return sensed
 

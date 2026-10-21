@@ -71,6 +71,10 @@ _Avoid_: target, emitter, threat (a Source is only a threat if it is an intruder
 **Poacher**:
 An intruder Source in a Reserve: a vehicle off the tracks, its crew often on a UHF handheld radio.
 
+**Shot**:
+A rifle fired in a Reserve: an Event, not a Source. Every tower within a few km hears it once, with a sharp bearing, as Evidence for the Threat Class where it was fired; there is nothing to see, find or follow.
+_Avoid_: gunshot source, bang
+
 **Beam**:
 What a sound classifier is given for one Source in one 1 s window: that Source's sound, every other Source 6 dB down, and the background and ego-noise. Rendered by the World from waveforms; Agents never see it.
 _Avoid_: mix (that is everything the microphone gets, unsteered)

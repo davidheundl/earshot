@@ -14,6 +14,12 @@ Threat Class that is no intruder: the stand-in assumes the Verifier's classifier
 reserve's own marked vehicles (rangers, game drives). The COCO detector does not. Physics lives in `acoustics`
 and `rf`; this module only samples from it with the injected rng.
 
+A Shot (a rifle fired, Scenario.shots) reaches each drone once, distance / SPEED_OF_SOUND
+after it was fired, as a SHOT reading: one sharp bearing whose class probabilities sit on the
+Threat Class, as an RF band's sit on its emitter's (in a Reserve only poachers fire at night).
+Shots draw from their own random stream, so a run is the same with or without them until the
+first one is heard.
+
 A camera Detection's `label` says what the camera recognised (the stand-in: the Source's
 `kind`; the detector: its class names). It stays in the world process, for the Threat Log.
 """
@@ -38,6 +44,7 @@ WINDOW_S = 1.0
 # emitter height above ground (m): what the sound and RF line-of-sight tests start from
 SOURCE_AGL = {TargetClass.DRONE: 30.0, TargetClass.VEHICLE: 2.0, TargetClass.TRAIN: 3.0,
               TargetClass.NOTHING: 2.0}
+SHOT_AGL = 1.5  # m: a rifle fired standing or from a pickup's bed
 MASKING_OFFSET_DB = wf.MASKING_OFFSET_DB
 LEVEL_NOISE_DB = 2.0
 CAMERA_RANGE = 100.0  # wide-angle camera from 40-60 m altitude
@@ -83,10 +90,11 @@ def _label(src) -> str:
     return src.kind or src.cls.name.lower()
 
 
-def _rf_probs(emitter: TargetClass) -> tuple[float, float, float, float]:
-    """0.9 on the band's emitter class, the rest spread as for the drone links."""
+def _probs_on(cls: TargetClass) -> tuple[float, float, float, float]:
+    """0.9 on one class (an RF band's emitter, a Shot's Threat Class), the rest spread as for
+    the drone links."""
     rest = iter((0.0333, 0.0333, 0.0334))
-    return tuple(0.9 if c == emitter else next(rest) for c in TargetClass)  # type: ignore[return-value]
+    return tuple(0.9 if c == cls else next(rest) for c in TargetClass)  # type: ignore[return-value]
 
 
 class SensorSuite:
@@ -107,6 +115,8 @@ class SensorSuite:
         self._window: dict[int, int] = {}
         self._cam_drone: int | None = None  # the Verifier the detector's view belongs to
         self._cam_pos: tuple[float, float] | None = None  # where it was at the last verdict
+        self._shot_rng = rng.spawn(1)[0]  # Shots apart: they shift no other reading's draws
+        self._heard: set[tuple[int, int]] = set()  # (drone, Shot index) whose sound has passed
 
     def sense(self, s: DroneState, t: float, frame: dict | None = None) -> list[Detection]:
         """`frame`: the Verifier's camera frame when a renderer exists (Webots); its
@@ -130,6 +140,7 @@ class SensorSuite:
                 r = SensorReading(Sensor.SOUND, self.rng.uniform(0, 360), 5.0,
                                   self._class_probs(_C.DRONE, 5.0), level=45.0)
                 out.append(Detection(r, None, 5.0))
+        out += self._shots(s, t, faults)
         return out
 
     def _z(self, cls: TargetClass, x: float, y: float) -> float:
@@ -199,6 +210,44 @@ class SensorSuite:
         rest = (1 - conf) / (len(row) - 1)
         return tuple(conf if c == pred else rest for c in range(len(row)))  # type: ignore[return-value]
 
+    def _shots(self, s: DroneState, t: float, faults: set[str]) -> list[Detection]:
+        """Each Shot once per drone, in the first window after its sound arrives. An onset
+        detector compares the impulse with the steady floor (background and the drone's own
+        motors), not with the other Sources' sum over the window; kopjes and buildings block
+        it with SHOT's loss."""
+        env = self.scenario.environment
+        perched = s.perched_on is not None
+        rng = self._shot_rng
+        out = []
+        for i, shot in enumerate(self.scenario.shots):
+            if (s.id, i) in self._heard:
+                continue
+            d = math.hypot(shot.x - s.x, shot.y - s.y)
+            if t < shot.t + d / ac.SPEED_OF_SOUND:
+                continue  # still on its way
+            self._heard.add((s.id, i))
+            if "deaf" in faults:
+                continue
+            nb = self.city.obstacles_between((s.x, s.y), (shot.x, shot.y), s.z,
+                                             float(self.city.ground(shot.x, shot.y)) + SHOT_AGL)
+            lp = ac.received_level(shot.level_db, ac.SHOT, d, nb)
+            noise = ac.db_sum(env.background_db,
+                              ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db))
+            snr = lp - noise
+            if rng.random() >= ac.detection_probability(snr, ac.SHOT):
+                continue
+            sigma = ac.bearing_sigma(ac.SHOT, perched, snr)
+            if "stuck_bearing" in faults:
+                b = 0.0
+            elif rng.random() < ac.outlier_rate(perched):
+                b = rng.uniform(0, 360)
+            else:
+                b = (math.degrees(math.atan2(shot.x - s.x, shot.y - s.y)) + rng.normal(0, sigma)) % 360.0
+            level = ac.db_sum(lp, noise) + rng.normal(0, LEVEL_NOISE_DB)
+            r = SensorReading(Sensor.SHOT, b, sigma, _probs_on(self.scenario.threat), level)
+            out.append(Detection(r, shot.by or None, snr))
+        return out
+
     # -- RF ------------------------------------------------------------------------------
 
     def _rf(self, s: DroneState, sources, nbs) -> list[Detection]:
@@ -215,7 +264,7 @@ class SensorSuite:
                 p = rf.mean_rx_power(band, d, los) + self.rng.normal(0, rf.shadowing_sigma(los))
                 if self.rng.random() >= rf.detection_probability(band, p):
                     continue
-                r = SensorReading(band.sensor, float("nan"), 0.0, _rf_probs(band.emitter),
+                r = SensorReading(band.sensor, float("nan"), 0.0, _probs_on(band.emitter),
                                   level=p)
                 out.append(Detection(r, src.id, p - band.noise_floor_dbm))
         return out
