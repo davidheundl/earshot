@@ -82,25 +82,36 @@ class Header:
 
 
 @dataclass(frozen=True)
+class SensorReading:
+    """One sensor's measurement in one 1 s window: one Evidence item."""
+
+    sensor: Sensor
+    bearing: float  # degrees, 0 = north, clockwise; NaN if the sensor has no bearing (RF)
+    bearing_sigma: float  # degrees
+    class_probs: tuple[float, float, float, float]  # indexed by TargetClass
+    level: float = 0.0  # sound: received dB(A); RF: received power dBm (-> ring radius);
+    #                     camera hit: range in m to a ground target it geolocated (0: bearing
+    #                     only); camera "nothing": radius cleared (0: belief.CAMERA_RANGE); < 327
+
+
+@dataclass(frozen=True)
 class Observation:
-    """One raw measurement by one drone. Evidence: fused additively, exactly once."""
+    """One drone's readings of one sensor window, sent together: a drone hearing two Sources
+    pays for one frame. Evidence: each reading fused additively, exactly once per (origin, seq)."""
 
     header: Header
     t: float  # sim seconds
     x: float  # metres, local map frame (east)
     y: float  # metres, local map frame (north)
-    pos_sigma: float  # metres
-    bearing: float  # degrees, 0 = north, clockwise; NaN if the sensor has no bearing (RF)
-    bearing_sigma: float  # degrees
-    class_probs: tuple[float, float, float, float]  # indexed by TargetClass
-    sensor: Sensor
     mode: Mode
-    level: float = 0.0  # sound: received dB(A); RF: received power dBm (-> ring radius);
-    #                     camera hit: range in m to a ground target it geolocated (0: bearing
-    #                     only); camera "nothing": radius cleared (0: belief.CAMERA_RANGE); < 327
+    readings: tuple[SensorReading, ...]  # 1..MAX_READINGS
 
     TYPE = MsgType.OBSERVATION
-    _S = struct.Struct("<Ihhb HB 4B BBh")
+    MAX_READINGS = 2  # 5 + 9 + 2 * 8 + 10 = 40 B; more readings -> several Observations
+    _S = struct.Struct("<IhhB")  # t, x, y, mode
+    # per reading: sensor (3 bits) | bearing (13 bits), sigma, P(drone, vehicle, train), level;
+    # P(nothing) is what the three leave (all producers' class_probs sum to 1)
+    _R = struct.Struct("<HB3Bh")
 
 
 @dataclass(frozen=True)
@@ -187,6 +198,16 @@ def _q_prob(p: float) -> int:
     return _clamp(p * 255.0, 0, 255)
 
 
+BEARING_STEPS = 8190  # 13-bit bearing: 0.044 deg; NO_BEARING marks NaN (RF, camera "nothing")
+NO_BEARING = 0x1FFF
+
+
+def _q_bearing(b: float) -> int:
+    if math.isnan(b):
+        return NO_BEARING
+    return _clamp((b % 360.0) / 360.0 * BEARING_STEPS, 0, BEARING_STEPS) % BEARING_STEPS
+
+
 # ---------------------------------------------------------------------------------------------
 # Encode / decode
 # ---------------------------------------------------------------------------------------------
@@ -198,19 +219,22 @@ def _tag(key: bytes, signed: bytes) -> bytes:
 
 def _payload(msg: Message) -> bytes:
     if isinstance(msg, Observation):
-        nan = msg.bearing != msg.bearing
-        return Observation._S.pack(
+        if not 1 <= len(msg.readings) <= Observation.MAX_READINGS:
+            raise ValueError(f"an Observation holds 1..{Observation.MAX_READINGS} readings")
+        out = Observation._S.pack(
             _ms(msg.t),
             _clamp(msg.x, -32768, 32767),
             _clamp(msg.y, -32768, 32767),
-            _clamp(msg.pos_sigma, 0, 127),
-            0xFFFF if nan else _clamp((msg.bearing % 360.0) * 100.0, 0, 35999),
-            _clamp(msg.bearing_sigma * 2.0, 0, 255),
-            *(_q_prob(p) for p in msg.class_probs),
-            int(msg.sensor),
             int(msg.mode),
-            _clamp(msg.level * 100.0, -32768, 32767),
         )
+        for r in msg.readings:
+            out += Observation._R.pack(
+                int(r.sensor) << 13 | _q_bearing(r.bearing),
+                _clamp(r.bearing_sigma * 2.0, 0, 255),
+                *(_q_prob(p) for p in r.class_probs[:3]),
+                _clamp(r.level * 100.0, -32768, 32767),
+            )
+        return out
     if isinstance(msg, Track):
         return Track._S.pack(
             _ms(msg.t),
@@ -279,13 +303,21 @@ def decode(frame: bytes, key: bytes) -> Message:
 
 def _unpack(mtype: MsgType, header: Header, p: bytes) -> Message:
     if mtype is MsgType.OBSERVATION:
-        t, x, y, ps, b, bs, c0, c1, c2, c3, sensor, mode, lvl = Observation._S.unpack(p)
-        return Observation(
-            header, t / 1000.0, float(x), float(y), float(ps),
-            float("nan") if b == 0xFFFF else b / 100.0, bs / 2.0,
-            (c0 / 255.0, c1 / 255.0, c2 / 255.0, c3 / 255.0),
-            Sensor(sensor), Mode(mode), lvl / 100.0,
-        )
+        n, rest = divmod(len(p) - Observation._S.size, Observation._R.size)
+        if n < 1 or rest:
+            raise BadFrame(f"Observation payload of {len(p)} B")
+        t, x, y, mode = Observation._S.unpack_from(p)
+        readings = []
+        for i in range(n):
+            sb, bs, c0, c1, c2, lvl = Observation._R.unpack_from(
+                p, Observation._S.size + i * Observation._R.size)
+            b = sb & 0x1FFF
+            probs = (c0 / 255.0, c1 / 255.0, c2 / 255.0)
+            readings.append(SensorReading(
+                Sensor(sb >> 13), float("nan") if b == NO_BEARING else b * 360.0 / BEARING_STEPS,
+                bs / 2.0, (*probs, max(0.0, 1.0 - sum(probs))), lvl / 100.0,
+            ))
+        return Observation(header, t / 1000.0, float(x), float(y), Mode(mode), tuple(readings))
     if mtype is MsgType.TRACK:
         t, tid, x, y, a, b, ang, cls, conf, status, strength = Track._S.unpack(p)
         return Track(

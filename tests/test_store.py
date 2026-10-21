@@ -33,14 +33,23 @@ def test_the_digest_follows_seqs_across_the_wrap():
 
 
 def test_one_hop_frames_are_not_healed():
-    from earshot.messages import Mode, Observation, Sensor, TargetClass, Track, TrackStatus
+    from earshot.messages import (
+        Mode,
+        Observation,
+        Sensor,
+        SensorReading,
+        TargetClass,
+        Track,
+        TrackStatus,
+    )
 
     def track(seq, status):
         return encode(Track(Header(2, seq, 1), 1.0, 9, 0.0, 0.0, 50.0, 20.0, 0.0,
                             TargetClass.VEHICLE, 0.9, status, 5.0), KEY)
 
-    obs = encode(Observation(Header(2, 5, 1), 1.0, 0.0, 0.0, 2.0, 10.0, 5.0, (0.9, 0.0, 0.0, 0.1),
-                             Sensor.SOUND, Mode.LISTEN, 40.0), KEY)
+    obs = encode(Observation(Header(2, 5, 1), 1.0, 0.0, 0.0, Mode.LISTEN,
+                             (SensorReading(Sensor.SOUND, 10.0, 5.0, (0.9, 0.0, 0.0, 0.1), 40.0),)),
+                 KEY)
     store = MessageStore(0, KEY)
     store.receive(track(3, TrackStatus.SUSPECTED), 0.0, t=0.0)
     store.receive(obs, 0.0, t=0.0)

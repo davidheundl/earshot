@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, replace
 
-from earshot.messages import Mode, Sensor, TargetClass
+from earshot.messages import Mode, SensorReading, TargetClass  # SensorReading: radio contract
 
 
 @dataclass(frozen=True)
@@ -32,17 +32,6 @@ class DroneState:
     battery: float  # 0..1
     motor_rpm: float  # 0 when perched; drives the ego-noise model
     camera_on: bool
-
-
-@dataclass(frozen=True)
-class SensorReading:
-    """One measurement before it becomes a radio Observation."""
-
-    sensor: Sensor
-    bearing: float  # degrees; NaN when the sensor gives no direction (RF)
-    bearing_sigma: float
-    class_probs: tuple[float, float, float, float]  # indexed by TargetClass
-    level: float  # dB (sound level or RF received power)
 
 
 @dataclass(frozen=True)

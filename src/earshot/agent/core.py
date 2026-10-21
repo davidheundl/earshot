@@ -96,17 +96,18 @@ class Agent:
         for frame, margin in inbox:
             self._absorb(self.store.receive(frame, margin, t, (s.x, s.y)), t, outbox)
 
-        # 2. own sensors -> Observations (Evidence)
+        # 2. own sensors -> Observations (Evidence): a window's readings share their frames
+        fresh = []
         for r in sensed.readings:
             last = self._last_obs.get(r.sensor, -1e9)
             if last != t and t - last < OBS_MIN_INTERVAL - OBS_SLACK:
                 continue  # same-tick readings are different sources; across ticks: <= 1 Hz
             self._last_obs[r.sensor] = t
-            hops = TRACK_HOPS if self.scheme != "ours" else OBS_HOPS  # baselines flood Evidence
-            obs = Observation(
-                self._next_header(hops), t, s.x, s.y, 2.0, r.bearing, r.bearing_sigma,
-                r.class_probs, r.sensor, s.mode, r.level,
-            )
+            fresh.append(r)
+        hops = TRACK_HOPS if self.scheme != "ours" else OBS_HOPS  # baselines flood Evidence
+        for i in range(0, len(fresh), Observation.MAX_READINGS):
+            obs = Observation(self._next_header(hops), t, s.x, s.y, s.mode,
+                              tuple(fresh[i:i + Observation.MAX_READINGS]))
             self.belief.add_evidence(obs, t)
             self._emit(obs, outbox)
 
