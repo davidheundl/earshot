@@ -38,7 +38,11 @@ log = logging.getLogger(__name__)
 
 LANDUSE_RGB = {"meadow": (118, 150, 84), "field": (178, 168, 104), "forest": (52, 84, 52),
                "urban": (128, 128, 122), "water": (64, 104, 140), "road": (70, 70, 72),
-               "rail": (110, 96, 80), "industrial": (140, 140, 138)}
+               "rail": (110, 96, 80), "industrial": (140, 140, 138),
+               # bushveld (tools/make_savanna.py)
+               "grass": (186, 160, 98), "bush": (140, 132, 76), "thicket": (88, 100, 54),
+               "riverine": (58, 88, 46), "sand": (204, 186, 140), "rock": (128, 116, 106),
+               "track": (166, 112, 76), "camp": (176, 148, 112)}
 
 
 def basemap(city_json: dict, city_dir: Path) -> bytes | None:

@@ -324,3 +324,29 @@ def test_of_two_followers_the_farther_one_yields():
     d = p.decide(8.1, _near(-150.0, -40.0, 8.1), [_track(V, status=TrackStatus.CONFIRMED)],
                  Belief(CITY), near)
     assert [e["kind"] for e in d.events] == ["outbid"] and p._task is None
+
+
+def test_a_drone_does_not_bid_on_a_task_beyond_max_verify_distance():
+    far = _track(V, x=900.0, y=900.0)  # ~1700 m from drone 0's roof
+    for limit, flies in ((1000.0, False), (3000.0, True)):
+        p = _policy(max_verify_distance=limit)
+        kinds = [e["kind"] for k in range(50) for e in p.decide(
+            k * 0.1, _perched(p, k * 0.1), [far], Belief(CITY), {}).events]
+        assert ("claim" in kinds) == flies
+
+
+def test_tracks_and_claims_are_relayed_only_near_their_place():
+    from earshot.agent.store import MessageStore
+    from earshot.messages import Claim, Track
+
+    key = b"k" * 16
+    track = encode(Track(Header(2, 1, 3), 1.0, 9, 3000.0, 0.0, 50.0, 20.0, 0.0, V, 0.9,
+                         TrackStatus.SUSPECTED, 5.0), key)
+    claim = encode(Claim(Header(2, 2, 3), 1.0, 9, 600.0, 10.0, 3000.0, 0.0), key)
+    for radius, here, relays in ((4000.0, (0.0, 0.0), 2), (2000.0, (0.0, 0.0), 0),
+                                 (2000.0, (2500.0, 0.0), 2), (math.inf, (-9000.0, 0.0), 2)):
+        store = MessageStore(0, key, relay_radius=radius)
+        store.receive(track, 0.0, 0.0, here)
+        store.receive(claim, 0.0, 0.0, here)
+        assert len(store.due(5.0)) == relays, (radius, here)
+

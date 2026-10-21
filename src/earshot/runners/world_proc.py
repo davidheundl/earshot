@@ -4,12 +4,13 @@
     (backend webots: start via `earshot live --backend webots`, which sets the Webots env;
     backend gazebo: via `earshot live --backend gazebo`, which starts the Gazebo bridge)
 
-Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot) to radio + dashboard;
+Publishes "tick.<id>." (Sensed) to each agent and "state." (snapshot, with the Threat Log's
+entries) to radio + dashboard;
 with --audio also "audio." (each drone's newest 1 s of microphone sound) to the dashboard.
 Pulls commands + telemetry from agents (a drone without a fresh command keeps its last one)
 and operator events from the dashboard ({"op": ...}, see earshot/scenario.py). Every event
 that took effect is appended to runs/live-<time>.events.jsonl, replayable with
-`earshot fast --events <file>`.
+`earshot fast --events <file>`; the Threat Log goes to runs/live-<time>.threats.jsonl.
 
 The scripted Scenario ends after its `duration`; the live world keeps running (Sources end
 as scripted, the swarm and operator Events go on) until stopped, or for --duration seconds.
@@ -31,6 +32,7 @@ from earshot.city import City
 from earshot.runners.wire import command_from_dict, pack, sensed_to_dict, topic, unpack
 from earshot.scenario import Scenario
 from earshot.sensors import build_perception
+from earshot.threat_log import PATH_SHOWN, ThreatLog
 from earshot.world import World
 
 SAME_INTRUDER_M = 150.0  # Confirmed points this close count as one intruder (belief's follow radius)
@@ -138,8 +140,11 @@ def main(argv=None) -> None:
     telemetry: dict = {}
     decisions: list[dict] = []
     counts = VerifyCounts()
+    threats = ThreatLog(scenario.threat.name)
     events_path = Path("runs") / time.strftime("live-%Y%m%d-%H%M%S.events.jsonl")
     events_file = None  # created on the first live event, so idle runs leave no file
+    threats_path = events_path.with_name(events_path.name.replace(".events.", ".threats."))
+    threats_file = None  # created on the first Threat Log line
     logged = 0
 
     def _stop(*_):
@@ -181,13 +186,26 @@ def main(argv=None) -> None:
                     commands[msg["id"]] = command_from_dict(msg["command"])
                     telemetry[msg["id"]] = msg["telemetry"]
                     for d in msg.get("events", []):
-                        decisions.append(d)
+                        if d.get("kind") != "following":  # once a second: the Threat Log has it
+                            decisions.append(d)
                         counts.add(d)
+                        threats.add(d)
                     del decisions[:-50]  # the screens show the last 12
                 except Exception as e:  # noqa: BLE001 - a bad message must not stop the world
                     print(f"[world] ignored message: {type(e).__name__}: {e}", file=sys.stderr,
                           flush=True)
             sensed = world.step(commands)
+            threats.look(world.detections)
+            for line in threats.lines():
+                if threats_file is None:
+                    threats_path.parent.mkdir(exist_ok=True)
+                    threats_file = open(threats_path, "a")  # noqa: SIM115 - process lifetime
+                threats_file.write(json.dumps(line) + "\n")
+                threats_file.flush()
+                if line["event"] != "following":
+                    print(f"[threat] t={line['t']:.0f} {line['id']} {line['event']}: "
+                          f"{line['label']} at {line['x']:.0f}, {line['y']:.0f} "
+                          f"(drone {line['drone']})", flush=True)
             for ev in world.applied[logged:]:
                 if ev.get("live"):  # scripted and replayed events are not recorded again
                     if events_file is None:
@@ -207,6 +225,8 @@ def main(argv=None) -> None:
                 snap["camera"] = world.camera_preview()
             snap["decisions"] = decisions[-12:]
             snap["counts"] = counts.as_dict()
+            snap["threat"] = scenario.threat.name
+            snap["threats"] = threats.entries(PATH_SHOWN)[-12:]
             pub.send_multipart([topic("state"), pack(snap)])
             if hasattr(backend, "view_frames"):  # main view every tick (10 Hz), tiles every 2nd
                 tick = round(world.t / scenario.dt)
@@ -224,6 +244,9 @@ def main(argv=None) -> None:
         if events_file is not None:
             events_file.close()
             print(f"[world] recorded live events to {events_path}", flush=True)
+        if threats_file is not None:
+            threats_file.close()
+            print(f"[world] Threat Log: {threats_path}", flush=True)
         print("[world] stopped", flush=True)
 
 

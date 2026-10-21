@@ -20,6 +20,7 @@ from earshot.city import City
 from earshot.radio.medium import RadioConfig, RadioMedium
 from earshot.scenario import Scenario
 from earshot.state import PolicyParams, SwarmConfig
+from earshot.threat_log import ThreatLog
 from earshot.world import World
 
 
@@ -36,6 +37,7 @@ class RunResult:
     busy_max: int = 0  # most drones away from their default post (settled task) at once
     spread: list = None  # per second: (t, max distance between drones' top Suspicion | None)
     jams: list = None  # [(start, end)] of the run's jam zones
+    threats: list = None  # the Threat Log's entries (threat_log.ThreatLog)
 
 
 def build(scenario: Scenario, root: Path = Path("."), audio=None):
@@ -47,15 +49,17 @@ def build(scenario: Scenario, root: Path = Path("."), audio=None):
     )
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
                                    scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(scenario.params), scenario.threat)
+                                   PolicyParams.from_dict(scenario.params), scenario.threat,
+                                   float(scenario.radio.get("relay_radius_m", "inf")))
     agents = {d.id: Agent(d.id, city, config.KEY, swarm) for d in scenario.drones}
     return city, world, radio, agents
 
 
 def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
         audio=None, audio_out=None) -> RunResult:
-    """Run one scenario. With `log`, writes 1 Hz snapshots to `log` and every sensor
-    detection with its true source to `<log stem>.detections.jsonl`. With `audio`
+    """Run one scenario. With `log`, writes 1 Hz snapshots to `log`, every sensor
+    detection with its true source to `<log stem>.detections.jsonl` and the Threat Log to
+    `<log stem>.threats.jsonl`. With `audio`
     (sensors.Audio), sound is rendered as waveforms; `audio_out` (sensors.export.AudioExport)
     then writes them."""
     _, world, radio, agents = build(scenario, root, audio)
@@ -65,6 +69,10 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
     steps = round(scenario.duration / scenario.dt)
     log_every = round(1.0 / scenario.dt)  # 1 Hz
     det_log = log.with_name(log.stem + ".detections.jsonl") if log else None
+    threat_path = log.with_name(log.stem + ".threats.jsonl") if log else None
+    if threat_path and threat_path.exists():
+        threat_path.unlink()  # appended line by line below
+    threats = ThreatLog(scenario.threat.name)
     events: list[dict] = []
     busy_max = 0
     spread: list[tuple[float, float | None]] = []
@@ -82,6 +90,9 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
                 outgoing[did] = out.outbox
                 telemetry[did] = out.telemetry
                 events.extend(out.events)
+                for ev in out.events:
+                    threats.add(ev)
+            threats.look(world.detections)
             inbox = radio.step(t, world.positions(), outgoing, scenario.jam_zones(t))
             busy_max = max(busy_max, sum(1 for tm in telemetry.values()
                                          if tm.get("task") and tm["task"]["settled"]))
@@ -96,13 +107,17 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
                 snap = world.snapshot(_strip(telemetry))
                 snap["radio"] = radio.stats()
                 fh.write(json.dumps(snap) + "\n")
+            lines = threats.lines()
+            if threat_path and lines:
+                with open(threat_path, "a") as th:
+                    th.writelines(json.dumps(x) + "\n" for x in lines)
     truth = [{"id": s.id, "cls": s.cls.name, "start": s.start, "end": s.end,
               "path": [list(p) for p in s.path], "intruder": s.intruder,
               **({"kind": s.kind} if s.kind else {})} for s in scenario.sources]
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
     jams = [(j.start, j.end) for j in scenario.jamming]
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
-                     events, truth, battery, busy_max, spread, jams)
+                     events, truth, battery, busy_max, spread, jams, threats.entries())
 
 
 def _spread(agents) -> float | None:

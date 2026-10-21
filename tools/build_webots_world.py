@@ -14,6 +14,13 @@ The look (ADR 0005 superseded: the venue has WLAN, Webots fetches PROTO assets o
   wagons, and a rooftop fan unit as Sources
 Assets go to <world>_assets/ next to the world; a hash skips rebuilding when nothing changed.
 A City without terrain (the flat test city) gets the same look on flat ground.
+
+A City with `biome: savanna` (tools/make_savanna.py) is drawn as bushveld instead: golden
+grass and thornveld, flat-crowned acacias, shrubs and riverine trees, boulders on the kopjes,
+red dirt tracks as draped strips (`road_surfaces`), steel lookout towers, a clear sky. Its
+Sources get a model by their `kind`, all from primitives (no PROTO to download): elephants,
+giraffes, rhinos, buffalo, zebras, impala, lions and hyenas, a herd as several animals, and
+pickups in the colours of poachers, rangers and a game drive.
 """
 
 from __future__ import annotations
@@ -49,7 +56,9 @@ EXTERNPROTOS = [
     "vehicles/protos/generic/TruckSimple.proto",
 ]
 LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial",
-           "runway", "taxiway", "apron"]  # the last three: airfields (tools/make_muc.py)
+           "runway", "taxiway", "apron",  # airfields (tools/make_muc.py)
+           "grass", "bush", "thicket", "riverine", "sand", "rock", "track", "camp"]  # bushveld
+#           (tools/make_savanna.py); a City's raster ids index this list
 TEXTURE_PX = 2048
 TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
 INTRUDER_RGB = (1.0, 0.15, 0.15)
@@ -133,6 +142,10 @@ def paint_ground(lu: np.ndarray, size_m: float) -> Image.Image:
         "industrial": (150, 150, 146), "water": (52, 82, 100), "road": (72, 72, 74),
         "rail": (108, 98, 86), "field": (0, 0, 0), "runway": (96, 96, 98),
         "taxiway": (128, 128, 126), "apron": (150, 150, 146),
+        # bushveld: dry golden grass, olive thornveld, red earth
+        "grass": (150, 128, 76), "bush": (114, 106, 62), "thicket": (72, 78, 42),
+        "riverine": (52, 68, 36), "sand": (176, 156, 116), "rock": (112, 102, 92),
+        "track": (132, 86, 58), "camp": (146, 118, 88),
     }
     rgb = np.zeros((n, n, 3))
     for name, col in base.items():
@@ -148,22 +161,24 @@ def paint_ground(lu: np.ndarray, size_m: float) -> Image.Image:
     field = cls == LANDUSE.index("field")
     rgb[field] = crops[pid[field]] * (1 + rows[field])[:, None]
     # variation: large-scale tint and fine grain, stronger on vegetation
-    veg = np.isin(cls, [LANDUSE.index(c) for c in ("meadow", "forest", "field")])
+    veg = np.isin(cls, [LANDUSE.index(c) for c in ("meadow", "forest", "field", "grass", "bush",
+                                                       "thicket", "riverine")])
     rgb *= (1 + np.where(veg, 0.22, 0.08)[..., None] * noise[..., None])
     rgb *= (1 + np.where(veg, 0.10, 0.05)[..., None] * fine[..., None])
     img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8))
     return img.filter(ImageFilter.GaussianBlur(0.6))
 
 
-def paint_outer(n_px=2048) -> Image.Image:
-    """Distant land: a fine forest / meadow / field mosaic, soft so the haze carries it."""
+def paint_outer(n_px=2048, biome: str = "temperate") -> Image.Image:
+    """Distant land: a fine forest / meadow / field mosaic (bushveld: thornveld, grass, dry
+    pans), soft so the haze carries it."""
     def noise(cells):
         return np.array(Image.fromarray((rng.random((cells, cells)) * 255).astype(np.uint8))
                         .resize((n_px, n_px), Image.BICUBIC), dtype=float) / 255
     mix = 0.6 * noise(256) + 0.4 * noise(64)
-    forest = np.array((70, 92, 58), float)
-    meadow = np.array((122, 148, 88), float)
-    field = np.array((160, 156, 104), float)
+    forest = np.array((70, 92, 58) if biome != "savanna" else (88, 90, 54), float)
+    meadow = np.array((122, 148, 88) if biome != "savanna" else (142, 124, 78), float)
+    field = np.array((160, 156, 104) if biome != "savanna" else (160, 144, 108), float)
     t = np.clip((mix - 0.45) / 0.15, 0, 1)[..., None]
     rgb = meadow * (1 - t) + forest * t
     fields = (noise(128) > 0.62)[..., None] & (t < 0.5)
@@ -310,6 +325,222 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False,
         m.write(path)
         out.append((name, path.name))
     return out
+
+
+# -- bushveld (City biome: savanna, tools/make_savanna.py) -------------------------------------
+
+SAVANNA_TREES = (("grass", 0.006), ("bush", 0.04), ("thicket", 0.3), ("riverine", 0.55),
+                 ("rock", 0.05), ("camp", 0.005))  # share of the 9.5 m grid points with a plant
+SAVANNA_TREE_RGB = {"acacia": (0.33, 0.39, 0.17), "acacia_dry": (0.46, 0.43, 0.22),
+                    "shrub": (0.30, 0.33, 0.15), "riverine": (0.17, 0.29, 0.12),
+                    "boulder": (0.50, 0.46, 0.42), "trunk": (0.30, 0.24, 0.18)}
+
+
+def savanna_trees(lu: np.ndarray, city: City, assets: Path) -> list[tuple[str, str]]:
+    """Bushveld plants, merged per species and TREE_TILE like `trees`: flat-crowned acacias
+    over grass and thornveld, shrubs in the thickets, tall riverine trees along the river,
+    boulders on the kopjes."""
+    x0, y0, x1, y1 = city.bounds
+    nrow, ncol = lu.shape[:2]
+    spacing = 9.5
+    gx, gy = np.meshgrid(np.arange(x0 + 5, x1 - 5, spacing), np.arange(y0 + 5, y1 - 5, spacing))
+    gx = gx + rng.uniform(-0.45, 0.45, gx.shape) * spacing
+    gy = gy + rng.uniform(-0.45, 0.45, gy.shape) * spacing
+    col = np.clip(((gx - x0) / (x1 - x0) * ncol).astype(int), 0, ncol - 1)
+    row = np.clip(((1 - (gy - y0) / (y1 - y0)) * nrow).astype(int), 0, nrow - 1)
+    cls = lu[row, col]
+    keep_p = np.zeros(len(LANDUSE))
+    for name, p in SAVANNA_TREES:
+        keep_p[LANDUSE.index(name)] = p
+    keep = rng.random(cls.shape) < keep_p[cls]
+    xs, ys, ks = gx[keep], gy[keep], cls[keep]
+    if city.buildings and len(xs):  # nothing grows in a hut or under a tower
+        tree = STRtree([b.footprint.buffer(4) for b in city.buildings])
+        idx = tree.query([Point(x, y) for x, y in zip(xs, ys, strict=True)], predicate="intersects")
+        inside = np.zeros(len(xs), bool)
+        inside[idx[0]] = True
+        xs, ys, ks = xs[~inside], ys[~inside], ks[~inside]
+    zs = np.atleast_1d(city.ground(xs, ys)) if len(xs) else np.array([])
+    rock, riverine, thicket = (LANDUSE.index(n) for n in ("rock", "riverine", "thicket"))
+    meshes: dict[tuple[str, int, int], Obj] = {}
+    for x, y, z, k in zip(xs, ys, zs, ks, strict=True):
+        tile = (int((x - x0) // TREE_TILE), int((y - y0) // TREE_TILE))
+        mesh = lambda name, tile=tile: meshes.setdefault((name, *tile), Obj())
+        if k == rock:
+            r = rng.uniform(1.2, 4.0)
+            mesh("boulder").add(*blob(x, y, z + 0.3 * r, r, 0.7 * r, fine=False))
+        elif k == riverine:
+            h = rng.uniform(13, 22)
+            mesh("riverine").add(*blob(x, y, z + 0.62 * h, h * rng.uniform(0.28, 0.36), h * 0.3))
+            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.45 * h, 0.35))
+        elif k == thicket and rng.random() < 0.6:
+            h = rng.uniform(2.0, 4.0)
+            mesh("shrub").add(*blob(x, y, z + 0.45 * h, 0.55 * h, 0.45 * h, fine=False))
+        else:  # umbrella thorn: a wide flat crown on a thin trunk
+            h = rng.uniform(5.0, 10.0)
+            name = "acacia" if rng.random() < 0.65 else "acacia_dry"
+            mesh(name).add(*blob(x, y, z + 0.84 * h, 0.55 * h * rng.uniform(0.8, 1.2), 0.12 * h))
+            mesh("trunk").add(*trunk(x, y, z - 0.5, z + 0.82 * h, 0.16))
+    for old in assets.glob("trees_*.obj"):
+        old.unlink()
+    out = []
+    for (name, i, j), m in sorted(meshes.items()):
+        path = assets / f"trees_{name}_{i}_{j}.obj"
+        m.write(path)
+        out.append((name, path.name))
+    return out
+
+
+def dirt_tracks(city: City, raw: dict, assets: Path) -> list[tuple[str, str]]:
+    """Dirt and gravel roads (`road_surfaces`) as strips draped 0.25 m over the terrain, one
+    mesh per surface; a Road PROTO would paint lanes on a game track."""
+    widths = raw.get("road_widths", [8.0] * len(city.roads))
+    meshes: dict[str, Obj] = {}
+    for line, w, surface in zip(city.roads, widths, raw.get("road_surfaces", []), strict=False):
+        if surface not in ("dirt", "gravel"):
+            continue
+        pts = np.asarray(densify(list(line.coords), 8.0))
+        d = np.gradient(pts, axis=0)
+        n = np.stack([-d[:, 1], d[:, 0]], 1) / np.maximum(np.linalg.norm(d, axis=1), 1e-6)[:, None]
+        left, right = pts + n * w / 2, pts - n * w / 2
+        zl = np.atleast_1d(city.ground(left[:, 0], left[:, 1])) + 0.25
+        zr = np.atleast_1d(city.ground(right[:, 0], right[:, 1])) + 0.25
+        verts = np.empty((2 * len(pts), 3))
+        verts[0::2] = np.column_stack([left, zl])
+        verts[1::2] = np.column_stack([right, zr])
+        k = np.arange(len(pts) - 1) * 2
+        faces = np.concatenate([np.stack([k, k + 1, k + 2], 1), np.stack([k + 1, k + 3, k + 2], 1)])
+        meshes.setdefault(surface, Obj()).add(verts, faces)
+    out = []
+    for surface, m in meshes.items():
+        m.write(assets / f"tracks_{surface}.obj")
+        out.append((surface, f"tracks_{surface}.obj"))
+    return out
+
+
+TRACK_RGB = {"dirt": (0.58, 0.38, 0.25), "gravel": (0.64, 0.54, 0.42)}
+
+
+def tower(b: dict, k: int) -> str:
+    """A steel lookout tower with a plank platform just under the Perch Site (a perched drone's
+    pilot camera, 0.15 m below it, looks out over the edge, not into the planks)."""
+    fp = Polygon(b["footprint"])
+    c, z0, h = fp.centroid, b.get("base_z", 0.0), b["height"]
+    half = math.sqrt(fp.area) / 2 - 0.3
+    steel, wood = pbr((0.42, 0.40, 0.37), 0.6), pbr((0.46, 0.34, 0.22), 0.9)
+    parts = []
+    for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        parts.append(f"Pose {{ translation {sx * half:.2f} {sy * half:.2f} {(h - 0.4) / 2:.2f} children [ Shape {{ "
+                     f"appearance {steel} geometry Box {{ size 0.25 0.25 {h - 0.4:.2f} }} }} ] }}")
+    for zf in (0.35, 0.7):  # ring braces
+        for sx, sy, lx, ly in ((0, 1, 2 * half, 0.12), (0, -1, 2 * half, 0.12), (1, 0, 0.12, 2 * half), (-1, 0, 0.12, 2 * half)):
+            parts.append(f"Pose {{ translation {sx * half:.2f} {sy * half:.2f} {zf * h:.2f} children [ Shape {{ "
+                         f"appearance {steel} geometry Box {{ size {lx:.2f} {ly:.2f} 0.12 }} }} ] }}")
+    parts.append(f"Pose {{ translation 0 0 {h - 0.3:.2f} children [ Shape {{ appearance {wood} geometry Box {{ "
+                 f"size {2 * half + 0.4:.2f} {2 * half + 0.4:.2f} 0.2 }} }} ] }}")
+    return f"Pose {{ translation {c.x:.2f} {c.y:.2f} {z0:.2f} children [ {' '.join(parts)} ] }}"
+
+
+# Animals from primitives, x forward, feet at z = 0: body ellipsoids (x, y, z, rx, ry, rz) and
+# legs (x, y, radius, height) in the animal's colour, `accent` ellipsoids in a second colour
+# (stripes, horns).
+ANIMALS = {
+    "elephant": {"rgb": (0.42, 0.40, 0.38), "body": [(0, 0, 2.0, 1.8, 1.1, 1.2), (2.0, 0, 2.3, 0.75, 0.62, 0.72),
+                 (1.75, 0.72, 2.3, 0.12, 0.7, 0.62), (1.75, -0.72, 2.3, 0.12, 0.7, 0.62), (2.55, 0, 1.4, 0.16, 0.16, 0.85)],
+                 "legs": [(0.95, 0.55, 0.3, 1.5), (0.95, -0.55, 0.3, 1.5), (-0.95, 0.55, 0.3, 1.5), (-0.95, -0.55, 0.3, 1.5)]},
+    "giraffe": {"rgb": (0.78, 0.58, 0.33), "body": [(0, 0, 2.4, 1.1, 0.45, 0.55), (0.95, 0, 3.6, 0.28, 0.2, 1.2),
+                (1.35, 0, 4.85, 0.42, 0.16, 0.18)],
+                "legs": [(0.7, 0.25, 0.09, 2.1), (0.7, -0.25, 0.09, 2.1), (-0.7, 0.25, 0.09, 2.1), (-0.7, -0.25, 0.09, 2.1)]},
+    "rhino": {"rgb": (0.50, 0.47, 0.44), "body": [(0, 0, 1.15, 1.6, 0.8, 0.85), (1.7, 0, 0.95, 0.65, 0.38, 0.42),
+              (2.25, 0, 1.25, 0.1, 0.1, 0.32)],
+              "legs": [(0.9, 0.45, 0.22, 0.75), (0.9, -0.45, 0.22, 0.75), (-0.9, 0.45, 0.22, 0.75), (-0.9, -0.45, 0.22, 0.75)]},
+    "lion": {"rgb": (0.72, 0.56, 0.32), "body": [(0, 0, 0.75, 0.9, 0.3, 0.35), (0.95, 0, 0.95, 0.38, 0.36, 0.38)],
+             "legs": [(0.55, 0.18, 0.08, 0.6), (0.55, -0.18, 0.08, 0.6), (-0.55, 0.18, 0.08, 0.6), (-0.55, -0.18, 0.08, 0.6)]},
+    "hyena": {"rgb": (0.52, 0.45, 0.34), "body": [(0, 0, 0.68, 0.7, 0.24, 0.32), (0.75, 0, 0.82, 0.28, 0.2, 0.22)],
+              "legs": [(0.45, 0.15, 0.07, 0.6), (0.45, -0.15, 0.07, 0.6), (-0.45, 0.15, 0.07, 0.5), (-0.45, -0.15, 0.07, 0.5)]},
+    "buffalo": {"rgb": (0.17, 0.15, 0.14), "body": [(0, 0, 1.05, 1.25, 0.55, 0.6), (1.3, 0, 0.95, 0.42, 0.3, 0.32)],
+                "legs": [(0.75, 0.3, 0.12, 0.75), (0.75, -0.3, 0.12, 0.75), (-0.75, 0.3, 0.12, 0.75), (-0.75, -0.3, 0.12, 0.75)],
+                "accent": (0.36, 0.33, 0.29), "marks": [(1.35, 0.32, 1.2, 0.3, 0.12, 0.08), (1.35, -0.32, 1.2, 0.3, 0.12, 0.08)]},
+    "zebra": {"rgb": (0.9, 0.9, 0.88), "body": [(0, 0, 1.0, 0.95, 0.35, 0.42), (0.85, 0, 1.35, 0.22, 0.16, 0.42),
+              (1.15, 0, 1.6, 0.32, 0.14, 0.16)],
+              "legs": [(0.6, 0.2, 0.06, 0.85), (0.6, -0.2, 0.06, 0.85), (-0.6, 0.2, 0.06, 0.85), (-0.6, -0.2, 0.06, 0.85)],
+              "accent": (0.08, 0.08, 0.08), "marks": [(x, 0, 1.0, 0.06, 0.37, 0.44) for x in (-0.7, -0.35, 0.0, 0.35, 0.65)]
+              + [(0.88, 0, 1.55, 0.2, 0.05, 0.3)]},
+    "impala": {"rgb": (0.78, 0.52, 0.3), "body": [(0, 0, 0.85, 0.62, 0.22, 0.26), (0.55, 0, 1.1, 0.12, 0.1, 0.3),
+               (0.72, 0, 1.35, 0.2, 0.09, 0.1)],
+               "legs": [(0.42, 0.12, 0.035, 0.7), (0.42, -0.12, 0.035, 0.7), (-0.42, 0.12, 0.035, 0.7), (-0.42, -0.12, 0.035, 0.7)],
+               "accent": (0.12, 0.1, 0.08), "marks": [(0.7, 0.05, 1.6, 0.03, 0.03, 0.22), (0.7, -0.05, 1.6, 0.03, 0.03, 0.22)]},
+}
+ANIMALS["antelope"] = ANIMALS["impala"]
+HERD = {"elephant": 5, "buffalo": 8, "zebra": 6, "impala": 9, "antelope": 6, "lion": 4, "hyena": 4,
+        "giraffe": 3, "rhino": 1}
+VEHICLE_RGB = {"poacher": (0.16, 0.17, 0.15), "ranger": (0.36, 0.40, 0.27), "safari": (0.72, 0.64, 0.46)}
+
+
+def _ellipsoid(x, y, z, rx, ry, rz, look: str) -> str:
+    return (f"Pose {{ translation {x} {y} {z} children [ Transform {{ scale {rx} {ry} {rz} children [ Shape {{ "
+            f"appearance {look} geometry Sphere {{ radius 1 subdivision 2 }} castShadows FALSE }} ] }} ] }}")
+
+
+_animal_looks: set[str] = set()
+
+
+def _look(name: str, rgb, rough: float = 0.95) -> str:
+    """DEF a colour on first use in a world, USE it after that."""
+    if name in _animal_looks:
+        return f"USE {name}"
+    _animal_looks.add(name)
+    return f"DEF {name} {pbr(rgb, rough)}"
+
+
+def _animal(name: str) -> str:
+    a = ANIMALS[name]
+    parts = [_ellipsoid(*e, _look(f"LOOK_{name.upper()}", a["rgb"])) for e in a["body"]]
+    parts += [f"Pose {{ translation {x} {y} {h / 2} children [ Shape {{ appearance {_look(f'LOOK_{name.upper()}', a['rgb'])} "
+              f"geometry Cylinder {{ radius {r} height {h} subdivision 8 }} castShadows FALSE }} ] }}"
+              for x, y, r, h in a["legs"]]
+    parts += [_ellipsoid(*e, _look(f"MARK_{name.upper()}", a["accent"])) for e in a.get("marks", [])]
+    return " ".join(parts)
+
+
+def pickup(kind: str) -> str:
+    """A 4x4 pickup from boxes, x forward, wheels on the ground: cab, load bed, bull bar."""
+    rgb = next((v for k, v in VEHICLE_RGB.items() if k in kind.lower()), VEHICLE_RGB["poacher"])
+    paint = f"CAR_{'_'.join(f'{int(c * 100)}' for c in rgb)}"
+    body, dark, tyre = "body", "dark", "tyre"
+    looks = {"body": (paint, rgb, 0.45), "dark": ("CAR_GLASS", (0.05, 0.06, 0.07), 0.15),
+             "tyre": ("CAR_TYRE", (0.06, 0.06, 0.06), 0.9)}
+
+    def box(x, z, sx, sy, sz, look, y=0.0):
+        return (f"Pose {{ translation {x} {y} {z} children [ Shape {{ appearance {_look(*looks[look])} geometry "
+                f"Box {{ size {sx} {sy} {sz} }} castShadows FALSE }} ] }}")
+
+    parts = [box(0, 0.85, 5.0, 1.9, 0.55, body), box(0.75, 1.5, 2.0, 1.82, 0.8, body),
+             box(1.76, 1.52, 0.04, 1.7, 0.62, dark), box(0.75, 1.55, 1.7, 1.86, 0.5, dark),
+             box(-1.3, 1.25, 2.3, 0.08, 0.45, body, 0.91), box(-1.3, 1.25, 2.3, 0.08, 0.45, body, -0.91),
+             box(-2.45, 1.25, 0.08, 1.9, 0.45, body), box(2.55, 0.85, 0.12, 1.7, 0.5, dark)]
+    for wx in (1.55, -1.55):
+        for wy in (0.88, -0.88):
+            parts.append(f"Pose {{ translation {wx} {wy} 0.42 rotation 1 0 0 1.5708 children [ Shape {{ "
+                         f"appearance {_look(*looks[tyre])} geometry Cylinder {{ radius 0.42 height 0.32 "
+                         f"subdivision 12 }} castShadows FALSE }} ] }}")
+    return " ".join(parts)
+
+
+def herd(sid: str, kind: str) -> str | None:
+    """Children for a bushveld Source of this kind (a herd is spread over 20-40 m), or None."""
+    key = next((k for k in HERD if k in kind.lower()), None)
+    if key is None:
+        return None
+    many = any(w in kind.lower() for w in ("herd", "pride", "clan", "pack"))
+    n = HERD[key] if many else 1
+    r = np.random.default_rng(int(hashlib.sha256(sid.encode()).hexdigest()[:8], 16))
+    out = []
+    for i in range(n):
+        x, y = (0.0, 0.0) if i == 0 else (r.uniform(-1, 1) * 6 * math.sqrt(n), r.uniform(-1, 1) * 6 * math.sqrt(n))
+        yaw = r.uniform(-0.6, 0.6)
+        out.append(f"Pose {{ translation {x:.1f} {y:.1f} 0 rotation 0 0 1 {yaw:.2f} children [ {_animal(key)} ] }}")
+    return " ".join(out)
 
 
 def rail_meshes(city: City, assets: Path) -> None:
@@ -1237,7 +1468,7 @@ def building(b: dict, k: int) -> str:
         pts = pts[::-1]  # SimpleBuilding wants clockwise corners
     shape = b.get("roof", "flat roof")
     flat = shape == "flat roof"
-    material = "gravel" if flat else ("old tiles" if k % 3 == 0 else "tiled")
+    material = b.get("roof_material") or ("gravel" if flat else ("old tiles" if k % 3 == 0 else "tiled"))
     floors = int(b.get("floors", max(1, round(b["height"] / 3))))
     return (f'SimpleBuilding {{ translation {c.x:.2f} {c.y:.2f} {b.get("base_z", 0.0):.2f} name "bld{k}" '
             f'floorHeight {b.get("floor_height", 3.0)} floorNumber {floors} '
@@ -1361,14 +1592,25 @@ def wagon(def_name, name, k) -> str:
             f"recognitionColors [ 0.6 0.4 0.2 ] children [ {body} ] }}")
 
 
-def source_nodes(sid: str, cls: str, markers: bool) -> list[str]:
+def source_nodes(sid: str, cls: str, markers: bool, kind: str = "", biome: str = "temperate") -> list[str]:
+    """A Source's nodes. In the bushveld its `kind` picks the model: a herd of the animal it
+    names, a Range Rover in poacher, ranger or game-drive colours; live slots there are an
+    impala and a poacher's car."""
     if cls == "DRONE":
         return [intruder_drone(f"SRC_{sid}", f"src_{sid}", markers)]
     if cls == "VEHICLE":
+        if biome == "savanna" or any(k in kind.lower() for k in VEHICLE_RGB):
+            # the backend lifts VEHICLE Sources 0.5 m (SOURCE_Z): wheels down again
+            return [(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" recognitionColors '
+                     f"[ 1 0.6 0.1 ] children [ Pose {{ translation 0 0 -0.5 children [ {pickup(kind)} ] }} ] }}")]
         return [(f'DEF SRC_{sid} TruckSimple {{ translation 0 0 -100 name "src_{sid}" '
                 f"color 0.55 0.3 0.12 recognitionColors [ 1 0.6 0.1 ] }}")]
     if cls == "TRAIN":
         return [wagon(f"SRC_{sid}_w{k}", f"src_{sid}_w{k}", k) for k in range(TRAIN_WAGONS)]
+    animals = herd(sid, kind or ("impala" if biome == "savanna" else ""))
+    if animals is not None:  # the backend lifts NOTHING Sources 0.7 m (SOURCE_Z): feet down again
+        return [(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" recognitionColors [ 0.7 0.7 0.7 ] '
+                 f"children [ Pose {{ translation 0 0 -0.7 children [ {animals} ] }} ] }}")]
     return [(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" recognitionColors [ 0.7 0.7 0.7 ] '
             f"children [ Shape {{ appearance {pbr((0.62, 0.63, 0.64), 0.5)} geometry Box {{ size 2.4 1.6 1.4 }} }} "
             f"Pose {{ translation 0 0 0.75 children [ Shape {{ appearance {pbr((0.2, 0.2, 0.2), 0.5)} "
@@ -1380,6 +1622,7 @@ def source_nodes(sid: str, cls: str, markers: bool) -> list[str]:
 def build(scenario_path: str, out_path: str, markers: bool = True, force: bool = False) -> Path:
     sc = Scenario.load(scenario_path)
     _defined_quads.clear()  # DEF the drone models afresh in every world
+    _animal_looks.clear()
     city_file = Path(sc.city) if Path(sc.city).is_absolute() else ROOT / sc.city
     raw = json.loads(city_file.read_text())
     city = City(raw)
@@ -1401,6 +1644,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         return out
 
     x0, y0, x1, y1 = city.bounds
+    biome = raw.get("biome", "temperate")
     lu = landuse(raw, city_file.parent, city)
     photo = raw.get("ground_tiles")  # a real aerial photo instead of the painted land use
     aircraft, stands = stand_aircraft(raw, city, assets)
@@ -1428,8 +1672,12 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     osm_near, osm_far = [], []  # mapped trees: full detail near the City, cones further out
     for x, y in osm_trees(raw, city_file.parent):
         (osm_near if x0 - 1500 < x < x1 + 1500 and y0 - 1500 < y < y1 + 1500 else osm_far).append((x, y))
-    tree_tiles = trees(lu, city, assets, forest_only=bool(photo), extra=osm_near + ring_trees,
-                       far=far_trees + osm_far)
+    if biome == "savanna":
+        tree_tiles = savanna_trees(lu, city, assets)
+    else:
+        tree_tiles = trees(lu, city, assets, forest_only=bool(photo), extra=osm_near + ring_trees,
+                           far=far_trees + osm_far)
+    tracks = dirt_tracks(city, raw, assets)
     rail_meshes(city, assets)
 
     parts = ["#VRML_SIM R2025a utf8",
@@ -1437,15 +1685,17 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts += [f'EXTERNPROTO "{PROTO}/{p}"' for p in EXTERNPROTOS]
     span = max(x1 - x0, y1 - y0)
     cx = (x0 + x1) / 2
+    sky = "mountains" if biome == "savanna" else "noon_cloudy_countryside"  # HDR skies only
+    haze = (0.80, 0.77, 0.70) if biome == "savanna" else (0.78, 0.82, 0.87)
     parts += [
         'WorldInfo { info [ "Earshot" ] basicTimeStep 20 gravity 0 }',
         (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(0, 14)} position {cx:.0f} "
         f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} "
         f"far {14000 if raw.get('surround') else 25000}"  # with surroundings: only as far as the haze
         f"{' near 1' if photo else ''} }}"),
-        'TexturedBackground { texture "noon_cloudy_countryside" }',
-        'TexturedBackgroundLight { texture "noon_cloudy_countryside" castShadows FALSE }',
-        f"Fog {{ color 0.78 0.82 0.87 visibilityRange {1.5 * span:.0f} }}",
+        f'TexturedBackground {{ texture "{sky}" }}',
+        f'TexturedBackgroundLight {{ texture "{sky}" castShadows FALSE }}',
+        f"Fog {{ color {fmt(haze)} visibilityRange {1.5 * span:.0f} }}",
     ]
     if "terrain" in raw:
         t = raw["terrain"]
@@ -1454,7 +1704,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
                                f"{rel}/ground.png"))
         outer = outer_ring(raw, city)
         if outer is not None:
-            paint_outer().save(assets / "outer.png")
+            paint_outer(biome=biome).save(assets / "outer.png")
             to = raw["terrain_outer"]
             parts.append(elevation(to["origin"], to["spacing"], outer, f"{rel}/outer.png"))
     elif photo:  # flat city on its aerial photo, one textured plate per tile
@@ -1492,6 +1742,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     tree_rgb = {"conifer_dark": (0.10, 0.22, 0.12), "conifer": (0.14, 0.29, 0.14),
                 "broadleaf": (0.20, 0.36, 0.13), "broadleaf_light": (0.30, 0.42, 0.16),
                 "trunk": (0.30, 0.22, 0.15)}
+    if biome == "savanna":
+        tree_rgb |= SAVANNA_TREE_RGB
     defined = set()  # one appearance per species, shared by its tiles
     for name, file in tree_tiles:
         look = f"USE TREE_{name}" if name in defined else f"DEF TREE_{name} {pbr(tree_rgb[name])}"
@@ -1501,11 +1753,16 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         parts += [mesh_shape(f"{rel}/rail_ballast.obj", (0.42, 0.38, 0.34), 1.0),
                   mesh_shape(f"{rel}/rail_sleepers.obj", (0.28, 0.2, 0.14), 1.0),
                   mesh_shape(f"{rel}/rail_steel.obj", (0.55, 0.55, 0.58), 0.3)]
+    for surface, file in tracks:  # dirt and gravel: draped strips, not Road PROTOs
+        parts.append(mesh_shape(f"{rel}/{file}", TRACK_RGB[surface], 1.0))
     widths = raw.get("road_widths", [8.0] * len(city.roads))
+    surfaces = raw.get("road_surfaces", [])
     town_discs = [Point(t["x"], t["y"]).buffer(t["r"]) for t in raw.get("towns", [])]
     for k, (r, wdt) in enumerate(zip(city.roads, widths, strict=True)):
         if photo:
             break  # the photo shows the roads
+        if k < len(surfaces) and surfaces[k] in ("dirt", "gravel"):
+            continue
         mid = r.interpolate(0.5, normalized=True)
         parts.append(road(list(r.coords), wdt, city, k, any(d.contains(mid) for d in town_discs)))
     if meshes:
@@ -1525,7 +1782,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
                              f"castShadows FALSE }}")
     else:
         for k, b in enumerate(raw["buildings"]):
-            parts.append(building(b, k))
+            parts.append(tower(b, k) if b.get("kind") == "tower" else building(b, k))
     looks = set()  # one appearance per material, DEF on first use
     for prefix, files, look_of in (("AC", aircraft, aircraft_look), ("PROP", props, prop_look)):
         for name, file in files:
@@ -1537,15 +1794,16 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     for d in sc.drones:
         z = float(city.ground(d.x, d.y)) + 40.0
         parts.append(swarm_drone(f"DRONE_{d.id}", f"drone_{d.id}", d.x, d.y, z))
-    slots = [(s.id, s.cls.name) for s in sc.sources] + [
-        (live_slot(c, k), c) for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(WEBOTS_LIVE_SLOTS)]
-    for sid, cls in slots:
-        parts += source_nodes(sid, cls, markers)
+    slots = [(s.id, s.cls.name, s.kind) for s in sc.sources] + [
+        (live_slot(c, k), c, "") for c in ("DRONE", "VEHICLE", "TRAIN", "NOTHING") for k in range(WEBOTS_LIVE_SLOTS)]
+    for sid, cls, kind in slots:
+        parts += source_nodes(sid, cls, markers, kind, biome)
     # the RIG stays at the origin; its child Solids carry the cameras and are moved by the
     # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
     # a trained detector needs pixels: the Scenario's camera.resolution (1280x768 sees a drone
     # at 30-60 m, data/cv/verifier-highres-20261015/REPORT.md); 400x240 is enough to recognise
     rig_w, rig_h = sc.camera.get("resolution", (400, 240))
+    reach = max(100.0, float(sc.camera.get("range", 0.0)))  # what the camera stand-in recognises
     views = " ".join(
         f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
         f'width {854 if k == 0 else 384} height {480 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
@@ -1554,7 +1812,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts.append(
         'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
         'children [ DEF CAMV Solid { translation 0 0 -100 name "camv" children [ Camera { name "camera" '
-        f"width {rig_w} height {rig_h} fieldOfView 1.0 far 3000 recognition Recognition {{ maxRange 100 "
+        f"width {rig_w} height {rig_h} fieldOfView 1.0 far 3000 recognition Recognition {{ maxRange {reach:g} "
         f"segmentation TRUE }} }} ] }} {views} ] }}"
     )
     out.write_text("\n".join(parts) + "\n")

@@ -61,7 +61,7 @@ class Agent:
         self.key = key
         self.city = city
         self.scheme = swarm.radio_scheme
-        self.store = MessageStore(me, key, swarm.radio_scheme)
+        self.store = MessageStore(me, key, swarm.radio_scheme, swarm.relay_radius)
         self.threat = swarm.threat
         self.belief = Belief(city, cell=swarm.map_cell, threat=swarm.threat)
         self.policy = Policy(me, city, swarm)
@@ -94,7 +94,7 @@ class Agent:
 
         # 1. radio in
         for frame, margin in inbox:
-            self._absorb(self.store.receive(frame, margin, t), t, outbox)
+            self._absorb(self.store.receive(frame, margin, t, (s.x, s.y)), t, outbox)
 
         # 2. own sensors -> Observations (Evidence)
         for r in sensed.readings:

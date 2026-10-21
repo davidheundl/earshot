@@ -167,6 +167,8 @@ class Policy:
                 continue
             if tr.cls != self.swarm.threat or tr.status != TrackStatus.SUSPECTED:
                 continue  # Explained: not every alarm deserves a drone
+            if math.hypot(tr.x - s.x, tr.y - s.y) > self.p.max_verify_distance:
+                continue  # a nearer drone is there, though its Claim may not reach me
             # one Verifier per Suspicion and nobody else moves: the other drones hold their
             # posts to catch further dangers (no listening tasks)
             if (tr.confidence >= self.p.verify_min_confidence

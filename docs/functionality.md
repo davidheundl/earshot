@@ -146,6 +146,8 @@ One per drone, a grid of `map_cell` metres (20 m default, 25 m in Munich) over t
 
 **Baselines** (`SwarmConfig.policy`): `nearest` verifies every non-confirmed Track of any class above `verify_min_confidence`, no strength gate, no explaining away; `no_perch` never perches.
 
+A drone bids on no task further than `max_verify_distance` (off by default; 3 km in the Reserve, where Claims lost on a busy channel otherwise sent drones across the map).
+
 Tunable numbers are `state.PolicyParams` (`state.py:66-88`): `verify_min_strength` 4, `verify_min_confidence` 0.5, `top_suspicions` 2, `confirmed_shadow` 200 m, `settle` 3 s, `same_task_radius` 200 m, `arrive` 60 m, `dismiss_after` 8 s, `outbid_cooldown` 5 s, `verify_timeout` 90 s. A Scenario's `params:` or `--params FILE` overrides them.
 
 ## 5. Radio
@@ -173,7 +175,7 @@ Quantisation: positions 1 m, bearing 0.01°, bearing σ 0.5°, probabilities 1/2
 - Shadowing σ 6 dB, drawn once per (frame, receiver), so a link has the same power as wanted frame and as interferer (`medium.py:191-198`).
 - A frame is lost if either end is in a Jam Zone, the receiver was transmitting during the overlap, it is below sensitivity, or it does not beat the summed power of all overlapping frames by 6 dB (capture, `medium.py:200-238`). `margin_db` (power above sensitivity) goes to the receiver.
 
-**Relaying** (`agent/store.py:39-46, 82-129`), scheme `ours`: a receiver that heard the frame more than 20 dB above sensitivity does not relay (the sender is close). Others wait 0.05 s + 1.2 s × (margin / 30 dB) + 0.01 s × id, so far receivers relay first. Anyone who hears the relay before its own turn cancels. `flood` relays at once; `unicast3` sends every frame three times.
+**Relaying** (`agent/store.py:39-46, 82-129`), scheme `ours`: a receiver that heard the frame more than 20 dB above sensitivity does not relay (the sender is close). Others wait 0.05 s + 1.2 s × (margin / 30 dB) + 0.01 s × id, so far receivers relay first. Anyone who hears the relay before its own turn cancels. `flood` relays at once; `unicast3` sends every frame three times. With a Scenario's `radio.relay_radius_m` (the Reserve: 4 km) a Track or Claim is relayed only by drones within that distance of its place (healing still resends it: holding that back too lost poachers in the evaluation).
 
 **Healing** (`store.py`): a Digest lists the newest seq held per origin (own frames included) of the frames worth healing, Claims and Tracks that are not Explained (Observations and Explained Tracks go one hop: a drone out of their range never gets them and must not keep asking), compared modulo 65536 (`seq_newer`): seqs wrap after 65536 frames, about 55 min at 20 frames/s. The store forgets frames after `HORIZON` (600 s), so a wrapped seq is a new frame, not a duplicate, and memory stays bounded in a run that goes on for hours. A receiver missing some sends a Request for at most 20 seqs, at most once per origin per 30 s. Holders resend up to 5 of the newest Tracks/Claims in that range, 1 hop, each frame at most once per 10 s, staggered by id so one answers and the others overhear.
 

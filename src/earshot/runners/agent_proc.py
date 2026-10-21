@@ -61,7 +61,8 @@ def main(argv=None) -> None:
         params.update(d.get("params", d))
     swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
                                    scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(params), scenario.threat)
+                                   PolicyParams.from_dict(params), scenario.threat,
+                                   float(scenario.radio.get("relay_radius_m", "inf")))
     agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()

@@ -1,6 +1,6 @@
 # Earshot
 
-A swarm of cheap drones that perch on flat roofs to listen, fuse sound and RF energy into a shared probability map of threats, and decide among themselves who flies out to verify with a camera.
+A swarm of cheap drones that perch on flat roofs to listen, fuse sound and RF energy into a shared probability map of threats, and decide among themselves who flies out to verify with a camera. The same swarm guards an airport against drones and a game reserve against poachers: a Scenario names its Threat Class.
 
 ## Swarm
 
@@ -33,6 +33,10 @@ Covering part of a neighbour's vacated Sector.
 **Verifier**:
 The Drone currently in Verify; the only one rendering camera images.
 
+**Follow**:
+A Verifier staying with the threat it confirmed, camera on, so it stays Confirmed and the Threat Log gets its path; ends when the threat is lost or after `follow_for` seconds. Still Mode Verify.
+_Avoid_: chase, pursue, track (a Track is a fused Suspicion)
+
 **Sector**:
 The area a Drone is responsible for while patrolling; re-partitioned when a neighbour leaves.
 
@@ -47,7 +51,7 @@ A Drone permanently perched on one Perch Site whose sound comes from a real micr
 _Avoid_: fixed node, static sensor
 
 **Perch Site**:
-A known flat roof from the 3D city model where a Drone may land to Listen.
+A known flat roof from the 3D city model where a Drone may land to Listen; in a Reserve, a lookout tower's platform or a camp roof.
 _Avoid_: landing spot, roof (alone)
 
 ## World
@@ -56,16 +60,23 @@ _Avoid_: landing spot, roof (alone)
 The static prior knowledge every Drone carries: buildings, Perch Sites, rail lines, roads.
 _Avoid_: map (ambiguous with Probability Map)
 
+**Reserve**:
+A City that is a protected wildlife area (tools/make_savanna.py): dirt tracks instead of streets, lookout towers and camps for Perch Sites, kopjes, thickets and waterholes, game instead of fans.
+_Avoid_: park (ambiguous), savanna (that is the biome, and the Scenario's name)
+
 **Source**:
-Something that emits sound and possibly RF: a drone, heavy vehicle or train. Ground truth; Agents never see it.
-_Avoid_: target, emitter, threat (a Source is only a threat if it is a drone)
+Something that emits sound and possibly RF: a drone, heavy vehicle, train or animal. Ground truth; Agents never see it. Its `kind` says what it is ("elephant herd", "poacher pickup"); an intruder is a Source the swarm should find.
+_Avoid_: target, emitter, threat (a Source is only a threat if it is an intruder of the Threat Class)
+
+**Poacher**:
+An intruder Source in a Reserve: a vehicle off the tracks, its crew often on a UHF handheld radio.
 
 **Beam**:
 What a sound classifier is given for one Source in one 1 s window: that Source's sound, every other Source 6 dB down, and the background and ego-noise. Rendered by the World from waveforms; Agents never see it.
 _Avoid_: mix (that is everything the microphone gets, unsteered)
 
 **Nuisance**:
-A Source whose true Target Class is Nothing but which sounds drone-like (a fan, an AC unit).
+A Source whose true Target Class is Nothing but which sounds like a threat (a fan, an AC unit; in a Reserve the game: an elephant's rumble, a lion's roar).
 
 **Scenario**:
 A seeded script of Sources, Jam Zones and Faults for one run.
@@ -89,6 +100,10 @@ _Avoid_: heatmap, belief map, situational picture
 **Target Class**:
 Drone, Vehicle, Train or Nothing.
 
+**Threat Class**:
+The Target Class a Scenario's swarm hunts: Drone at the airport, Vehicle in a Reserve. Only its Tracks are Suspicions; where the City explains it (a vehicle on a track), it is Explained.
+_Avoid_: target type
+
 **Evidence**:
 A raw Observation; fused additively, exactly once per (origin, seq).
 _Avoid_: measurement (when meaning the radio message)
@@ -102,6 +117,10 @@ A fused Suspicion with location, uncertainty ellipse, class and status. State, n
 **Ghost**:
 A Suspicion where unrelated evidence happens to cross (overlapping RF rings, bearing lines from different Sources), with no Source behind it.
 _Avoid_: false positive (that is the outcome of verifying a Ghost)
+
+**Threat Log**:
+The operator's record of every danger a Verifier checked: what the camera recognised, when, by which Drone, and the path while it is followed. Built by the runners from decision events and camera labels; Agents never read it.
+_Avoid_: alert list, incident log
 
 **Explained**:
 A Suspicion best accounted for without a new Source: by City knowledge (rumble on the rail line is a train), or as a side lobe of a Confirmed drone (a drone peak within 150 m of a confirmed point, other than the one that point follows). Nobody verifies it.

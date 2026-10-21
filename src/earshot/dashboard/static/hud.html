@@ -64,6 +64,18 @@
   .drone .bat i { display: block; height: 100%; background: var(--own); border-radius: 2px; }
   .drone .task { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .drone canvas.sig { display: block; width: 100%; height: 30px; margin-top: 3px; }
+  /* more than ten drones: two compact rows */
+  body.many #left { grid-template-rows: minmax(0, 1fr) 24% 128px; }
+  body.many.mapfirst #left { grid-template-rows: minmax(0, 1fr) 128px; }
+  body.many .drone { padding: 3px 6px; } body.many .drone canvas.sig { display: none; }
+
+  /* Threat Log: every verified danger, newest first */
+  #threatlog { margin: 0 0 12px; }
+  #threatlog[hidden] { display: none; }
+  #threatlog table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #threatlog td { padding: 3px 4px; border-top: 1px solid var(--rule); white-space: nowrap; }
+  #threatlog td.what { white-space: normal; }
+  #threatlog tr { cursor: pointer; }
 
   /* map */
   #scope { display: grid; grid-template-rows: minmax(0, 1fr) auto; border-bottom: 1px solid var(--rule); min-height: 0; }
@@ -208,6 +220,11 @@
         <div id="suspicion" aria-live="polite"></div>
       </div>
       <div id="ear">
+        <div id="threatlog" hidden>
+          <h2>Threat Log</h2>
+          <div class="sub">Every danger a Verifier checked: what its camera saw, and where the swarm follows it.</div>
+          <table><tbody id="threatrows"></tbody></table>
+        </div>
         <h2 id="ear-title">Drone 0</h2>
         <div class="sub" id="ear-sub"></div>
         <div class="earwrap">
@@ -253,7 +270,9 @@ const CLS_COL = { DRONE: "--warn", VEHICLE: "--caution", TRAIN: "--train", NOTHI
 const MODE_COL = { PATROL: "--own", LISTEN: "--select", VERIFY: "--task", FILL_GAP: "--own" };
 const MODE_NAME = { PATROL: "patrol", LISTEN: "listen", VERIFY: "verify", FILL_GAP: "fill gap" };
 const STATUS = { SUSPECTED: "suspected", EXPLAINED: "explained", VERIFYING: "verifying", CONFIRMED: "confirmed", DISMISSED: "dismissed" };
-const SENSOR = { SOUND: "sound", RF_2G4: "RF 2.4", RF_5G8: "RF 5.8", RF_915: "RF 915", CAMERA: "camera" };
+const SENSOR = { SOUND: "sound", RF_2G4: "RF 2.4", RF_5G8: "RF 5.8", RF_915: "RF 915", RF_UHF: "RF UHF", CAMERA: "camera" };
+const threatCls = () => last?.state?.threat || "DRONE";  // what this swarm hunts (Scenario threat:)
+const threatName = () => CLS_NAME[threatCls()];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
 let city = null, scen = null, base = null, last = null;
@@ -455,7 +474,7 @@ function render(ts) {
   const panels = dirty && ts - lastPanels >= 80;  // at most ~12 Hz, as before
   if (panels) { dirty = false; lastPanels = ts; $("clock").textContent = fmtTime(last.state.t); }
   for (const f of [drawMap, ...(evidence || document.body.classList.contains("mapfirst") ? [] : [drawPFD]),
-    ...(panels ? [drawSwarm, drawEar, drawTicker, drawSuspicion, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
+    ...(panels ? [drawSwarm, drawEar, drawThreatLogPanel, drawTicker, drawSuspicion, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
     try { f(ts); } catch (err) { console.error(err); }  // one broken panel must not stop the others
   }
   if (!document.hidden) { pending = true; requestAnimationFrame(render); }
@@ -508,7 +527,7 @@ function drawMap(now) {
   for (const id in hist) for (const r of hist[id]) {
     if (r.sensor !== "SOUND" || t - r.t > 4) continue;
     const d = byId[r.drone]; if (!d) continue;
-    const th = r.bearing * Math.PI / 180, L = 700, [px, py] = P(d.x, d.y), [qx, qy] = P(d.x + L * Math.sin(th), d.y + L * Math.cos(th));
+    const th = r.bearing * Math.PI / 180, L = Math.max(700, 0.15 * (city.bounds[2] - city.bounds[0])), [px, py] = P(d.x, d.y), [qx, qy] = P(d.x + L * Math.sin(th), d.y + L * Math.cos(th));
     ctx.strokeStyle = r.drone === selected ? "rgba(245,181,59,.85)" : "rgba(245,181,59,.35)";
     ctx.lineWidth = r.drone === selected ? 1.5 : 1; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
   }
@@ -519,7 +538,9 @@ function drawMap(now) {
     ctx.strokeStyle = css("--task"); ctx.lineWidth = 1.5; ctx.setLineDash(task.settled ? [] : [3, 3]);
     ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); }
   if (showTruth) for (const tr of st.truth) { const [a, b] = P(tr.x, tr.y); ctx.strokeStyle = css(CLS_COL[tr.cls]); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke();
+    if (tr.kind) { ctx.fillStyle = css(CLS_COL[tr.cls]); ctx.font = "10px B612, sans-serif"; ctx.fillText(tr.kind, a + 7, b + 3); } }
+  drawThreatLog(ctx, P);
   // drones: triangles pointing along the heading; camera wedges for the ones on screen
   const viewed = new Set((views || []).map(v => v[0]));
   each(ds, d => {
@@ -535,6 +556,35 @@ function drawMap(now) {
   });
   $("maplegend").textContent = `Map of drone ${selected}${showHeat ? ", red is probable threat" : ""}`
     + (city?.attribution ? ` · ${city.attribution.join(" · ")}` : "");  // CC BY / ODbL credit
+}
+function drawThreatLog(ctx, P) {
+  // confirmed threats: the path the swarm followed, a ring and the camera's label at the head;
+  // dismissed checks: a grey cross with what was there instead
+  for (const e of last.state.threats || []) {
+    const [a, b] = P(e.x, e.y), live = e.status === "confirmed" || e.status === "following";
+    if (e.status === "dismissed") {
+      if (last.state.t - e.t > 120) continue;
+      ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.moveTo(a - 4, b - 4); ctx.lineTo(a + 4, b + 4); ctx.moveTo(a + 4, b - 4); ctx.lineTo(a - 4, b + 4); ctx.stroke();
+      ctx.fillStyle = css("--muted"); ctx.font = "10px B612, sans-serif"; ctx.fillText(`${e.id} ${e.label}`, a + 7, b + 3);
+      continue;
+    }
+    const col = live ? css("--warn") : "rgba(255,90,82,.5)";
+    if (e.path?.length > 1) { line(ctx, P, e.path.map(q => [q[1], q[2]])); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 9, 0, 7); ctx.stroke();
+    ctx.fillStyle = col; ctx.font = "700 11px B612, sans-serif"; ctx.fillText(`${e.id} ${e.label}`, a + 12, b - 8);
+  }
+}
+const THREAT_STATUS = { confirmed: "confirmed", following: "followed", lost: "lost", handed_off: "handed off", dismissed: "no threat" };
+function drawThreatLogPanel() {
+  const es = (last.state.threats || []).slice().reverse();
+  $("threatlog").hidden = !es.length; if (!es.length) return;
+  setHTML($("threatrows"), es.slice(0, 6).map(e => {
+    const col = e.status === "dismissed" ? css("--muted") : css("--warn");
+    return `<tr data-drone="${e.drone}"><td class="num muted">${e.id}</td><td class="what" style="color:${col}">${e.label}</td>`
+      + `<td style="color:${col}">${THREAT_STATUS[e.status] || e.status}</td><td class="num muted">${fmtTime(e.t_confirmed ?? e.t)}</td><td class="muted">drone ${e.drone}</td></tr>`;
+  }).join(""));
+  $("threatrows").querySelectorAll("tr").forEach(r => r.onclick = () => select(+r.dataset.drone));
 }
 function isFaulty(id) { return drones().some(d => (d.telemetry?.belief?.faulty || []).includes(id)); }
 function line(ctx, P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
@@ -559,7 +609,7 @@ function drawTrack(ctx, P, s, tr) {
   ctx.save(); ctx.translate(a, b); ctx.rotate(-tr.ang * Math.PI / 180);
   ctx.beginPath(); ctx.ellipse(0, 0, Math.max(tr.a * s, 4), Math.max(tr.b * s, 3), 0, 0, 7);
   ctx.setLineDash(tr.status === "EXPLAINED" ? [3, 3] : []); ctx.lineWidth = tr.status === "CONFIRMED" ? 2.5 : 1.5; ctx.strokeStyle = col; ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
-  if (tr.cls === "DRONE" || tr.status === "CONFIRMED") { ctx.fillStyle = col; ctx.font = "11px B612, sans-serif"; ctx.fillText(`${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}`, a + 8, b + 14); }
+  if (tr.cls === threatCls() || tr.status === "CONFIRMED") { ctx.fillStyle = col; ctx.font = "11px B612, sans-serif"; ctx.fillText(`${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}`, a + 8, b + 14); }
 }
 
 /* ---------- main view overlay (head-up display) ---------- */
@@ -662,7 +712,7 @@ function drawPFD(now) {
   }
   let threat = null;
   for (const tr of d.telemetry?.tracks || []) {
-    if (tr.cls !== "DRONE") continue;
+    if (tr.cls !== threatCls()) continue;
     const b = Math.atan2(tr.x - d.x, tr.y - d.y) * 180 / Math.PI, dx = rel(b), dist = Math.hypot(tr.x - d.x, tr.y - d.y);
     if (!threat || dist < threat.dist) threat = { b, dist, status: tr.status };
     const col = tr.status === "CONFIRMED" ? css("--warn") : css("--caution");
@@ -673,10 +723,11 @@ function drawPFD(now) {
       hudText(ctx, `${Math.round(dist)} m`, x, ty + 82, "center", "11px B612 Mono, monospace");
     }
     // in the camera's field of view: a target bracket at its bearing, at intruder flight
-    // height (the sim flies drone Sources 30 m above ground: SOURCE_Z in backend/webots.py)
+    // height (the sim flies drone Sources 30 m above ground: SOURCE_Z in backend/webots.py;
+    // a vehicle is on the ground)
     const half = Math.atan(w / 2 / focal) * 180 / Math.PI;
     if (Math.abs(dx) < half - 2) {
-      const x = cx + focal * Math.tan(dx * Math.PI / 180), y = yAt(Math.atan2(30 - agl, dist) * 180 / Math.PI), s = 16;
+      const x = cx + focal * Math.tan(dx * Math.PI / 180), y = yAt(Math.atan2((threatCls() === "DRONE" ? 30 : 1) - agl, dist) * 180 / Math.PI), s = 16;
       ctx.lineWidth = 2;
       for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.beginPath(); ctx.moveTo(x + sx * s, y + sy * (s - 7)); ctx.lineTo(x + sx * s, y + sy * s); ctx.lineTo(x + sx * (s - 7), y + sy * s); ctx.stroke(); }
       ctx.lineWidth = 1.25;
@@ -723,7 +774,7 @@ function drawPFD(now) {
   // nearest drone Suspicion: bearing and range, in its status colour
   if (threat) {
     const col = threat.status === "CONFIRMED" ? css("--warn") : css("--caution");
-    const label = `${threat.status === "CONFIRMED" ? "INTRUDER" : "SUSPECTED DRONE"}  ${String(Math.round((threat.b + 360) % 360)).padStart(3, "0")}°  ${Math.round(threat.dist)} M`;
+    const label = `${threat.status === "CONFIRMED" ? "INTRUDER" : `SUSPECTED ${threatName().toUpperCase()}`}  ${String(Math.round((threat.b + 360) % 360)).padStart(3, "0")}°  ${Math.round(threat.dist)} M`;
     ctx.font = "700 13px B612, sans-serif"; const tw = ctx.measureText(label).width + 24;
     ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.fillRect(cx - tw / 2, h - 74, tw, 26);
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.strokeRect(cx - tw / 2, h - 74, tw, 26);
@@ -736,6 +787,7 @@ const argmax = a => a.reduce((bi, v, i) => v > a[bi] ? i : bi, 0);
 /* ---------- swarm strip ---------- */
 function drawSwarm() {
   const el = $("swarm"), ds = drones();
+  document.body.classList.toggle("many", ds.length > 10);
   if (el.childElementCount !== ds.length) {
     el.innerHTML = ds.map(d => `<button class="drone" data-id="${d.id}"><div class="row"><span class="id">${d.id}</span><span class="mode"></span></div><div class="bat"><i></i></div><div class="task"></div><canvas class="sig" title="Sound spectrum 50 Hz-8 kHz (needs --audio) | RF 915 MHz, 2.4 GHz, 5.8 GHz"></canvas></button>`).join("");
     el.querySelectorAll(".drone").forEach(b => b.onclick = () => select(+b.dataset.id));
@@ -805,7 +857,7 @@ function drawFreqGrid() {
 }
 
 /* What each drone receives: sound spectrum (left, from earshot live --audio) and RF power per band (right) */
-const RF_BANDS = [["RF_915", "915", -105], ["RF_2G4", "2.4", -85], ["RF_5G8", "5.8", -85]];  // noise floor dBm (sensors/rf.py)
+const RF_BANDS = [["RF_UHF", "UHF", -63.5], ["RF_915", "915", -105], ["RF_2G4", "2.4", -85], ["RF_5G8", "5.8", -85]];  // noise floor dBm (sensors/rf.py)
 function drawSignals(canvas, d) {
   const [w, h, ctx] = fitCanvas(canvas), t = last.state.t, split = Math.round(w * 0.68);
   ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#0d1824"; ctx.fillRect(0, 0, split - 2, h); ctx.fillRect(split + 2, 0, w - split - 2, h);
@@ -923,7 +975,7 @@ function drawSpectro() {
 const pct = p => p >= 0.995 ? ">99 %" : `${Math.round(p * 100)} %`;
 function topSuspicion(d) {
   // the strongest drone Suspicion (or Confirmed) on this drone's map, and the drone that has it as a task
-  const tracks = (d?.telemetry?.tracks || []).filter(tr => tr.cls === "DRONE" || tr.status === "CONFIRMED");
+  const tracks = (d?.telemetry?.tracks || []).filter(tr => (tr.cls === threatCls() && tr.status !== "EXPLAINED") || tr.status === "CONFIRMED");
   const tr = tracks.sort((a, b) => b.strength - a.strength)[0];
   const claim = tr && drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
   return { tr, claim };
@@ -933,7 +985,7 @@ const actionText = (tr, claim) => claim ? `drone ${claim.id} ${claim.telemetry.t
 function drawSuspicion() {
   if (evidence) return;
   const { tr, claim } = topSuspicion(droneById(selected));
-  if (!tr) { setHTML($("suspicion"), `<span class="muted">No drone Suspicion on drone ${selected}'s map.</span>`); return; }
+  if (!tr) { setHTML($("suspicion"), `<span class="muted">No ${threatName()} Suspicion on drone ${selected}'s map.</span>`); return; }
   const col = css(tr.status === "CONFIRMED" ? "--warn" : "--caution");
   setHTML($("suspicion"), `<span style="color:${col}">${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</span>`
     + ` · ±<b>${tr.a}</b> m · evidence <b>${tr.strength.toFixed(1)}</b> log-odds (${pct(tr.conf)})`
@@ -945,7 +997,7 @@ function drawTrace(d) {
   const readings30 = Object.values(hist).flat().filter(r => st.t - r.t <= 30).length;
   setHTML($("pipeline"), [["Readings, 30 s", readings30], ["Suspicions", (d?.telemetry?.tracks || []).filter(x => x.status !== "EXPLAINED").length],
     ["Verifications", c.verified ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join(""));
-  if (!tr) { setHTML($("trace"), `<p class="muted">No drone suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks) stay off this list.</p>`); return; }
+  if (!tr) { setHTML($("trace"), `<p class="muted">No ${threatName()} suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks, vehicles on their tracks) stay off this list.</p>`); return; }
   const sup = tr.support || [], maxAbs = Math.max(1, ...sup.map(s => Math.abs(s[2])));
   const name = ([o, fam]) => fam === "prior" ? "map prior" : fam === "camera" ? "camera" : `drone ${o} ${fam === "rf" ? "RF" : "sound"}`;
   const rows = sup.map(s => { const v = s[2], wpc = Math.abs(v) / maxAbs * 50, left = v >= 0 ? 50 : 50 - wpc;
@@ -970,14 +1022,17 @@ function drawTicker() {
 }
 function decisionText(e) {
   const what = e.task === "verify" ? "verify" : "listen";
-  return { claim: `drone ${e.drone} bids to ${what}`, dispatch: `drone ${e.drone} <span class="k">sets off to ${what}</span>`, confirmed: `drone ${e.drone} <b style="color:${css("--warn")}">confirms a drone</b>`,
+  return { claim: `drone ${e.drone} bids to ${what}`, dispatch: `drone ${e.drone} <span class="k">sets off to ${what}</span>`, confirmed: `drone ${e.drone} <b style="color:${css("--warn")}">confirms a ${threatName()}</b>`,
+    lost: `drone ${e.drone} loses the ${threatName()} it followed`, handed_off: `drone ${e.drone} hands the ${threatName()} to the rangers`,
     dismissed: `drone ${e.drone} finds nothing`, timeout: `drone ${e.drone} gives up: nothing to see`, obsolete: `drone ${e.drone} drops a ${what} task`, outbid: `drone ${e.drone} yields to a nearer drone`,
     fault_flagged: `drone ${e.drone} flags drone ${e.suspect}'s microphone` }[e.kind] || `drone ${e.drone}: ${e.kind}`;
 }
 function checkAlerts() {
   const n = last.state.counts?.confirmed ?? 0;
   if (n > lastConfirmed) { const b = $("banner"); const e = (last.state.decisions || []).filter(x => x.kind === "confirmed").pop();
-    b.textContent = e ? `Intruder drone confirmed by drone ${e.drone}'s camera` : "Intruder drone confirmed"; b.classList.add("show"); setTimeout(() => b.classList.remove("show"), 5000); }
+    const log = (last.state.threats || []).filter(x => x.status !== "dismissed").pop();
+    const what = log ? log.label : `intruder ${threatName()}`;
+    b.textContent = e ? `${what[0].toUpperCase()}${what.slice(1)} confirmed by drone ${e.drone}'s camera` : `${what} confirmed`; b.classList.add("show"); setTimeout(() => b.classList.remove("show"), 5000); }
   lastConfirmed = n;
 }
 

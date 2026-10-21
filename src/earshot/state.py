@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 
 from earshot.messages import Mode, Sensor, TargetClass
@@ -79,6 +80,8 @@ class PolicyParams:
     outbid_cooldown: float = 5.0  # s an outbid drone leaves that place alone
     verify_timeout: float = 90.0  # s at the target without confirming -> given up (Ghost held up)
     follow_for: float = 0.0  # s a Verifier stays with what it confirmed (Follow); 0: hand off at once
+    max_verify_distance: float = math.inf  # m: no bid on a task further off (a big swarm has a
+    #                                        nearer drone, though its Claim may be lost)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> PolicyParams:
@@ -102,12 +105,14 @@ class SwarmConfig:
     map_cell: float = 20.0  # m, Probability Map cell
     params: PolicyParams = field(default_factory=PolicyParams)
     threat: TargetClass = TargetClass.DRONE  # the Threat Class: what the swarm verifies
+    relay_radius: float = math.inf  # m: Tracks and Claims about places further off are not relayed
 
     @classmethod
     def from_specs(cls, specs: list[DroneSpec], policy: str = "earshot",
                    radio_scheme: str = "ours", map_cell: float = 20.0,
                    params: PolicyParams | None = None,
-                   threat: TargetClass = TargetClass.DRONE) -> SwarmConfig:
+                   threat: TargetClass = TargetClass.DRONE,
+                   relay_radius: float = math.inf) -> SwarmConfig:
         return cls(
             homes={d.id: d.home or (d.x, d.y) for d in specs},
             defaults={d.id: d.default for d in specs},
@@ -117,4 +122,5 @@ class SwarmConfig:
             map_cell=map_cell,
             params=params or PolicyParams(),
             threat=threat,
+            relay_radius=relay_radius,
         )

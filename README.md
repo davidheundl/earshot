@@ -97,6 +97,20 @@ uv run python tools/muc_fetch.py
 uv run python tools/make_muc.py
 ```
 
+Anti-poaching in a 10 x 10 km game reserve in the South African lowveld (`scenarios/savanna.yaml`, [docs/savanna.md](docs/savanna.md)): twenty drones on lookout towers hunt vehicles instead of drones (`threat: vehicle`). Poachers drive cross-country to a rhino and an elephant herd, rangers and a game drive keep to the tracks, the game sounds like engines half the time; a Verifier that confirms a poacher follows it and the Threat Log records what its camera saw and where the poacher went (`runs/*.threats.jsonl`, and on the dashboard):
+
+```bash
+uv run earshot live --scenario scenarios/savanna.yaml
+```
+
+In Webots (bushveld, acacias, the game as herds, Range Rovers; the world uses Webots' Cow, Horse, Deer and Range Rover PROTOs, so open it once online to cache them):
+
+```bash
+uv run earshot live --scenario scenarios/savanna.yaml --backend webots --no-webots-view
+```
+
+The reserve is generated, deterministic: `uv run python tools/make_savanna.py` rewrites `data/cities/savanna.json`.
+
 Evaluation over seeded runs, policies side by side (concept section 17). `--scenario random` generates a new world per seed; `--scheme ours flood unicast3` and `--bw 125` compare radio set-ups:
 
 ```bash
@@ -123,6 +137,7 @@ uv run pytest
 
 - [docs/functionality.md](docs/functionality.md): how the system works end to end (sensors, Probability Map, policy, radio, evaluation, how to run Munich), limitations, licences.
 - [docs/architecture.md](docs/architecture.md): processes, module interfaces, where each teammate plugs in.
+- [docs/savanna.md](docs/savanna.md): the second world, anti-poaching in a game reserve: what changes when the swarm hunts vehicles, results, limits.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.
 - [docs/adr/](docs/adr/): decisions and why.
 - [DECLARATION.md](DECLARATION.md): what was built before the event.

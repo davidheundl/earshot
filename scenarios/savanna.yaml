@@ -1,0 +1,103 @@
+# Savanna: anti-poaching in a 10 x 10 km private game reserve in the South African lowveld
+# (tools/make_savanna.py). Twenty drones perch on lookout towers 2-2.5 km apart, listening to
+# the bush at night, and hunt vehicles instead of drones (threat: vehicle): an engine off the
+# tracks is a Suspicion, one on a track is a ranger or a game drive (Explained by the City).
+#
+# - poacher1 cuts the south fence at 60 s and drives cross-country to the white rhino in the
+#   thicket south-west of the centre, circles it and leaves through the fence; its crew talks
+#   on a UHF handheld (RF, push-to-talk);
+# - poacher2 comes through the east fence at 280 s for the elephant herd by the river, no radio;
+# - a ranger patrol drives the gravel spine (radio silence at night: a scanner would hear it
+#   too), a game drive the lodge's track: both on tracks, neither an intruder;
+# - the game: elephants, lions, hyenas, buffalo, zebra, impala, a giraffe and the rhino are
+#   Nuisances (cls nuisance). A sound classifier trained on European data hears their rumbles
+#   and roars as an engine almost half the time (confusion), so the camera must tell.
+#
+# A Verifier that confirms a poacher stays with it (Follow, params.follow_for) and the runners
+# write the Threat Log: what the camera saw, where, and the poacher's path.
+name: savanna
+seed: 7
+city: data/cities/savanna.json
+threat: vehicle
+duration: 900
+dt: 0.1
+map_cell: 50        # m; 10 km / 50 m = 200 x 200 cells per drone
+
+drones:            # one per lookout tower (p_tower<k>), all listening
+  - {id: 0,  x: -3734, y: -3771, home: [-3734, -3771], default: listen}
+  - {id: 1,  x: -2494, y: -3337, home: [-2494, -3337], default: listen}
+  - {id: 2,  x: -170,  y: -3511, home: [-170, -3511],  default: listen}
+  - {id: 3,  x: 2400,  y: -3935, home: [2400, -3935],  default: listen}
+  - {id: 4,  x: 4042,  y: -3576, home: [4042, -3576],  default: listen}
+  - {id: 5,  x: -4034, y: -1484, home: [-4034, -1484], default: listen}
+  - {id: 6,  x: -2538, y: -1196, home: [-2538, -1196], default: listen}
+  - {id: 7,  x: -212,  y: -1136, home: [-212, -1136],  default: listen}
+  - {id: 8,  x: 1701,  y: -1211, home: [1701, -1211],  default: listen}
+  - {id: 9,  x: 3627,  y: -729,  home: [3627, -729],   default: listen}
+  - {id: 10, x: -4575, y: 1305,  home: [-4575, 1305],  default: listen}
+  - {id: 11, x: -2190, y: 780,   home: [-2190, 780],   default: listen}
+  - {id: 12, x: -307,  y: 1822,  home: [-307, 1822],   default: listen}
+  - {id: 13, x: 1807,  y: 1668,  home: [1807, 1668],   default: listen}
+  - {id: 14, x: 3848,  y: 1385,  home: [3848, 1385],   default: listen}
+  - {id: 15, x: -3990, y: 3964,  home: [-3990, 3964],  default: listen}
+  - {id: 16, x: -1550, y: 3766,  home: [-1550, 3766],  default: listen}
+  - {id: 17, x: -104,  y: 3737,  home: [-104, 3737],   default: listen}
+  - {id: 18, x: 1984,  y: 4088,  home: [1984, 4088],   default: listen}
+  - {id: 19, x: 3864,  y: 3620,  home: [3864, 3620],   default: listen}
+
+environment:
+  background_db: 35   # bushveld at night: crickets, wind in the grass
+  ego_filter: true
+  ego_filter_db: 8
+
+sources:           # path: list of points, or {road: i}; kind: what it is (camera label, 3D model)
+  # a 4x4 cross-country in low gear: 105 dB(A), as a truck (sensors/acoustics.py SOUND_POWER)
+  - {id: poacher1, cls: vehicle, kind: poacher pickup, start: 60, end: 860, level_db: 105, rf: [uhf],
+     path: [[-1700, -4990], [-1850, -4200], [-2100, -3400], [-1950, -2600], [-1900, -2380], [-1720, -2260], [-1980, -2140], [-2080, -2380], [-1650, -2850], [-1250, -3500], [-950, -4990]]}
+  - {id: poacher2, cls: vehicle, kind: poacher bakkie, start: 280, end: 900, level_db: 105,
+     path: [[4995, 2700], [4200, 2450], [3400, 2050], [2900, 1700], [2620, 1560], [2450, 1880], [3000, 2300], [4000, 2850], [4995, 3050]]}
+  - {id: ranger1, cls: vehicle, kind: ranger Land Cruiser, intruder: false, start: 20, end: 880, level_db: 102, path: {road: 1}}
+  - {id: safari1, cls: vehicle, kind: safari game drive, intruder: false, start: 150, end: 700, level_db: 100, path: {road: 5}}
+  - {id: elephants, cls: nuisance, kind: elephant herd, start: 0, end: 900, level_db: 105, path: [[2150, 1250], [2500, 1450], [2850, 1550], [3150, 1420]]}
+  - {id: lions, cls: nuisance, kind: lion pride, start: 0, end: 900, level_db: 106, path: [[-3050, 1850], [-2950, 1900]]}
+  - {id: hyenas, cls: nuisance, kind: hyena clan, start: 0, end: 900, level_db: 96, path: [[900, -2700], [1300, -2300], [1100, -2000]]}
+  - {id: buffalo, cls: nuisance, kind: buffalo herd, start: 0, end: 900, level_db: 94, path: [[-1000, 3050], [-1300, 2600], [-1650, 2250]]}
+  - {id: zebra, cls: nuisance, kind: zebra herd, start: 0, end: 900, level_db: 90, path: [[400, -1500], [700, -900], [1000, -300]]}
+  - {id: impala, cls: nuisance, kind: impala herd, start: 0, end: 900, level_db: 86, path: [[-3500, -700], [-3200, -300], [-3700, 100]]}
+  - {id: giraffe, cls: nuisance, kind: giraffe, start: 0, end: 900, level_db: 70, path: [[2000, -2800], [2300, -2600]]}
+  - {id: rhino, cls: nuisance, kind: white rhino, start: 0, end: 900, level_db: 72, path: [[-1880, -2330], [-1920, -2300], [-1860, -2290], [-1880, -2330]]}
+
+# the stand-in sound classifier (no trained head for African wildlife): animal calls are
+# heard as an engine 45 % of the time
+confusion:
+  nuisance: {drone: 0.05, vehicle: 0.45, train: 0.0, nothing: 0.5}
+
+params:
+  same_task_radius: 1200  # a poacher drives on while the Verifier flies out: keep the task
+  confirmed_shadow: 400   # the followed vehicle's trail is not a second poacher
+  follow_for: 900         # stay with a confirmed poacher; what happens next is the rangers' job
+  max_verify_distance: 3000  # towers are 2-2.5 km apart: a nearer drone is always there, even
+  #                            when its Claim is lost on a busy channel
+
+radio:
+  sf: 7
+  bw_khz: 500
+  relay_radius_m: 4000    # relay Tracks and Claims only near where they are: nobody further
+  #                         off flies there (a three-hop flood of all twenty filled the channel)
+  nominal_range_m: 3500   # drones on 12 m towers over open bush, 2-2.5 km apart (2500 m split
+  #                         the swarm: Claims did not reach, a drone flew 7 km to a poacher)
+
+camera:                   # Webots: the COCO detector names what it sees (twin: the stand-in)
+  range: 300              # m the stand-in sees a vehicle at night: a thermal camera sees the
+  #                         engine's heat far beyond the 100 m a quadcopter takes
+  detector: yolo
+  weights: yolo11n.pt
+  classes: {car: vehicle, truck: vehicle, bus: vehicle, motorcycle: vehicle,
+            elephant: nothing, zebra: nothing, giraffe: nothing, cow: nothing, horse: nothing,
+            sheep: nothing, dog: nothing, cat: nothing, bear: nothing, bird: nothing}
+  verify_conf: 0.4
+  confirm_frames: 3
+  clear_radius: 60        # m: a car is far bigger than a quadcopter
+  every: 2
+  resolution: [1280, 768]
+  standoff: 30

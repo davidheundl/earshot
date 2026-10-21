@@ -4,8 +4,8 @@ Doubles as the duplicate filter, the forwarding queue and the buffer used to hea
 Partition. Pure: time comes in as an argument.
 
 Interface:
-    store = MessageStore(me, key, scheme="ours")
-    msg = store.receive(frame, margin_db, t)    accepted message, or None (duplicate / bad / own)
+    store = MessageStore(me, key, scheme="ours", relay_radius=inf)
+    msg = store.receive(frame, margin_db, t, here)   accepted message, or None (duplicate / bad / own)
     frames = store.due(t)                       forwards and healing resends whose time has come
     reqs = store.on_digest(digest, t)           Requests for ranges a neighbour has and we lack
     store.on_request(request, t)                schedule resends of the Tracks/Claims asked for
@@ -22,10 +22,18 @@ Forwarding schemes (concept 8.1 / 8.3):
                 first, and anyone who overhears the relay cancels its own (as in Meshtastic).
     "flood"     everyone forwards everything at once (the broadcast-storm baseline).
     "unicast3"  like flood, but every transmission goes to three neighbours one by one.
+
+Relevance-limited forwarding (`relay_radius`, a Scenario's `radio.relay_radius_m`): a Track
+or Claim is relayed only by a drone within that distance of the place it is about (`here`
+is the receiver's position). Nobody further off would fly there, and in a twenty-drone
+reserve a three-hop flood of every Track filled the channel. Off by default. Healing still
+resends what a neighbour asks for: holding that back too quieted the channel (68 -> 59 %)
+but confirmed the reserve's first poacher on 2 of 4 seeds instead of 4 of 4.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from earshot.messages import (
@@ -79,10 +87,11 @@ class StoreStats:
 
 
 class MessageStore:
-    def __init__(self, me: int, key: bytes, scheme: str = "ours"):
+    def __init__(self, me: int, key: bytes, scheme: str = "ours", relay_radius: float = math.inf):
         self.me = me
         self.key = key
         self.scheme = scheme
+        self.relay_radius = relay_radius
         self._frames: dict[tuple[int, int, int], bytes] = {}
         self._pending: dict[tuple[int, int, int], tuple[float, bytes, str]] = {}
         self._asked: dict[int, float] = {}  # origin -> last Request time
@@ -125,7 +134,8 @@ class MessageStore:
 
     # -- receiving ------------------------------------------------------------------------
 
-    def receive(self, frame: bytes, margin_db: float, t: float) -> Message | None:
+    def receive(self, frame: bytes, margin_db: float, t: float,
+                here: tuple[float, float] | None = None) -> Message | None:
         try:
             msg = decode(frame, self.key)
         except BadFrame:
@@ -150,9 +160,15 @@ class MessageStore:
         if healable(msg):
             self._healable.add(k)
             self._latest(origin, seq)
-        if msg.header.hops_left > 1:
+        if msg.header.hops_left > 1 and self._relevant(msg, here):
             self._schedule_forward(k, with_hops(frame, msg.header.hops_left - 1), margin_db, t)
         return msg
+
+    def _relevant(self, msg: Message, here: tuple[float, float] | None) -> bool:
+        """Worth relaying from here: anything without a place, or a place within relay_radius."""
+        if here is None or math.isinf(self.relay_radius) or not isinstance(msg, Track | Claim):
+            return True
+        return math.hypot(msg.x - here[0], msg.y - here[1]) <= self.relay_radius
 
     def _schedule_forward(self, k, frame: bytes, margin_db: float, t: float) -> None:
         if self.scheme == "ours" and margin_db > FWD_SKIP_MARGIN_DB:

@@ -83,6 +83,7 @@ class World:
                     "sensor": r.sensor.name, "bearing": r.bearing, "sigma": r.bearing_sigma,
                     "level": r.level, "probs": list(r.class_probs),
                     "truth": det.truth, "snr": det.snr_db,
+                    **({"label": det.label} if det.label else {}),
                 })
             sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame)
         for w in self.audio:
@@ -129,7 +130,8 @@ class World:
                 for s in self.states.values()
             ],
             "truth": [
-                {"id": src.id, "cls": src.cls.name, "x": p[0], "y": p[1]}
+                {"id": src.id, "cls": src.cls.name, "x": p[0], "y": p[1],
+                 **({"kind": src.kind} if src.kind else {})}
                 for src, p in self.scenario.active_sources(self.t)
             ],
             "bearings": [
