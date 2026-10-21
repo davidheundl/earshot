@@ -34,7 +34,7 @@ own port (1247, not the live 1240) and runs a capture script as the RIG's extern
 bottom edge is 36.6 deg down: a vehicle on the ground is in view only from 54 m out. At the
 scenario's 30 m standoff Webots' recognition finds no target in any "fixed" view: the
 Verifier hovered over the poacher looking past it, and after three empty windows its camera
-said "nothing". Fixed in `backend/webots.py`: the tilt aims at the hunted class's height.
+said "nothing". Fixed in `backend/webots.py`: with a detector reading the frames, the tilt aims at the hunted class's height at the standoff.
 
 **Vehicle label at 0.25 or more on the target, aimed camera** (views with the target in frame;
 10 per cell = 2 places x 5 headings):
@@ -96,8 +96,12 @@ first check about 700 m from the poacher.
 
 ## Consequences (`scenarios/savanna.yaml`)
 
-The reserve keeps the stand-in (`detector: truth`); the measured COCO settings are a commented
-block. Kept: Range Rovers for the reserve's vehicles (a white one for the poachers), the
-camera aimed at the hunted class's height, standoff 120 m (`params.arrive` 150), YOLO hits
-geolocated, `EARSHOT_CV_DUMP`. Not tried: a larger COCO model (yolo11s/m: a download), a
-gimbal sweep while holding, a detector trained on these renders.
+The reserve keeps the stand-in (`detector: truth`, standoff 30 m); the measured COCO settings,
+standoff 120 m and `params.arrive` 150 among them, are a commented block. With the stand-in,
+standoff 120 m lost poacher1 in seed 1000 of four (`earshot eval --runs 4 --seed 1000`:
+poacher1 confirmed 110, 145, 115 s after the fence in seeds 1001-1003, as with 30 m; flights,
+false verifies and channel load unchanged), so it stays with YOLO. Kept for every run: Range
+Rovers for the reserve's vehicles (a white one for the poachers), a detector's camera aimed at
+the hunted class's height at the standoff (the stand-in keeps the drone's tilt and its 300 m),
+YOLO hits geolocated, `EARSHOT_CV_DUMP`. Not tried: a larger COCO model (yolo11s/m: a
+download), a gimbal sweep while holding, a detector trained on these renders.

@@ -92,8 +92,6 @@ def test_the_reserves_coco_mapping_builds_a_detector(world):
     assert det.class_of("truck") == TargetClass.VEHICLE
     assert det.class_of("elephant") == TargetClass.NOTHING
     assert det.class_of("quadcopter") == TargetClass.NOTHING  # not in this model's map
-    # a Verifier holding its standoff counts as arrived, and its camera looks at that point
-    assert sc.params["arrive"] > Kinematics.for_scenario(sc).standoff
 
 
 def test_a_yolo_car_in_the_reserve_is_geolocated(world):
@@ -132,3 +130,22 @@ def test_a_yolo_car_in_the_reserve_is_geolocated(world):
     r = cams[0].reading
     assert int(np.argmax(r.class_probs)) == TargetClass.VEHICLE
     assert r.bearing == pytest.approx(90.0, abs=1.0) and r.level == pytest.approx(120.0, rel=0.02)
+
+
+def test_a_detector_camera_aims_at_the_ground_the_stand_in_looks_out(world):
+    # Webots: a trained detector needs the vehicle in its pixels, so the Verifier camera looks
+    # at the ground where it holds its standoff; the stand-in's recogniser sees out to
+    # camera.range with the airport's tilt, which reaches the horizon
+    from types import SimpleNamespace
+
+    from earshot.backend.webots import WebotsBackend
+
+    sc, _ = world
+    b = object.__new__(WebotsBackend)
+    b.scenario, b.detector_frames = sc, False
+    b.twin = SimpleNamespace(kin=Kinematics(standoff=120.0))
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(10.0, 120.0)))
+    b.detector_frames = True
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(39.5, 120.0)))  # 18 deg
+    b.scenario = Scenario.load(ROOT / "scenarios/demo.yaml")  # the airport: a drone 10 m below
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(10.0, 120.0)))

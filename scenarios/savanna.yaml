@@ -78,8 +78,6 @@ params:
   follow_for: 900         # stay with a confirmed poacher; what happens next is the rangers' job
   max_verify_distance: 3000  # towers are 2-2.5 km apart: a nearer drone is always there, even
   #                            when its Claim is lost on a busy channel
-  arrive: 150             # m: above camera.standoff, or a Verifier never counts as arrived
-  #                         (tune.py's upper bound)
 
 radio:
   sf: 7
@@ -97,8 +95,8 @@ camera:                   # the stand-in in every backend: it names the Source's
   #                         near poacher1, all "nothing"; it sees a car only 50-160 m ahead in a
   #                         57 deg wedge, the Suspicion of a vehicle at 8 m/s lags 200-500 m
   #                         (docs/savanna.md, data/cv/savanna-vehicles-20261021/)
-  # detector: yolo        # to try it in Webots (`uv sync --group cv`):
-  # weights: yolo11n.pt
+  # detector: yolo        # to try it in Webots (`uv sync --group cv`), with standoff 120 below
+  # weights: yolo11n.pt   # and params.arrive: 150 (above the standoff)
   # classes: {car: vehicle, truck: vehicle, bus: vehicle, motorcycle: vehicle,
   #           elephant: nothing, zebra: nothing, giraffe: nothing, cow: nothing, horse: nothing,
   #           sheep: nothing, dog: nothing, cat: nothing, bear: nothing, bird: nothing}
@@ -108,6 +106,7 @@ camera:                   # the stand-in in every backend: it names the Source's
   # clear_radius: 150     # m: "nothing" around a Verifier holding still 120 m off the place
   # every: 2
   resolution: [1280, 768]
-  standoff: 120           # m: the camera aims at the ground at its standoff, 18 deg down from
-  #                         40 m: it sees 54 m to the horizon (at 30 m, 53 deg down: 23-58 m);
-  #                         a car is "car" to YOLO at 50-160 m
+  standoff: 30
+  # standoff: 120         # with YOLO: the camera then aims at the ground 120 m off (18 deg
+  #                         down), where it sees a car; at 30 m it looks 53 deg down and a car is
+  #                         a phone or an airplane. For the stand-in 120 m lost seed 1000 of 4
