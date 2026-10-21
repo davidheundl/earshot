@@ -1545,8 +1545,6 @@ def quad_model(kind: str) -> str:
                         f"height {0.006 * k:.4f} subdivision 14 }}")))  # motor cap in body colour
         parts.append(at(c * r, s_ * r, 0.058, shape(pbr((0.85, 0.85, 0.88), 0.3, transparency=0.78),
                         f"Cylinder {{ radius {0.17 * k:.4f} height {0.003 * k:.4f} subdivision 24 }}")))
-        parts.append(at(c * r, s_ * r, 0.06, shape(carbon, f"Box {{ size {0.3 * k:.4f} {0.025 * k:.4f} "
-                        f"{0.004 * k:.4f} }}"), f"0 0 1 {a + 0.7:.4f}"))
         if light:
             parts.append(at(c * (r + 0.04), s_ * (r + 0.04), 0.02, shape(
                 pbr(light, 1, light, 4), f"Sphere {{ radius {0.018 * k:.4f} subdivision 1 }}")))
