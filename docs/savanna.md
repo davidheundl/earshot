@@ -1,10 +1,10 @@
 # Savanna: the swarm against poachers
 
-The same swarm that guards Munich Airport against drones, flown over a 10 x 10 km private game reserve in the South African lowveld. Vocabulary: [CONTEXT.md](../CONTEXT.md) (Reserve, Threat Class, Poacher, Follow, Threat Log). Decision: [ADR 0009](adr/0009-threat-class-per-scenario.md).
+The same swarm that guards Munich Airport against drones, flown over a 10 x 10 km private game reserve in the South African lowveld. Vocabulary: [CONTEXT.md](../CONTEXT.md) (Reserve, Threat Class, Poacher, Shot, Follow, Threat Log). Decision: [ADR 0009](adr/0009-threat-class-per-scenario.md).
 
 ## The idea
 
-A perching swarm is not tied to an airport. Twenty drones sit on lookout towers 2-2.5 km apart and listen to the bush at night; together they cover 100 km². Engines and handheld radios are what gives poachers away: their pickup drives cross-country, where nobody else drives, and the crew talks on a UHF handheld. The swarm fuses sound bearings and radio energy into its Probability Map, the nearest drone flies out with its camera, the camera tells what it is (a poacher's pickup, an elephant herd, the rangers' own Land Cruiser), and a confirmed poacher is followed and logged. What the rangers do then is theirs.
+A perching swarm is not tied to an airport. Twenty drones sit on lookout towers 2-2.5 km apart and listen to the bush at night; together they cover 100 km². Engines, handheld radios and rifle shots are what give poachers away: their pickup drives cross-country, where nobody else drives, the crew talks on a UHF handheld, and a shot is heard for kilometres, as acoustic gunshot detection in real reserves uses. The swarm fuses sound bearings and radio energy into its Probability Map, the nearest drone flies out with its camera, the camera tells what it is (a poacher's pickup, an elephant herd, the rangers' own Land Cruiser), and a confirmed poacher is followed and logged. What the rangers do then is theirs.
 
 ```bash
 uv run earshot live --scenario scenarios/savanna.yaml
@@ -69,19 +69,25 @@ The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]
 
 "Before" is `prototype` at 1b70338; stand-in sound and camera (lockstep), default PolicyParams. Reading it: the airport confirms its drone sooner and agrees after a jam more often, with a quieter channel; it flies a little more and sends up to one or two more drones away at once. Single seeds swing both ways (Munich seed 1001: 225 -> 198 s, seed 1006: 87 -> 119 s). An intermediate state without the healing change missed Munich's drone on one seed and agreed after only 6 of 8 jams: one-hop Explained Tracks made far drones ask for frames they could never get.
 
+Shots and stops on a path (2026-10-21) change nothing at the airport: the Munich and demo lockstep logs (snapshots, detections, Threat Log, seed 0) stay byte-identical.
+
 ## Results in the reserve
 
-`uv run earshot eval --scenario scenarios/savanna.yaml --runs 4 --seed 1000 --jobs 4` (lockstep: the stand-in camera at 300 m, the sound stand-in with the game's confusion; about 20 min). Per seed, poacher1's time from cutting the fence to the first camera confirmation:
+`uv run earshot eval --scenario scenarios/savanna.yaml --runs 4 --seed 1000 --jobs 4` (lockstep: the stand-in camera at 300 m, the sound stand-in with the game's confusion; 20-35 min). Per seed, each poacher's time from coming through the fence to the first camera confirmation:
 
-| Variant | poacher1 confirmed | its t_confirm s | poacher2 | Flights | False verifies | Drones away (max) | Load % | Clean rx % |
-|---|---|---|---|---|---|---|---|---|
-| without the twenty-drone measures | 2/4 | 131, 122 | 0/4 | 56.5 | 53.5 | 4 | 83 | 40 |
-| **shipped**: `max_verify_distance` 3 km, `relay_radius_m` 4 km | **4/4** | 267, 103, 152, 113 | 0/4 | 12 | 11.5 | 2 | 68 | 48 |
-| also holding back irrelevant healing (dropped) | 2/4 | 199, 240 | 0/4 | 12.5 | 11 | 2.5 | 59 | 52 |
+| Variant | poacher1 confirmed | its t_confirm s | poacher2 | its t_confirm s | Flights | False verifies | Drones away (max) | Load % | Clean rx % |
+|---|---|---|---|---|---|---|---|---|---|
+| without the twenty-drone measures | 2/4 | 131, 122 | 0/4 | | 56.5 | 53.5 | 4 | 83 | 40 |
+| `max_verify_distance` 3 km, `relay_radius_m` 4 km (`prototype` at 348bfac) | 4/4 | 267, 103, 152, 113 | 0/4 | | 12 | 11.5 | 2 | 68 | 48 |
+| also holding back irrelevant healing (dropped) | 2/4 | 199, 240 | 0/4 | | 12.5 | 11 | 2.5 | 59 | 52 |
+| poacher2 stops at its kill, no Shot (control) | 4/4 | 267, 103, 152, 113 | 0/4 | | 6.5 | 6 | 2 | 69 | 48 |
+| **shipped**: it stops and fires (a Shot) | **4/4** | 267, 103, 152, 113 | **4/4** | 349, 358, 350, 343 | 15 | 13.5 | 4 | 71 | 47 |
 
 Reading it:
 - **The poacher with a radio is found every time**, two to four minutes after it cuts the fence, confirmed by the camera as "poacher pickup", and followed. Seed 0 (`uv run earshot fast --scenario scenarios/savanna.yaml --log`, `runs/savanna-seed0.threats.jsonl`): a first check at 244 s finds nothing; at 275 s drone 1 confirms the pickup and follows it to the fence, the Confirmed Track 4-90 m from the vehicle all the way; a second drone confirming it at 464 s joins the same Threat Log entry and yields.
-- **The silent poacher is never found.** poacher2 drives to the elephants between towers 13 and 14, 1-1.5 km from each; nothing else is within 2 km. Two engine bearings that wide (σ 20-27° at SNR -1 to -7 dB) give about 3 log-odds where a Suspicion needs about 4 against the threat prior. Twenty towers over 100 km² leave such gaps for a quiet vehicle without a radio: a third tower within 1.5 km, a gunshot, or a phone would close it. This is the honest limit of sound alone at this density.
+- **The silent poacher is found once it fires, never before.** poacher2 drives to the elephants between towers 13 and 14, 0.8-1.5 km from each; nothing else is within 2 km. Two engine bearings that wide (σ 20-27° at SNR -1 to -7 dB) give about 3 log-odds where a Suspicion needs about 4 against the threat prior, driving or parked (the control). The Shot at 570 s is heard by about eleven towers, the eight within 3.5 km almost surely and some out to 6 km, 3-18 s later, with bearings of 2-6°; a drone is dispatched to it 8-36 s after it, and the "poacher bakkie" is confirmed 53-68 s after it, where it stands at the kill, and followed. Seed 1000: drone 19 (2.4 km) claims first and takes off, drone 13 (0.8 km) outbids it 5 s after its Claim, flies at 583 s and confirms at 629 s, the Confirmed Track 5 m from the bakkie. The Shot comes after the kill: it saves no elephant, it gives the rangers the poachers at the carcass and the way they leave.
+- **Without the stop the Shot is not enough**: a poacher that fires and drives on at 9 m/s was 450 m from the shot when drone 13 got there (seed 1000, before the stop), beyond the 300 m camera; the check found only the herd and was dismissed.
+- **What the Shot costs**: up to three more drones away at once (median 2 -> 4: drone 13 follows poacher2 for the rest of the run while poacher1's checks go on) and about 3 points more channel load (68 -> 71 %). Flights and false verifies swing with the run's course after 560 s more than with the Shot: the stop alone took them from 12 to 6.5. In seed 1000 the Shot's two dispatches went to within 20 m of the bakkie; every later one was near poacher1's trail (0.2-2 km from it), 6 km from poacher2.
 - **False verifies are mostly flights toward the poacher.** The metric counts a dispatch with no intruder within 150 m at that moment; a vehicle at 8 m/s is 150-500 m ahead of its Suspicion, whose evidence fades over 30 s. In seed 1000 every one of the first 11 dispatches went toward poacher1.
 - **Before the twenty-drone measures** Claims lost on the busy channel sent drones from the far side of the reserve (7 km away) to the same poacher, and each Track was relayed 5.6 times. The channel is still busy (68 %): one aggregated Observation per drone per second is the next step.
 
@@ -95,6 +101,6 @@ Reading it:
 - **Shots are calibrated, not measured**, like UHF: the level is a 1 s window's sound exposure (134 dB(A)), 2 dB/km, a kopje 15 dB; a tower hears one almost surely at 3 km in the open, half the time at 6 km; bearings 2-6 deg. One impulse, heard once per tower after distance / 343 m/s; no echoes off the kopjes, no other bangs (thunder, a ranger's warning shot): every Shot counts for the Threat Class.
 - **The kill is not modelled**: the poacher's engine keeps its level while it stands, the herd walks on, no carcass.
 - **Twenty drones on one LoRa channel** load it heavily (68 %, half the receptions collide); one aggregated Observation per drone per second (an open item since Munich) would help. Holding back healing of far-away Tracks quieted it further but lost poachers (table above).
-- **A silent poacher between two towers is not found** (results above). Gunshots are not modelled.
+- **A silent poacher between two towers is found only when it fires** (results above), and only if it stays near where it fired until a Verifier is there, about a minute.
 - **Followers are not checked against battery**: `follow_for` 900 s is within a 25-minute flight, but a long chase from a far tower is not.
 - **Belief size**: 50 m cells over 10 km, 20 origins per drone; a lockstep run of 900 s takes several minutes.
