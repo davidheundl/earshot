@@ -75,12 +75,20 @@ def test_a_short_run_goes_through():
     assert r.steps == 80 and r.radio["sent"] > 0 and r.threats == []
 
 
-def test_the_reserves_camera_is_coco_yolo(world):
+# scenarios/savanna.yaml keeps the stand-in; its commented COCO block, as measured
+# (data/cv/savanna-vehicles-20261021/REPORT.md)
+COCO = {"detector": "yolo", "weights": "yolo11n.pt", "conf": 0.15, "verify_conf": 0.3,
+        "confirm_frames": 3, "clear_radius": 150, "every": 2,
+        "classes": {"car": "vehicle", "truck": "vehicle", "elephant": "nothing", "bird": "nothing"}}
+
+
+def test_the_reserves_coco_mapping_builds_a_detector(world):
     from earshot.sensors.camera import load_detector
 
     sc, _ = world
-    det = load_detector(sc.camera)  # the keys the world and the kinematics read are not its own
-    assert str(det.weights) == "yolo11n.pt" and det.verify_conf >= 0.25  # ByteTrack's new track
+    assert load_detector(sc.camera) is None  # detector: truth
+    det = load_detector({**sc.camera, **COCO})  # the world's and the kinematics' keys are not its own
+    assert det.verify_conf >= 0.25  # ByteTrack opens a track at 0.25: below, nothing verifies
     assert det.class_of("truck") == TargetClass.VEHICLE
     assert det.class_of("elephant") == TargetClass.NOTHING
     assert det.class_of("quadcopter") == TargetClass.NOTHING  # not in this model's map
@@ -110,7 +118,7 @@ def test_a_yolo_car_in_the_reserve_is_geolocated(world):
             return [SimpleNamespace(boxes=[box], speed={})]
 
     sc, city = world
-    det = load_detector(sc.camera)
+    det = load_detector({**sc.camera, **COCO})
     det.model, det.device = Car(), "cpu"
     suite = SensorSuite(city, sc, np.random.default_rng(0), camera=det)
     frame = {"bgra": bytes(1280 * 768 * 4), "w": 1280, "h": 768, "fov": 1.0, "yaw": 90.0,

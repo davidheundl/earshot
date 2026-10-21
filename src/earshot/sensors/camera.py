@@ -23,6 +23,9 @@ in the verdict (`others`), for the Threat Log; unmapped labels are ignored. A Re
 the COCO model (yolo11n.pt): car, truck, motorcycle, bus -> vehicle, the animals -> nothing.
 A frame that says how high the camera is (`height`) also gets each hit's ground range from
 the box's bottom edge: where a vehicle stands, not only its bearing.
+
+`EARSHOT_CV_DUMP=<dir>` saves every processed frame with its boxes (JPEG) and a line per frame
+in <dir>/frames.jsonl: what the detector saw, for a run that did not confirm what it should.
 """
 
 from __future__ import annotations
@@ -139,6 +142,8 @@ class YoloDetector:
             self.infer_ms.append(float(speed["inference"]))
         names = {int(k): str(v).lower() for k, v in model.names.items()}
         classes = self._classes()
+        if os.environ.get("EARSHOT_CV_DUMP"):
+            _dump(Path(os.environ["EARSHOT_CV_DUMP"]), img, res, names, frame)
         current: dict[int, int] = {}
         for box in res.boxes:
             label = names.get(int(box.cls[0]))
@@ -198,6 +203,30 @@ class YoloDetector:
                 raise FileNotFoundError(f"camera detector weights not found: {self.weights}")
             self.model = YOLO(str(self.weights))
         return self.model
+
+
+def _dump(out: Path, img: np.ndarray, res, names: dict, frame: dict) -> None:
+    """One processed frame with its boxes, for debugging (EARSHOT_CV_DUMP)."""
+    import json
+    import time
+
+    from PIL import Image, ImageDraw
+
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"{time.time():.2f}"
+    boxes = [{"label": names.get(int(b.cls[0])), "conf": round(float(b.conf[0]), 3),
+              "id": None if b.id is None else int(b.id[0]),
+              "xyxy": [round(float(v)) for v in b.xyxy[0].tolist()]} for b in res.boxes]
+    im = Image.fromarray(img[..., ::-1].copy())
+    draw = ImageDraw.Draw(im)
+    for b in boxes:
+        draw.rectangle(b["xyxy"], outline=(255, 40, 40), width=2)
+        draw.text((b["xyxy"][0], b["xyxy"][1] - 11), f"{b['label']} {b['conf']} #{b['id']}",
+                  fill=(255, 40, 40))
+    im.save(out / f"{name}.jpg", quality=85)
+    meta = {k: frame.get(k) for k in ("yaw", "pitch", "height")}
+    with open(out / "frames.jsonl", "a") as f:
+        f.write(json.dumps({"img": name, **meta, "boxes": boxes}) + "\n")
 
 
 def _best_device() -> str:

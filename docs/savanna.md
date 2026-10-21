@@ -33,7 +33,8 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 - Game as Nuisances with a `kind`: an elephant herd (105 dB(A)), a lion pride roaring (106), hyenas, buffalo, zebra, impala, a giraffe and the rhino (72). `confusion:` makes the sound stand-in hear them as an engine 45 % of the time: a classifier trained on European data has never heard a lion.
 - `params`: `same_task_radius` 1200 m (a poacher drives on while the Verifier flies out), `confirmed_shadow` 400 m (the followed vehicle's trail is no second poacher), `follow_for` 900 s, `max_verify_distance` 3000 m (a nearer tower is always there).
 - `radio.relay_radius_m` 4000: Tracks and Claims are relayed only near their place.
-- `camera.range` 300 m: at night a Verifier looks with a thermal camera; a vehicle's engine shows far beyond the 100 m a quadcopter takes, and the gimbal geolocates it from the drone's height and the depression angle.
+- `camera.range` 300 m: at night a Verifier looks with a thermal camera; a vehicle's engine shows far beyond the 100 m a quadcopter takes, and the gimbal geolocates it from the drone's height and the depression angle. `camera.detector: truth`: the stand-in, in Webots too; the COCO detector is a commented block (below, "The Verifier camera in Webots").
+- `camera.standoff` 120 m, `params.arrive` 150 m: the Verifier holds 120 m off the place it checks, its camera aimed at the ground there (18 deg down from 40 m, the view reaching from 54 m to the horizon); at 30 m it would look 53 deg down and see 23-58 m.
 - `map_cell` 50 m (200 x 200 cells per drone), `radio.nominal_range_m` 3500, `environment.background_db` 35 (bush at night).
 
 ## What had to change, and what it costs the airport
@@ -51,6 +52,8 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 | A road through a vehicle's ellipse explains it | a vehicle heard from 2 km lands a few hundred metres beside its road | `belief._status` |
 | Healing only what is worth healing | a drone 10 km away never hears another's one-hop frames and kept asking for them: half the channel | `store.healable` |
 | Geolocated camera hits | the confirmed point sat on the Verifier while the vehicle drove on 300 m ahead; Followers lost it | `belief._camera`, the stand-in with `camera.range` |
+| Verifier camera aimed at the hunted class | the Webots camera was tilted for a drone 10 m below; a vehicle on the ground at the standoff passed under the view | `backend/webots.py` (`SOURCE_Z`; the airport's tilt is unchanged) |
+| YOLO hits geolocated too | a detector's bearing alone puts the confirmed point on the Verifier | `sensors/camera.py` (`ground_range`, the frame's `height`), `sensors._detected` |
 | No bids beyond `max_verify_distance` | with Claims lost on a busy channel, drones from the far side of the reserve flew 7 km to the same poacher | `policy._tasks` (PolicyParams, off by default) |
 | Relevance-limited relaying | every Track went three hops through all twenty drones: 5.6 relays per Track, a broadcast storm | `store._relevant`, `radio.relay_radius_m` (off by default) |
 
@@ -66,6 +69,19 @@ The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]
 | | after | 12/12 | 20 | 16 | 35.5 | 4 | 23.3 | 12/12 |
 
 "Before" is `prototype` at 1b70338; stand-in sound and camera (lockstep), default PolicyParams. Reading it: the airport confirms its drone sooner and agrees after a jam more often, with a quieter channel; it flies a little more and sends up to one or two more drones away at once. Single seeds swing both ways (Munich seed 1001: 225 -> 198 s, seed 1006: 87 -> 119 s). An intermediate state without the healing change missed Munich's drone on one seed and agreed after only 6 of 8 jams: one-hop Explained Tracks made far drones ask for frames they could never get.
+
+## The Verifier camera in Webots: what COCO YOLO sees
+
+The reserve keeps the camera stand-in. COCO `yolo11n.pt` on the rendered Verifier view was made to see the vehicles, but in a live run it did not confirm the poacher. Measured on 2026-10-21 ([data/cv/savanna-vehicles-20261021/REPORT.md](../data/cv/savanna-vehicles-20261021/REPORT.md): 2,468 offline Webots stills, five 30 s sequences, two live runs):
+
+- **The camera looked over the vehicle.** It was tilted 18 deg for a drone 10 m below; at the 30 m standoff a vehicle on the ground is 53 deg down, under the view (its bottom edge is at 37 deg). Webots' recognition found the target in none of those views. Now the tilt aims at the hunted class's height at the standoff.
+- **The primitive pickups are no vehicles to COCO**: "airplane", "chair", "bench" at every distance from 30 to 300 m (best vehicle confidence 0.33 in 140 views). Neither is Webots' TruckSimple, with or without its trailer (0.22). Webots' Range Rover is: YOLO's top label is "car" from 50 to 160 m in most views, but mostly at 0.15-0.5 confidence; at 0.25 or more in 10-40 % of views (a white one more often than an olive one), never beyond 160 m. From 30 m (53 deg down) it is a "cell phone" or an "airplane". The reserve's vehicles are now Range Rovers, the poachers' white.
+- **No false vehicles**: no view of the elephants, buffalo, lions or the rhino, and no empty view, gave a vehicle box above 0.22 (560 animal views); YOLO names the game "bird", "airplane", "cow", and the acacias "umbrella".
+- **On a moving vehicle** (the Verifier flying as the twin flies it, 120 m behind a Range Rover at 8 m/s, the live detector at conf 0.15, verify_conf 0.3, three frames in a row): the white one verified after 4.9 s and in 13 of 30 windows, the olive one after 8.9 s (7/30); never the primitive pickup or the elephant herd. Geolocated from the box's bottom edge: 135-137 m for a vehicle 135 m away.
+- **What did not help**: a dark shadow plate under the vehicle, Webots shadows, inference at 1920 or 2560 pixels.
+- **Live** (`earshot live --scenario scenarios/savanna.yaml --backend webots --no-webots-view`, the COCO block switched on, 600 s): four checks near poacher1 (t 254, 353, 469, 573 s), all ended "nothing". At 254, 353 and 573 s the checked place was 214-503 m behind the vehicle (a Suspicion from sound bearings lags a vehicle at 8 m/s); at 469 s the vehicle was 7-62 m from it in the 8 s before, and YOLO boxed no car before three empty windows cleared it. A preview frame of another check shows the camera 100 deg off a vehicle 150 m away. The stand-in sees 300 m all around; this camera sees a car 50-160 m ahead in a 57 deg wedge.
+
+To try it, uncomment the COCO block in `scenarios/savanna.yaml` (`uv sync --group cv`; `EARSHOT_CV_DUMP=<dir>` saves what the detector saw). What it would take: a larger COCO model (yolo11s/m, not tried: a download), a gimbal that sweeps the view while holding, or a detector trained on these renders; the Suspicion's lag behind a moving vehicle is the swarm's, not the camera's.
 
 ## Results in the reserve
 
@@ -86,7 +102,7 @@ Reading it:
 ## Limits
 
 - **A poacher on a track is Explained**, like the game drive, and never verified; a ranger off the tracks is verified. Only where a vehicle drives separates them. The rangers' own radios report GPS positions in many reserves; as City knowledge they would explain the rangers wherever they drive, and every other vehicle could be suspicious.
-- **The camera is the stand-in, in Webots too** (`camera.detector: truth`). The COCO detector (`yolo11n.pt`, `camera.classes`) is wired, but in a live Webots run on 2026-10-20 it saw the primitive pickups as "bird" and dismissed both checks near the poacher; it would need real vehicle models (the Range Rover PROTO failed to download, see the builder) or a detector trained on these renders. The stand-in also knows the reserve's own vehicles (ground truth `intruder: false`), as a classifier trained on their livery would.
+- **The camera is the stand-in, in Webots too** (`camera.detector: truth`). COCO YOLO on Webots' Range Rovers sees a car 50-160 m ahead, at low confidence; in a live run it cleared all four checks near the moving poacher ("The Verifier camera in Webots" above). The stand-in also knows the reserve's own vehicles (ground truth `intruder: false`), as a classifier trained on their livery would; to COCO a ranger's car is a car like the poacher's.
 - **The game is a Source with a constant level.** Real calls come in bursts (a lion roars for a minute, then not for an hour); elephants' rumble is mostly infrasound. Animals use the Nuisance acoustics of a fan (3.7 dB/km absorption).
 - **UHF calibration**: 50 % detection at 2.5 km in the open and 0.7 km behind a kopje, chosen, not measured; push-to-talk as a 40 % chance per second of any transmission.
 - **No people on foot.** Poachers who walk in from a road make little sound; gunshots (loud, short, heard 5 km away) would be the cue, as a fifth sound class or a short Source.

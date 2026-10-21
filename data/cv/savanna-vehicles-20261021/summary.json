@@ -1,0 +1,4108 @@
+[
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 6,
+"airplane": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 2,
+"sheep": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"cow": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.18,
+"top_labels": {
+"person": 3,
+"cow": 3,
+"bird": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.18,
+"top_labels": {
+"person": 4,
+"car": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"person": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 8,
+"airplane": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"cow": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.15,
+"top_labels": {
+"cow": 5,
+"car": 2,
+"person": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.22,
+"top_labels": {
+"person": 3,
+"cow": 3,
+"bird": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "buffalo",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.08,
+"top_labels": {
+"bird": 8,
+"person": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 5,
+"bird": 4,
+"traffic light": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"bird": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"airplane": 5
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4,
+"chair": 2,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 2,
+"sheep": 2,
+"elephant": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"horse": 5,
+"cow": 3,
+"sheep": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.2,
+"top_labels": {
+"person": 3,
+"cow": 3,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 2,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"chair": 3,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 6,
+"airplane": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"cow": 2,
+"sheep": 2,
+"bird": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.07,
+"top_labels": {
+"cow": 4,
+"horse": 4,
+"elephant": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "elephants",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.06,
+"top_labels": {
+"cow": 5,
+"horse": 3,
+"person": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 30,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 50,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 80,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 120,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 160,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 220,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "aimed",
+"d": 300,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 30,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 50,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 80,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 120,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 160,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 220,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "empty",
+"pitch": "fixed",
+"d": 300,
+"frames": 2,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 9,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"airplane": 3,
+"sheep": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 9,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 8,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "lions",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.21,
+"top_labels": {
+"chair": 4,
+"airplane": 2,
+"bench": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.18,
+"top_labels": {
+"chair": 8,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.07,
+"top_labels": {
+"chair": 6,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 5,
+"chair": 4,
+"bench": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 8,
+"bench": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.33,
+"top_labels": {
+"chair": 4,
+"car": 3,
+"truck": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 4,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "pickup",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.07,
+"top_labels": {
+"car": 2,
+"bird": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 8
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 8
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 6,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"airplane": 5
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 8,
+"bench": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.13,
+"top_labels": {
+"chair": 5,
+"truck": 2,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 4,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "ranger_pickup",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.25,
+"top_labels": {
+"cell phone": 6,
+"airplane": 3,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.58,
+"top_labels": {
+"car": 5,
+"airplane": 2,
+"kite": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.73,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"kite": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.55,
+"top_labels": {
+"car": 6,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.49,
+"top_labels": {
+"car": 7,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"chair": 3,
+"car": 1,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.08,
+"top_labels": {
+"person": 1,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.51,
+"top_labels": {
+"chair": 4,
+"car": 3,
+"umbrella": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.42,
+"top_labels": {
+"chair": 5,
+"umbrella": 2,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.55,
+"top_labels": {
+"car": 7,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.09,
+"top_labels": {
+"airplane": 5,
+"bird": 1,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.43,
+"top_labels": {
+"cell phone": 5,
+"airplane": 4,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.46,
+"top_labels": {
+"car": 5,
+"airplane": 2,
+"kite": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.64,
+"top_labels": {
+"chair": 4,
+"car": 4,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.24,
+"top_labels": {
+"car": 4,
+"chair": 3,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.29,
+"top_labels": {
+"car": 2,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.39,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.62,
+"top_labels": {
+"car": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.18,
+"top_labels": {
+"boat": 4,
+"car": 2,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.08,
+"top_labels": {
+"boat": 3,
+"bird": 2,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 6,
+"airplane": 3,
+"sports ball": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"airplane": 5
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 6,
+"airplane": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"airplane": 2,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.06,
+"top_labels": {
+"bird": 5,
+"chair": 2,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"bird": 3,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 7,
+"chair": 2,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4,
+"airplane": 2,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 6,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "rhino",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"cell phone": 6,
+"airplane": 3,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 4,
+"cell phone": 2,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.38,
+"top_labels": {
+"car": 6,
+"truck": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.37,
+"top_labels": {
+"car": 6,
+"chair": 2,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.33,
+"top_labels": {
+"car": 6,
+"umbrella": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.2,
+"top_labels": {
+"car": 4,
+"chair": 1,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"car": 1,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.54,
+"top_labels": {
+"car": 5,
+"chair": 2,
+"cell phone": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.57,
+"top_labels": {
+"chair": 4,
+"car": 4,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.37,
+"top_labels": {
+"car": 5,
+"umbrella": 2,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.16,
+"top_labels": {
+"car": 2,
+"airplane": 2,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "tesla",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 5,
+"boat": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 5,
+"traffic light": 2,
+"clock": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"clock": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 7,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 4,
+"chair": 3,
+"train": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.16,
+"top_labels": {
+"person": 3,
+"chair": 3,
+"truck": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.19,
+"top_labels": {
+"chair": 5,
+"person": 2,
+"truck": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 8,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 6,
+"bench": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 3,
+"bench": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"airplane": 3,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.13,
+"top_labels": {
+"chair": 5,
+"person": 2,
+"truck": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.22,
+"top_labels": {
+"chair": 3,
+"truck": 3,
+"bench": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.21,
+"top_labels": {
+"chair": 5,
+"bench": 2,
+"truck": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 7,
+"boat": 1,
+"traffic light": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 2,
+"traffic light": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 7,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 7,
+"airplane": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.09,
+"top_labels": {
+"chair": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 10
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "aimed",
+"d": 300,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 8,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 4,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 5,
+"chair": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 8,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 8,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 220,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 9,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "full",
+"model": "truck_cab",
+"pitch": "fixed",
+"d": 300,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 4,
+"clock": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 7
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.15,
+"top_labels": {
+"chair": 5,
+"airplane": 2,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.16,
+"top_labels": {
+"chair": 6,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"airplane": 4,
+"bench": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 7,
+"bench": 2,
+"boat": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "pickup_shadow",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.35,
+"top_labels": {
+"chair": 4,
+"truck": 4,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.09,
+"top_labels": {
+"airplane": 6,
+"cell phone": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.71,
+"top_labels": {
+"airplane": 5,
+"car": 3,
+"cell phone": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.68,
+"top_labels": {
+"airplane": 6,
+"car": 2,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.53,
+"top_labels": {
+"chair": 3,
+"car": 3,
+"umbrella": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.53,
+"top_labels": {
+"car": 8,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.08,
+"top_labels": {
+"person": 1,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.4,
+"top_labels": {
+"chair": 3,
+"car": 3,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.51,
+"top_labels": {
+"chair": 5,
+"umbrella": 2,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_shadow",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.53,
+"top_labels": {
+"car": 6,
+"chair": 1,
+"airplane": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.43,
+"top_labels": {
+"cell phone": 5,
+"airplane": 4,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.46,
+"top_labels": {
+"car": 5,
+"airplane": 2,
+"kite": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.64,
+"top_labels": {
+"chair": 4,
+"car": 4,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.29,
+"top_labels": {
+"car": 2,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.39,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.62,
+"top_labels": {
+"car": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"cell phone": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.51,
+"top_labels": {
+"airplane": 5,
+"car": 3,
+"cell phone": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.67,
+"top_labels": {
+"chair": 4,
+"airplane": 4,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.73,
+"top_labels": {
+"car": 6,
+"chair": 2,
+"boat": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.42,
+"top_labels": {
+"car": 2,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.5,
+"top_labels": {
+"car": 4,
+"airplane": 3,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.35,
+"top_labels": {
+"car": 4,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "rangerover_white_shadow",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.61,
+"top_labels": {
+"car": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.24,
+"top_labels": {
+"cell phone": 4,
+"airplane": 4,
+"train": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.21,
+"top_labels": {
+"airplane": 4,
+"car": 2,
+"cell phone": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.56,
+"top_labels": {
+"airplane": 4,
+"car": 3,
+"truck": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.45,
+"top_labels": {
+"car": 5,
+"umbrella": 2,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.38,
+"top_labels": {
+"car": 6,
+"umbrella": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.2,
+"top_labels": {
+"car": 1,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.53,
+"top_labels": {
+"car": 4,
+"boat": 2,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.56,
+"top_labels": {
+"car": 4,
+"chair": 3,
+"boat": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "contact",
+"model": "tesla_shadow",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.29,
+"top_labels": {
+"car": 6,
+"umbrella": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.25,
+"top_labels": {
+"cell phone": 6,
+"airplane": 3,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.58,
+"top_labels": {
+"car": 5,
+"airplane": 2,
+"kite": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.73,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"kite": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.55,
+"top_labels": {
+"car": 6,
+"chair": 3
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.49,
+"top_labels": {
+"car": 7,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.08,
+"top_labels": {
+"person": 1,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.51,
+"top_labels": {
+"chair": 4,
+"car": 3,
+"umbrella": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.42,
+"top_labels": {
+"chair": 5,
+"umbrella": 2,
+"car": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.55,
+"top_labels": {
+"car": 7,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.43,
+"top_labels": {
+"cell phone": 5,
+"airplane": 4,
+"car": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.46,
+"top_labels": {
+"car": 5,
+"airplane": 2,
+"kite": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.64,
+"top_labels": {
+"chair": 4,
+"car": 4,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 9,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.29,
+"top_labels": {
+"car": 2,
+"bird": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.69,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 3,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.39,
+"top_labels": {
+"car": 5,
+"chair": 3,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "rangerover_white",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.62,
+"top_labels": {
+"car": 9
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"cell phone": 6,
+"airplane": 3,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 1,
+"best_vehicle_conf": 0.66,
+"top_labels": {
+"car": 4,
+"cell phone": 2,
+"airplane": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.38,
+"top_labels": {
+"car": 6,
+"truck": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.37,
+"top_labels": {
+"car": 6,
+"chair": 2,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 1,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.33,
+"top_labels": {
+"car": 6,
+"umbrella": 1,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 4,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.1,
+"top_labels": {
+"car": 1,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 2,
+"best_vehicle_conf": 0.54,
+"top_labels": {
+"car": 5,
+"chair": 2,
+"cell phone": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 4,
+"vehicle_ge_0.4": 3,
+"best_vehicle_conf": 0.57,
+"top_labels": {
+"chair": 4,
+"car": 4,
+"umbrella": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "tesla",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 2,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.37,
+"top_labels": {
+"car": 5,
+"umbrella": 2,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "aimed",
+"d": 30,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 5,
+"traffic light": 2,
+"clock": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "aimed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"clock": 4
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "aimed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 7,
+"chair": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "aimed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 4,
+"chair": 3,
+"train": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "aimed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.16,
+"top_labels": {
+"person": 3,
+"chair": 3,
+"truck": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "fixed",
+"d": 30,
+"frames": 10,
+"in_frame": 0,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "fixed",
+"d": 50,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 3,
+"bench": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "fixed",
+"d": 80,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"airplane": 6,
+"chair": 2
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "fixed",
+"d": 120,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.0,
+"top_labels": {
+"chair": 5,
+"airplane": 3,
+"person": 1
+},
+"vehicle_boxes_elsewhere": 0
+},
+{
+"run": "shadows",
+"model": "truck",
+"pitch": "fixed",
+"d": 160,
+"frames": 10,
+"in_frame": 10,
+"vehicle_ge_0.25": 0,
+"vehicle_ge_0.4": 0,
+"best_vehicle_conf": 0.13,
+"top_labels": {
+"chair": 5,
+"person": 2,
+"truck": 1
+},
+"vehicle_boxes_elsewhere": 0
+}
+]
