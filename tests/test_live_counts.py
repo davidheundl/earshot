@@ -50,9 +50,12 @@ class _GoneSupervisor:
     def __init__(self):
         self.steps = 0
 
-    def step(self, _ms):
+    def stepBegin(self, _ms):
         self.steps += 1
         return -1  # Webots quit
+
+    def stepEnd(self):
+        raise AssertionError("no step is open after Webots quit")
 
 
 def test_webots_quitting_leaves_the_twin_running(monkeypatch):
@@ -64,6 +67,7 @@ def test_webots_quitting_leaves_the_twin_running(monkeypatch):
     sc = Scenario.load(ROOT / "scenarios/demo.yaml")
     b = object.__new__(webots.WebotsBackend)
     b.sup, b.basic_ms, b.scenario, b._quit, b._due = _GoneSupervisor(), 50, sc, False, None
+    b._open, b._grabbed = False, {}
     b._verifier, b._views_on = 3, True
     b.twin = Twin2D(City.load(ROOT / sc.city), sc.drones)
     monkeypatch.setattr(b, "_push", lambda _states: None)

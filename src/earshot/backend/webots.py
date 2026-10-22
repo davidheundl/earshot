@@ -6,10 +6,13 @@ Supervisor cannot read devices on other robots, so the RIG itself carries the on
 flies along with whichever drone has camera_on (the Verifier). Sources are puppeted the same
 way (DEF SRC_<id>), parked below ground while inactive.
 
-Pacing: this adapter sleeps each basic step to its wall-clock deadline. With Webots in fast
-mode (`earshot live --no-webots-view`) our own per-tick work (sensors, publishing, JPEG) then
-fits into the slack; in realtime mode Webots spends the full step itself, our work comes on
-top, and the pacing sleeps no longer. The 3D window keeps realtime mode, so it animates evenly.
+Pacing: this adapter sleeps each basic step to its wall-clock deadline. The last basic step
+of a tick is left open (`stepBegin`) when `step` returns and closed (`stepEnd`) at the start of
+the next call, so Webots computes it while the world process does sensors, publishing and
+views; in realtime mode, where Webots spends the full step itself, that work then no longer
+comes on top. Nothing may ask Webots anything while a step is open (no getFromDef, getField,
+getImage, ...), so the camera images and recognised objects the world reads are copied just
+before the step opens (`_grab`) and served from that copy.
 
 If Webots quits mid-run (window closed, crash), the run goes on: this adapter says so once
 and keeps stepping its own twin at wall-clock pace, without camera images.
@@ -95,6 +98,14 @@ CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills
 CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
 
 
+def _image(cam) -> bytes | None:
+    """A copy of the camera's image; None before its first one (the API reads a NULL buffer)."""
+    try:
+        return cam.getImage()
+    except ValueError:
+        return None
+
+
 class WebotsBackend:
     timing = None  # earshot live --profile: a runners.profile.TickProfile
 
@@ -137,6 +148,10 @@ class WebotsBackend:
         self._view_pitch: dict[int, float] = {}  # degrees down, so a HUD can draw the horizon
         self._due: float | None = None  # wall-clock deadline of the next basic step
         self._quit = False  # Webots went away: the twin alone carries on
+        self._open = False  # a basic step is running in Webots (stepBegin without stepEnd)
+        self._grabbed: dict = {}  # camera data copied before the step opened, see _grab
+        self._grabs = 0
+        self._last_image: bytes | None = None  # the Verifier's, see _verify_image
         self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
         self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
@@ -168,19 +183,16 @@ class WebotsBackend:
         from PIL import Image
 
         out = {}
+        views = self._grabbed.get("views", {})
         for k in which:
-            if self._quit or not self._views_on or k >= len(self._view_cams):
+            if self._quit or k not in views:
                 continue
-            cam, _ = self._view_cams[k]
-            raw = cam.getImage()
-            if not raw:
-                continue
-            w, h = cam.getWidth(), cam.getHeight()
+            raw, w, h, fov, drone, mode, pitch = views[k]
             img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=quality)
-            out[k] = {"drone": self.views[k][0], "mode": self.views[k][1], "w": w, "h": h,
-                      "fov": cam.getFov(), "pitch": self._view_pitch.get(k, 0.0),  # for the HUD
+            out[k] = {"drone": drone, "mode": mode, "w": w, "h": h,
+                      "fov": fov, "pitch": pitch,  # for the HUD
                       "jpeg": buf.getvalue()}
         return out
 
@@ -225,24 +237,74 @@ class WebotsBackend:
         n = max(1, round(dt * 1000 / self.basic_ms))
         states = {}
         for i in range(n):
+            self._finish()
             t0 = time.perf_counter()
             states = self.twin.step(dt / n, commands if i == 0 else {})
             t1 = time.perf_counter()
-            if not self._quit:
-                self._push(states)
-                t2 = time.perf_counter()
-                stepped = self.sup.step(self.basic_ms)
-                if self.timing is not None:
-                    self.timing.add("wb.twin", t1 - t0)
-                    self.timing.add("wb.push", t2 - t1)
-                    self.timing.add("wb.step", time.perf_counter() - t2)
-                if stepped == -1:
-                    self._quit = True  # never touch the Supervisor again
-                    self._verifier = None
-                    print("[webots] Webots quit; the run goes on in the 2D twin, without "
-                          "camera images", flush=True)
-            self._pace()
+            if self._quit:
+                continue
+            self._push(states)
+            t2 = time.perf_counter()
+            if i == n - 1:
+                self._grab()  # the world reads these while the last step runs
+            t3 = time.perf_counter()
+            self._open = self.sup.stepBegin(self.basic_ms) != -1
+            if self.timing is not None:
+                self.timing.add("wb.twin", t1 - t0)
+                self.timing.add("wb.push", t2 - t1)
+                self.timing.add("wb.grab", t3 - t2)
+                self.timing.add("wb.begin", time.perf_counter() - t3)
+            if not self._open:
+                self._gone()
         return states
+
+    def _finish(self) -> None:
+        """Close the open basic step (wait for Webots to finish it), then sleep to its
+        wall-clock deadline. Each basic step, open or not (Webots gone), gets one pace."""
+        if self._open:
+            t0 = time.perf_counter()
+            self._open = False
+            ended = self.sup.stepEnd()
+            if self.timing is not None:
+                self.timing.add("wb.end", time.perf_counter() - t0)
+            if ended == -1:
+                self._gone()
+        self._pace()
+
+    def _gone(self) -> None:
+        self._quit = True  # never touch the Supervisor again
+        self._verifier = None
+        self._grabbed = {}
+        print("[webots] Webots quit; the run goes on in the 2D twin, without camera images",
+              flush=True)
+
+    def _grab(self) -> None:
+        """Copy what the world reads from Webots during the open step: the Verifier camera's
+        image and recognised classes, the view cameras' raw images."""
+        g: dict = {}
+        c = self.camera
+        if self._verifier is not None:
+            g["verify"] = {"w": c.getWidth(), "h": c.getHeight(), "fov": c.getFov(),
+                           "bgra": self._verify_image(),
+                           "objects": self._recognised() if c.hasRecognition() else None,
+                           "yaw": self._verifier_heading}
+        if self._views_on:
+            g["views"] = {}
+            for k, (cam, _) in enumerate(self._view_cams):
+                raw = _image(cam)
+                if raw:
+                    did, mode = self.views[k]
+                    g["views"][k] = (raw, cam.getWidth(), cam.getHeight(), cam.getFov(),
+                                     did, mode, self._view_pitch.get(k, 0.0))
+        self._grabbed = g
+
+    def _verify_image(self) -> bytes | None:
+        """The Verifier image: every tick for a trained detector, else once a second for the
+        dashboard preview (a 1280x768 copy costs ~3 ms)."""
+        self._grabs += 1
+        if self.detector_frames or self._grabs % 10 == 1:
+            self._last_image = _image(self.camera)
+        return self._last_image
 
     def refuses(self, op: dict) -> str | None:
         """Why a live Event cannot be shown, else None: an added Source needs a free spare
@@ -262,26 +324,30 @@ class WebotsBackend:
     def camera_frame(self, drone_id: int) -> object | None:
         """{"w", "h", "objects"}: what the Verifier recognises. With `detector_frames` (a trained
         detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad)}; else
-        the image is copied only on request (`camera_image`, the dashboard preview)."""
-        if self._quit or drone_id != self._verifier:
+        the image is handed over only on request (`camera_image`, the dashboard preview).
+        Served from the copy `_grab` took before the current step opened."""
+        g = self._grabbed.get("verify")
+        if self._quit or drone_id != self._verifier or g is None:
             return None
-        c = self.camera
-        frame = {"w": c.getWidth(), "h": c.getHeight()}
+        frame = {"w": g["w"], "h": g["h"]}
         if self.detector_frames:
-            frame.update(bgra=c.getImage(), fov=c.getFov(), yaw=self._verifier_heading,
+            frame.update(bgra=g["bgra"], fov=g["fov"], yaw=g["yaw"],
                          pitch=math.radians(self._verify_pitch))
-        if c.hasRecognition():
+        if g["objects"] is not None:
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
-            frame["objects"] = self._recognised()
+            frame["objects"] = g["objects"]
         return frame
 
     def camera_image(self) -> bytes | None:
-        """The Verifier camera's current BGRA image."""
-        return self.camera.getImage() if self._verifier is not None and not self._quit else None
+        """The Verifier camera's BGRA image, as copied before the current step opened."""
+        g = self._grabbed.get("verify")
+        return g["bgra"] if g is not None and not self._quit else None
 
     def close(self) -> None:
-        pass
+        if self._open and not self._quit:
+            self._open = False
+            self.sup.stepEnd()
 
     # -- internals -----------------------------------------------------------------------
 
@@ -365,6 +431,7 @@ class WebotsBackend:
                 if self.camera.hasRecognition():
                     self.camera.recognitionEnable(VERIFY_PERIOD_MS)
             self._verifier = verifier
+            self._last_image, self._grabs = None, 0  # no frame of the previous look
         if self._camv is not None:
             if verifier is None:
                 self._camv[0].setSFVec3f(PARKED)
