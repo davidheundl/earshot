@@ -2,6 +2,7 @@
 1 s window its verified hits. Usage: eval_seq.py <repo> <seqdir> conf verify_conf every [names]"""
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ CLASSES = {"car": "vehicle", "truck": "vehicle", "bus": "vehicle", "motorcycle":
            "elephant": "nothing", "zebra": "nothing", "giraffe": "nothing", "cow": "nothing",
            "horse": "nothing", "sheep": "nothing", "dog": "nothing", "cat": "nothing",
            "bear": "nothing", "bird": "nothing"}
-det = YoloDetector(weights=repo / "yolo11n.pt", classes=CLASSES, conf=conf, verify_conf=vconf,
+det = YoloDetector(weights=os.environ.get("WEIGHTS") or repo / "yolo11n.pt", classes=CLASSES, conf=conf, verify_conf=vconf,
                    every=every, confirm_frames=3)
 for name in names:
     m = meta[name]
@@ -36,6 +37,7 @@ for name in names:
                          det._streaks.copy(), v.others))
     hit_t = [t for t, _, hits, _, _ in wins if hits]
     print(f"{name}: windows with a verified vehicle {len(hit_t)}/{len(wins)}, first at "
-          f"{hit_t[0] if hit_t else None} s; ranges {wins[0][1]}..{wins[-1][1]} m")
+          f"{hit_t[0] if hit_t else None} s; ranges {wins[0][1]}..{wins[-1][1]} m; "
+          f"median inference {sorted(det.infer_ms)[len(det.infer_ms) // 2]:.0f} ms")
     for t, r, hits, streaks, others in wins:
         print(f"   t {t:5.1f} range {r:6.1f}  hits {hits}  others {others}")

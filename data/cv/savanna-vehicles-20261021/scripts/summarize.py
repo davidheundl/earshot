@@ -8,7 +8,7 @@ from pathlib import Path
 out = Path(sys.argv[1])
 imgsz = sys.argv[2] if len(sys.argv) > 2 else "1280"
 thr = float(sys.argv[3]) if len(sys.argv) > 3 else 0.4
-rows = json.loads((out / f"yolo_{imgsz}.json").read_text())
+rows = json.loads((out / f"yolo_{imgsz}.json").read_text())  # imgsz may carry a suffix: 1280_yolo11s
 VEH = {"car", "truck", "bus", "motorcycle"}
 groups = collections.defaultdict(list)
 for r in rows:

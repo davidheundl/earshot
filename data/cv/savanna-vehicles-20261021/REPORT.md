@@ -80,6 +80,34 @@ With conf 0.25 / verify_conf 0.4 only the white Range Rover was verified (6/30, 
 Each hit's ground range from the box's bottom edge, the camera's height and its tilt was
 135-137 m for a vehicle 134.7-135.9 m away.
 
+## yolo11s
+
+COCO YOLO11s, downloaded on 2026-10-21 (approved by David) from
+https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt, 19,313,732 bytes,
+SHA256 `85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5` (AGPL-3.0, as
+yolo11n). Not committed: it sat in `data/models/yolo11s/` (git-ignored). The same stills and
+sequences, `evaluate.py ... 1280 <weights>`, `WEIGHTS=<weights> eval_seq.py ...`;
+`summary.json` holds both models (`weights`).
+
+Vehicle label at 0.25 or more on the target, aimed camera, yolo11n -> yolo11s:
+
+| Model | 30 m | 50 m | 80 m | 120 m | 160 m | 220 m | 300 m | best (11s) | top labels (11s) |
+|---|---|---|---|---|---|---|---|---|---|
+| primitive pickup (poacher) | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0.27 | airplane, chair |
+| TruckSimple with trailer | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 3 | 0 -> 1 | 0 -> 2 | 0 -> 1 | 0.73 | airplane, chair, truck |
+| Tesla Model 3 | 0 -> 1 | 2 -> 0 | 2 -> 2 | 2 -> 0 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0.57 | cell phone, airplane |
+| Range Rover, olive | 1 -> 1 | 2 -> 2 | 2 -> 4 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0.64 | cell phone, chair, airplane |
+| Range Rover, white | 1 -> 2 | 3 -> 3 | 3 -> 6 | 3 -> 4 | 4 -> 2 | 0 -> 0 | 0 -> 0 | 0.76 | car, airplane, cell phone |
+
+(of 10 views each; 220-300 m: 8 or 4 views with the target in frame.) No animal view gave
+yolo11s any vehicle box (512 views), none off the target. On the moving sequences (same
+settings as above) yolo11s verified less: the white Range Rover in 2/30 windows, first after
+27.9 s (yolo11n 13/30, 4.9 s), the olive one 1/30 (7/30), at 80 m 1/30 (3/30); never the
+pickup or the elephant herd. Median inference on MPS at 1280 was 107-162 ms for yolo11s and
+116-200 ms for yolo11n, on a Mac at load average 30-60 from other evaluations: not a speed
+comparison. yolo11s does not reach further and verifies a moving car less often; it is not
+worth its size here. yolo11m was not tried.
+
 ## Live
 
 Two live runs (`earshot live --scenario scenarios/savanna.yaml --backend webots --no-webots-view`)
@@ -103,5 +131,17 @@ poacher1 confirmed 110, 145, 115 s after the fence in seeds 1001-1003, as with 3
 false verifies and channel load unchanged), so it stays with YOLO. Kept for every run: Range
 Rovers for the reserve's vehicles (a white one for the poachers), a detector's camera aimed at
 the hunted class's height at the standoff (the stand-in keeps the drone's tilt and its 300 m),
-YOLO hits geolocated, `EARSHOT_CV_DUMP`. Not tried: a larger COCO model (yolo11s/m: a
-download), a gimbal sweep while holding, a detector trained on these renders.
+YOLO hits geolocated, `EARSHOT_CV_DUMP`. Not tried: yolo11m, a gimbal sweep while holding,
+a detector trained on these renders.
+
+## The Range Rover from a cold cache
+
+On 2026-10-20 Webots failed to download the Range Rover's assets (HTTP/2 errors from
+raw.githubusercontent.com) and crashed loading the world. On 2026-10-21 it fetched them while
+loading the test world. Then the check: `scripts/rr_closure.py` lists the cache files the
+PROTO pulls in (cache file name = SHA1 of the URL: the PROTO, VehicleWheel, GenericTireAppearance,
+GlossyPaint, 12 mesh PROTOs and their textures, plus the plate texture: 28 files); with those
+moved out of `~/Library/Caches/Cyberbotics/Webots/assets`, `webots/worlds/savanna.wbt` loaded
+(`scripts/backend_check.py` through `WebotsBackend` on port 1247), Webots fetched all 28 again
+and they were byte-identical to the moved ones. The rest of the cache stayed warm (Webots
+ignores a changed HOME, so a fully cold cache would have meant clearing everyone's).
