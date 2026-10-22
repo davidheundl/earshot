@@ -50,9 +50,12 @@ class _GoneSupervisor:
     def __init__(self):
         self.steps = 0
 
-    def step(self, _ms):
+    def stepBegin(self, _ms):
         self.steps += 1
         return -1  # Webots quit
+
+    def stepEnd(self):
+        raise AssertionError("no step is open after Webots quit")
 
 
 def test_webots_quitting_leaves_the_twin_running(monkeypatch):
@@ -64,6 +67,7 @@ def test_webots_quitting_leaves_the_twin_running(monkeypatch):
     sc = Scenario.load(ROOT / "scenarios/demo.yaml")
     b = object.__new__(webots.WebotsBackend)
     b.sup, b.basic_ms, b.scenario, b._quit, b._due = _GoneSupervisor(), 50, sc, False, None
+    b._open, b._grabbed = False, {}
     b._verifier, b._views_on = 3, True
     b.twin = Twin2D(City.load(ROOT / sc.city), sc.drones)
     monkeypatch.setattr(b, "_push", lambda _states: None)
@@ -86,3 +90,22 @@ def test_webots_refuses_a_live_source_without_a_free_node():
         b.scenario.apply(op, t=1.0)
     assert "spare Webots nodes" in b.refuses(op)
     assert b.refuses({**op, "cls": "nuisance"}) is None and b.refuses({"op": "jam"}) is None
+
+
+def test_webots_view_jpegs_come_from_the_encoder_thread_newest_first():
+    import time
+
+    from earshot.backend.webots import _Encoder
+
+    enc = _Encoder()
+    grabbed = lambda shade: (bytes([shade, 0, 0, 255]) * 16 * 8, 16, 8, 1.0, 3, "pilot", 10.0)
+    enc.submit({0: grabbed(10), 1: grabbed(20)}, 72)
+    enc.submit({0: grabbed(30)}, 72)  # replaces camera 0's image if not yet encoded
+    frames = {}
+    for _ in range(200):
+        frames.update(enc.take())
+        if len(frames) == 2:
+            break
+        time.sleep(0.01)
+    assert set(frames) == {0, 1} and frames[0]["jpeg"][:3] == b"\xff\xd8\xff"
+    assert frames[1]["drone"] == 3 and frames[1]["w"] == 16 and enc.take() == {}

@@ -383,6 +383,8 @@ def _launch(a, sc, py, procs, spawn, events, arrays) -> None:
         world_args += ["--classifier", a.classifier]
     if a.camera:
         world_args += ["--camera", a.camera]
+    if a.profile:
+        world_args += ["--profile"]
     spawn(world_args, env=webots_env() if a.backend == "webots" else None)
 
     world, reported = procs[-1], set()
@@ -506,6 +508,8 @@ def main(argv=None) -> None:
                     help="Verifier camera: the trained detector or the ground-truth stand-in "
                          "(default: the Scenario's camera.detector; yolo needs --backend webots)")
     lv.add_argument("--params", help="policy parameters: a JSON file, e.g. a tune run's best.json")
+    lv.add_argument("--profile", action="store_true",
+                    help="the world prints where each tick's wall time goes, every 10 s")
     lv.add_argument("--no-webots-view", action="store_true",
                     help="don't draw Webots' own 3D window (the drone cameras still render)")
     lv.add_argument("--no-gazebo-view", action="store_true",

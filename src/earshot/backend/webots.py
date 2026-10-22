@@ -6,10 +6,13 @@ Supervisor cannot read devices on other robots, so the RIG itself carries the on
 flies along with whichever drone has camera_on (the Verifier). Sources are puppeted the same
 way (DEF SRC_<id>), parked below ground while inactive.
 
-Pacing: this adapter sleeps each basic step to its wall-clock deadline. With Webots in fast
-mode (`earshot live --no-webots-view`) our own per-tick work (sensors, publishing, JPEG) then
-fits into the slack; in realtime mode Webots spends the full step itself, our work comes on
-top, and the pacing sleeps no longer. The 3D window keeps realtime mode, so it animates evenly.
+Pacing: this adapter sleeps each basic step to its wall-clock deadline. The last basic step
+of a tick is left open (`stepBegin`) when `step` returns and closed (`stepEnd`) at the start of
+the next call, so Webots computes it while the world process does sensors, publishing and
+views; in realtime mode, where Webots spends the full step itself, that work then no longer
+comes on top. Nothing may ask Webots anything while a step is open (no getFromDef, getField,
+getImage, ...), so the camera images and recognised objects the world reads are copied just
+before the step opens (`_grab`) and served from that copy.
 
 If Webots quits mid-run (window closed, crash), the run goes on: this adapter says so once
 and keeps stepping its own twin at wall-clock pace, without camera images.
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 import time
 from collections.abc import Mapping
 
@@ -85,8 +89,8 @@ def look_rotation(heading_deg: float, pitch_down_deg: float) -> list[float]:
     return [x / n, y / n, z / n, 2 * math.acos(max(-1.0, min(1.0, w)))]
 
 
-N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
-VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
+N_VIEWS = 1  # view cameras on the RIG: CAM_0 only, the main view (each tile costs render time)
+VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz (with N_VIEWS 4)
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
 TARGET_DROP_M = 10.0  # a Verifier cruises 10 m above an intruder (40 m vs. 30 m above ground)
@@ -95,7 +99,61 @@ CHASE = {"back": 3.2, "up": 1.1, "pitch": 12.0}  # close behind: the drone fills
 CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what it listens to
 
 
+def _image(cam) -> bytes | None:
+    """A copy of the camera's image; None before its first one (the API reads a NULL buffer)."""
+    try:
+        return cam.getImage()
+    except ValueError:
+        return None
+
+
+class _Encoder:
+    """JPEG-encodes view images on a thread of its own, off the world's tick. One job waits at
+    most: a newer image of the same camera replaces one not yet encoded. Pillow releases the
+    GIL while it converts and encodes."""
+
+    def __init__(self):
+        self._cv = threading.Condition()
+        self._jobs: dict[int, tuple] = {}  # camera k -> (grabbed view, quality), waiting
+        self._done: dict[int, dict] = {}  # camera k -> frame, not yet taken
+        threading.Thread(target=self._run, name="view-jpeg", daemon=True).start()
+
+    def submit(self, views: dict[int, tuple], quality: int) -> None:
+        if views:
+            with self._cv:
+                self._jobs.update({k: (v, quality) for k, v in views.items()})
+                self._cv.notify()
+
+    def take(self) -> dict[int, dict]:
+        with self._cv:
+            done, self._done = self._done, {}
+        return done
+
+    def _run(self) -> None:
+        import io
+
+        from PIL import Image
+
+        while True:
+            with self._cv:
+                while not self._jobs:
+                    self._cv.wait()
+                jobs, self._jobs = self._jobs, {}
+            for k, ((raw, w, h, fov, drone, mode, pitch), quality) in jobs.items():
+                img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, "JPEG", quality=quality)
+                frame = {"drone": drone, "mode": mode, "w": w, "h": h,
+                         "fov": fov, "pitch": pitch,  # for the HUD
+                         "jpeg": buf.getvalue()}
+                with self._cv:
+                    self._done[k] = frame
+
+
 class WebotsBackend:
+    timing = None  # earshot live --profile: a runners.profile.TickProfile
+    _encoder: _Encoder | None = None  # started with the first view frames
+
     def __init__(self, city: City, scenario: Scenario):
         from controller import Supervisor  # only importable inside the Webots env
 
@@ -110,6 +168,7 @@ class WebotsBackend:
                 raise RuntimeError(f"world has no DEF DRONE_{d.id}; regenerate it")
             self._drones[d.id] = (node.getField("translation"), node.getField("rotation"))
         self._fields: dict[str, object | None] = {}  # DEF name -> translation field (cached)
+        self._written: dict[int, list[float]] = {}  # id(field) -> the value last written
         # all cameras ride on child Solids of the RIG, which stays at the origin, so a child's
         # local pose is its world pose (a Supervisor can only read its own robot's devices)
         self._camv = self._node("CAMV")
@@ -135,6 +194,10 @@ class WebotsBackend:
         self._view_pitch: dict[int, float] = {}  # degrees down, so a HUD can draw the horizon
         self._due: float | None = None  # wall-clock deadline of the next basic step
         self._quit = False  # Webots went away: the twin alone carries on
+        self._open = False  # a basic step is running in Webots (stepBegin without stepEnd)
+        self._grabbed: dict = {}  # camera data copied before the step opened, see _grab
+        self._grabs = 0
+        self._last_image: bytes | None = None  # the Verifier's, see _verify_image
         self._names: dict[str, str] = {}  # Source id -> DEF name, see def_names
         self._seen: dict[int, str | None] = {}  # recognised object id -> its Source class
         self._def_class = {f"SRC_{s.id}": s.cls.name for s in scenario.sources}
@@ -160,27 +223,16 @@ class WebotsBackend:
                 self.views[k] = [did, mode]
 
     def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
-        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, jpeg}}."""
-        import io
-
-        from PIL import Image
-
-        out = {}
-        for k in which:
-            if self._quit or not self._views_on or k >= len(self._view_cams):
-                continue
-            cam, _ = self._view_cams[k]
-            raw = cam.getImage()
-            if not raw:
-                continue
-            w, h = cam.getWidth(), cam.getHeight()
-            img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
-            buf = io.BytesIO()
-            img.save(buf, "JPEG", quality=quality)
-            out[k] = {"drone": self.views[k][0], "mode": self.views[k][1], "w": w, "h": h,
-                      "fov": cam.getFov(), "pitch": self._view_pitch.get(k, 0.0),  # for the HUD
-                      "jpeg": buf.getvalue()}
-        return out
+        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, pitch, jpeg}}.
+        The images grabbed this tick go to the encoder thread; returned are the frames it
+        finished since the last call (a tick late, none while it is busy)."""
+        if self._quit:
+            return {}
+        views = self._grabbed.get("views", {})
+        if self._encoder is None:
+            self._encoder = _Encoder()
+        self._encoder.submit({k: views[k] for k in which if k in views}, quality)
+        return self._encoder.take()
 
     def _place_views(self, states: dict[int, DroneState]) -> None:
         on = (self._views_asked is not None
@@ -214,8 +266,8 @@ class WebotsBackend:
                 pitch = c["pitch"]
             rot = look_rotation(yaw, pitch)
             self._view_pitch[k] = pitch
-            node[0].setSFVec3f(pos)
-            node[1].setSFRotation(rot)
+            self._set_vec(node[0], pos)
+            self._set_rot(node[1], rot)
 
     # -- Backend interface ---------------------------------------------------------------
 
@@ -223,16 +275,74 @@ class WebotsBackend:
         n = max(1, round(dt * 1000 / self.basic_ms))
         states = {}
         for i in range(n):
+            self._finish()
+            t0 = time.perf_counter()
             states = self.twin.step(dt / n, commands if i == 0 else {})
-            if not self._quit:
-                self._push(states)
-                if self.sup.step(self.basic_ms) == -1:
-                    self._quit = True  # never touch the Supervisor again
-                    self._verifier = None
-                    print("[webots] Webots quit; the run goes on in the 2D twin, without "
-                          "camera images", flush=True)
-            self._pace()
+            t1 = time.perf_counter()
+            if self._quit:
+                continue
+            self._push(states)
+            t2 = time.perf_counter()
+            if i == n - 1:
+                self._grab()  # the world reads these while the last step runs
+            t3 = time.perf_counter()
+            self._open = self.sup.stepBegin(self.basic_ms) != -1
+            if self.timing is not None:
+                self.timing.add("wb.twin", t1 - t0)
+                self.timing.add("wb.push", t2 - t1)
+                self.timing.add("wb.grab", t3 - t2)
+                self.timing.add("wb.begin", time.perf_counter() - t3)
+            if not self._open:
+                self._gone()
         return states
+
+    def _finish(self) -> None:
+        """Close the open basic step (wait for Webots to finish it), then sleep to its
+        wall-clock deadline. Each basic step, open or not (Webots gone), gets one pace."""
+        if self._open:
+            t0 = time.perf_counter()
+            self._open = False
+            ended = self.sup.stepEnd()
+            if self.timing is not None:
+                self.timing.add("wb.end", time.perf_counter() - t0)
+            if ended == -1:
+                self._gone()
+        self._pace()
+
+    def _gone(self) -> None:
+        self._quit = True  # never touch the Supervisor again
+        self._verifier = None
+        self._grabbed = {}
+        print("[webots] Webots quit; the run goes on in the 2D twin, without camera images",
+              flush=True)
+
+    def _grab(self) -> None:
+        """Copy what the world reads from Webots during the open step: the Verifier camera's
+        image and recognised classes, the view cameras' raw images."""
+        g: dict = {}
+        c = self.camera
+        if self._verifier is not None:
+            g["verify"] = {"w": c.getWidth(), "h": c.getHeight(), "fov": c.getFov(),
+                           "bgra": self._verify_image(),
+                           "objects": self._recognised() if c.hasRecognition() else None,
+                           "yaw": self._verifier_heading}
+        if self._views_on:
+            g["views"] = {}
+            for k, (cam, _) in enumerate(self._view_cams):
+                raw = _image(cam)
+                if raw:
+                    did, mode = self.views[k]
+                    g["views"][k] = (raw, cam.getWidth(), cam.getHeight(), cam.getFov(),
+                                     did, mode, self._view_pitch.get(k, 0.0))
+        self._grabbed = g
+
+    def _verify_image(self) -> bytes | None:
+        """The Verifier image: every tick for a trained detector, else once a second for the
+        dashboard preview (a 1280x768 copy costs ~3 ms)."""
+        self._grabs += 1
+        if self.detector_frames or self._grabs % 10 == 1:
+            self._last_image = _image(self.camera)
+        return self._last_image
 
     def refuses(self, op: dict) -> str | None:
         """Why a live Event cannot be shown, else None: an added Source needs a free spare
@@ -252,26 +362,30 @@ class WebotsBackend:
     def camera_frame(self, drone_id: int) -> object | None:
         """{"w", "h", "objects"}: what the Verifier recognises. With `detector_frames` (a trained
         detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad)}; else
-        the image is copied only on request (`camera_image`, the dashboard preview)."""
-        if self._quit or drone_id != self._verifier:
+        the image is handed over only on request (`camera_image`, the dashboard preview).
+        Served from the copy `_grab` took before the current step opened."""
+        g = self._grabbed.get("verify")
+        if self._quit or drone_id != self._verifier or g is None:
             return None
-        c = self.camera
-        frame = {"w": c.getWidth(), "h": c.getHeight()}
+        frame = {"w": g["w"], "h": g["h"]}
         if self.detector_frames:
-            frame.update(bgra=c.getImage(), fov=c.getFov(), yaw=self._verifier_heading,
+            frame.update(bgra=g["bgra"], fov=g["fov"], yaw=g["yaw"],
                          pitch=math.radians(self._verify_pitch))
-        if c.hasRecognition():
+        if g["objects"] is not None:
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
-            frame["objects"] = self._recognised()
+            frame["objects"] = g["objects"]
         return frame
 
     def camera_image(self) -> bytes | None:
-        """The Verifier camera's current BGRA image."""
-        return self.camera.getImage() if self._verifier is not None and not self._quit else None
+        """The Verifier camera's BGRA image, as copied before the current step opened."""
+        g = self._grabbed.get("verify")
+        return g["bgra"] if g is not None and not self._quit else None
 
     def close(self) -> None:
-        pass
+        if self._open and not self._quit:
+            self._open = False
+            self.sup.stepEnd()
 
     # -- internals -----------------------------------------------------------------------
 
@@ -282,7 +396,10 @@ class WebotsBackend:
         if self._due is None or now - self._due > CATCH_UP_S:
             self._due = now
         self._due += self.basic_ms / 1000
-        time.sleep(max(0.0, self._due - time.monotonic()))
+        slack = max(0.0, self._due - time.monotonic())
+        if self.timing is not None:
+            self.timing.add("wb.pace", slack)
+        time.sleep(slack)
 
     def _node(self, def_name: str):
         """(translation, rotation) fields of a DEF node, cached; None if the world lacks it."""
@@ -291,6 +408,17 @@ class WebotsBackend:
             self._fields[def_name] = (node.getField("translation"), node.getField("rotation")) \
                 if node else None
         return self._fields[def_name]
+
+    def _set_vec(self, field, value: list[float]) -> None:
+        """Write a translation only when it changed: a parked Source or a perched drone once."""
+        if self._written.get(id(field)) != value:
+            self._written[id(field)] = value
+            field.setSFVec3f(value)
+
+    def _set_rot(self, field, value: list[float]) -> None:
+        if self._written.get(id(field)) != value:
+            self._written[id(field)] = value
+            field.setSFRotation(value)
 
     def _recognised(self) -> list[str]:
         """Class names of the Sources in view: object -> its node -> nearest SRC_ ancestor."""
@@ -311,8 +439,8 @@ class WebotsBackend:
     def _push(self, states: dict[int, DroneState]) -> None:
         for did, s in states.items():
             tf, rf = self._drones[did]
-            tf.setSFVec3f([s.x, s.y, s.z])
-            rf.setSFRotation([0.0, 0.0, 1.0, _yaw(s.heading)])
+            self._set_vec(tf, [s.x, s.y, s.z])
+            self._set_rot(rf, [0.0, 0.0, 1.0, _yaw(s.heading)])
 
         t = self.twin.t
         placed: dict[str, tuple] = {}  # one pose per node; an active source wins
@@ -335,8 +463,8 @@ class WebotsBackend:
         for name, (pos, heading) in placed.items():
             node = self._node(name)
             if node is not None:
-                node[0].setSFVec3f(pos)
-                node[1].setSFRotation([0.0, 0.0, 1.0, _yaw(heading)])
+                self._set_vec(node[0], pos)
+                self._set_rot(node[1], [0.0, 0.0, 1.0, _yaw(heading)])
 
         # one rig: it stays with its Verifier until that camera goes off, so a second
         # Verifier arriving cannot take it mid-look (that one stays inconclusive)
@@ -352,12 +480,13 @@ class WebotsBackend:
                 if self.camera.hasRecognition():
                     self.camera.recognitionEnable(VERIFY_PERIOD_MS)
             self._verifier = verifier
+            self._last_image, self._grabs = None, 0  # no frame of the previous look
         if self._camv is not None:
             if verifier is None:
-                self._camv[0].setSFVec3f(PARKED)
+                self._set_vec(self._camv[0], PARKED)
             else:
                 s = states[verifier]
                 self._verifier_heading = s.heading
-                self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
-                self._camv[1].setSFRotation(look_rotation(s.heading, self._verify_pitch))
+                self._set_vec(self._camv[0], [s.x, s.y, s.z - 0.3])
+                self._set_rot(self._camv[1], look_rotation(s.heading, self._verify_pitch))
         self._place_views(states)
