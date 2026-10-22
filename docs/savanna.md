@@ -76,6 +76,7 @@ The airport, re-evaluated with the same seeds (`earshot eval`, medians [min-max]
 | without the twenty-drone measures | 2/4 | 131, 122 | 0/4 | 56.5 | 53.5 | 4 | 83 | 40 |
 | **shipped**: `max_verify_distance` 3 km, `relay_radius_m` 4 km | **4/4** | 267, 103, 152, 113 | 0/4 | 12 | 11.5 | 2 | 68 | 48 |
 | also holding back irrelevant healing (dropped) | 2/4 | 199, 240 | 0/4 | 12.5 | 11 | 2.5 | 59 | 52 |
+| ten drones, every second tower (Oct 21, for live Webots speed) | 3/4 | 209, 257, 191 | 0/4 | 1 | 0.5 | 1 | 23 | 71 |
 
 Reading it:
 - **The poacher with a radio is found every time**, two to four minutes after it cuts the fence, confirmed by the camera as "poacher pickup", and followed. Seed 0 (`uv run earshot fast --scenario scenarios/savanna.yaml --log`, `runs/savanna-seed0.threats.jsonl`): a first check at 244 s finds nothing; at 275 s drone 1 confirms the pickup and follows it to the fence, the Confirmed Track 4-90 m from the vehicle all the way; a second drone confirming it at 464 s joins the same Threat Log entry and yields.
