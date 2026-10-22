@@ -1,5 +1,5 @@
 # Savanna: anti-poaching in a 10 x 10 km private game reserve in the South African lowveld
-# (tools/make_savanna.py). Twenty drones perch on lookout towers 2-2.5 km apart, listening to
+# (tools/make_savanna.py). Ten drones perch on every second lookout tower, 3-4 km apart, listening to
 # the bush at night, and hunt vehicles instead of drones (threat: vehicle): an engine off the
 # tracks is a Suspicion, one on a track is a ranger or a game drive (Explained by the City).
 #
@@ -23,26 +23,17 @@ duration: 900
 dt: 0.1
 map_cell: 50        # m; 10 km / 50 m = 200 x 200 cells per drone
 
-drones:            # one per lookout tower (p_tower<k>), all listening
-  - {id: 0,  x: -3734, y: -3771, home: [-3734, -3771], default: listen}
+drones:            # on every second lookout tower (p_tower<k>, ids kept), all listening;
+#                    ten, not twenty, so live Webots keeps real time (docs/perf-2026-10-21.md)
   - {id: 1,  x: -2494, y: -3337, home: [-2494, -3337], default: listen}
-  - {id: 2,  x: -170,  y: -3511, home: [-170, -3511],  default: listen}
   - {id: 3,  x: 2400,  y: -3935, home: [2400, -3935],  default: listen}
-  - {id: 4,  x: 4042,  y: -3576, home: [4042, -3576],  default: listen}
   - {id: 5,  x: -4034, y: -1484, home: [-4034, -1484], default: listen}
-  - {id: 6,  x: -2538, y: -1196, home: [-2538, -1196], default: listen}
   - {id: 7,  x: -212,  y: -1136, home: [-212, -1136],  default: listen}
-  - {id: 8,  x: 1701,  y: -1211, home: [1701, -1211],  default: listen}
   - {id: 9,  x: 3627,  y: -729,  home: [3627, -729],   default: listen}
-  - {id: 10, x: -4575, y: 1305,  home: [-4575, 1305],  default: listen}
   - {id: 11, x: -2190, y: 780,   home: [-2190, 780],   default: listen}
-  - {id: 12, x: -307,  y: 1822,  home: [-307, 1822],   default: listen}
   - {id: 13, x: 1807,  y: 1668,  home: [1807, 1668],   default: listen}
-  - {id: 14, x: 3848,  y: 1385,  home: [3848, 1385],   default: listen}
   - {id: 15, x: -3990, y: 3964,  home: [-3990, 3964],  default: listen}
-  - {id: 16, x: -1550, y: 3766,  home: [-1550, 3766],  default: listen}
   - {id: 17, x: -104,  y: 3737,  home: [-104, 3737],   default: listen}
-  - {id: 18, x: 1984,  y: 4088,  home: [1984, 4088],   default: listen}
   - {id: 19, x: 3864,  y: 3620,  home: [3864, 3620],   default: listen}
 
 environment:

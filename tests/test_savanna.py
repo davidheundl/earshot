@@ -1,4 +1,4 @@
-"""The savanna Reserve (tools/make_savanna.py, scenarios/savanna.yaml) holds together: every
+"""The savanna Reserve (tools/make_savanna.py, scenarios/savanna.yaml) holds together: each
 drone has a tower to perch on, the map fits the task ids, poachers stay slower than a
 Verifier, and a short lockstep run goes through."""
 
@@ -28,7 +28,7 @@ def world():
 
 def test_every_drone_perches_on_a_tower_of_its_own(world):
     sc, city = world
-    assert sc.threat == TargetClass.VEHICLE and len(sc.drones) == 20
+    assert sc.threat == TargetClass.VEHICLE and len(sc.drones) == 10
     sites = {p.id: p for p in city.perch_sites}
     homes = set()
     for d in sc.drones:
@@ -37,7 +37,7 @@ def test_every_drone_perches_on_a_tower_of_its_own(world):
         assert site.id.startswith("p_tower") and math.hypot(site.x - d.x, site.y - d.y) < 5.0
         assert site.id in sites and d.default == Mode.LISTEN
         homes.add(site.id)
-    assert len(homes) == 20
+    assert len(homes) == 10
     x0, y0, x1, y1 = city.bounds
     assert (x1 - x0) * (y1 - y0) == pytest.approx(100e6)  # 100 km2
 
