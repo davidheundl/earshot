@@ -251,8 +251,9 @@ class Agent:
             if prev is None or msg.t >= prev.t:
                 self._claims[key] = msg
         elif isinstance(msg, Digest):
-            for origin, lo, hi in self.store.on_digest(msg, t):
-                self._emit_unstored(Request(Header(self.me, 0, 1), origin, lo, hi), outbox)
+            for origin, lo, hi in self.store.on_digest(msg, t):  # ask the Digest's sender
+                self._emit_unstored(Request(Header(self.me, 0, 1), origin, msg.header.origin,
+                                            lo, hi), outbox)
         elif isinstance(msg, Request):
             self.store.on_request(msg, t)
 

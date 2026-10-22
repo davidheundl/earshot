@@ -35,7 +35,7 @@ SAMPLES = [
           TrackStatus.SUSPECTED, 12.3),
     Claim(H, 5.0, 42, 3.21, 12.0, -340.0, -560.0),
     Digest(H, 1.0, tuple((o, 1000 + o) for o in range(6))),
-    Request(H, 2, 10, 20),
+    Request(H, 2, 5, 10, 20),
 ]
 
 

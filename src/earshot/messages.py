@@ -165,15 +165,16 @@ class Digest:
 
 @dataclass(frozen=True)
 class Request:
-    """'I am missing origin o, seq from..to.'"""
+    """'Holder h: I am missing origin o, seq from..to.' Only h answers (agent/store.py)."""
 
     header: Header
     want_origin: int
+    holder: int  # the neighbour whose Digest showed it has them
     from_seq: int
     to_seq: int
 
     TYPE = MsgType.REQUEST
-    _S = struct.Struct("<BHH")
+    _S = struct.Struct("<BBHH")
 
 
 Message = Observation | Track | Claim | Digest | Request
@@ -266,7 +267,8 @@ def _payload(msg: Message) -> bytes:
             out += struct.pack("<BH", origin, seq & 0xFFFF)
         return out
     if isinstance(msg, Request):
-        return Request._S.pack(msg.want_origin, msg.from_seq & 0xFFFF, msg.to_seq & 0xFFFF)
+        return Request._S.pack(msg.want_origin, msg.holder, msg.from_seq & 0xFFFF,
+                               msg.to_seq & 0xFFFF)
     raise TypeError(f"not a radio message: {type(msg).__name__}")
 
 
@@ -334,8 +336,8 @@ def _unpack(mtype: MsgType, header: Header, p: bytes) -> Message:
         entries = tuple(struct.unpack_from("<BH", p, 5 + 3 * i) for i in range(n))
         return Digest(header, t / 1000.0, entries)
     if mtype is MsgType.REQUEST:
-        o, a, b = Request._S.unpack(p)
-        return Request(header, o, a, b)
+        o, h, a, b = Request._S.unpack(p)
+        return Request(header, o, h, a, b)
     raise BadFrame(f"unknown type {mtype}")
 
 

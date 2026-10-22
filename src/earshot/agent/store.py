@@ -7,8 +7,9 @@ Interface:
     store = MessageStore(me, key, scheme="ours", relay_radius=inf)
     msg = store.receive(frame, margin_db, t, here)   accepted message, or None (duplicate / bad / own)
     frames = store.due(t)                       forwards and healing resends whose time has come
-    reqs = store.on_digest(digest, t)           Requests for ranges a neighbour has and we lack
-    store.on_request(request, t)                schedule resends of the Tracks/Claims asked for
+    reqs = store.on_digest(digest, t)           ranges to ask the Digest's sender for
+    store.on_request(request, t)                schedule resends of the Tracks/Claims asked for,
+                                                if the Request names me as its holder
     store.digest(t)                             [(origin, newest seq worth healing at t)]
 
 Healing covers only what every drone should hold: Claims and Tracks that are not Explained.
@@ -263,7 +264,9 @@ class MessageStore:
 
     def on_request(self, r: Request, t: float) -> None:
         """Schedule resends (1 hop) of stored Tracks/Claims in the asked range that are still
-        worth healing, newest first."""
+        worth healing, newest first, if the Request names me as the holder."""
+        if r.holder != self.me:
+            return  # its Digest's sender answers: others nearby are no nearer the requester
         hits = sorted(
             (k for k in self._healable
              if k[1] == r.want_origin
@@ -274,6 +277,4 @@ class MessageStore:
         )[:MAX_RESEND_PER_REQUEST]
         for i, k in enumerate(hits):
             self._resent[k] = t
-            # small, id-staggered delay so one neighbour answers and the others overhear it
-            self._pending[k] = (t + 0.2 + 0.15 * self.me + 0.05 * i,
-                                with_hops(self._frames[k], 1), "resend")
+            self._pending[k] = (t + 0.2 + 0.05 * i, with_hops(self._frames[k], 1), "resend")
