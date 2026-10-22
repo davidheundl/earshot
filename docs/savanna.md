@@ -44,7 +44,7 @@ Generated and deterministic (seed 24), a City like Munich or the valley, with `b
 | UHF band, `Band.emitter`, `duty` | poachers' handhelds; an RF ring raises the class its band's emitters are | `sensors/rf.py`, `Sensor.RF_UHF` |
 | `intruder:`, `kind:` per Source | rangers are vehicles but no intruders; the camera and Webots need to know what a Source is | `scenario.py` |
 | Camera labels | "what is it?": the stand-in names the Source's `kind`, YOLO its class names; a recognised Nuisance or one of the reserve's own vehicles is no threat | `sensors/__init__.py`, `sensors/camera.py` (`classes`) |
-| Follow | stay with a confirmed poacher | `policy.py` (`follow_for`, events `following`, `lost`, `handed_off`) |
+| Follow | stay with a confirmed poacher, camera on it, at its speed | `policy.py` (`follow_for`, `follow_gap`, `follow_gain`, `follow_max_speed`; events `following`, `lost`, `handed_off`), `agent/follow.py` (Quarry) |
 | Threat Log | log every checked danger with the camera's label and the followed path | `threat_log.py`, both runners, the dashboard |
 | Task ids for 12.8 km | 100 km² has 10 000 cells of 100 m | `policy.TASK_STRIDE` 16384 |
 | Explained Tracks cheap on air | a ranger's radio left a trail of Explained peaks that filled each drone's six Track places and half the channel | `core.py` (one hop, one per 300 m per 30 s), `belief.tracks` (their own six places) |

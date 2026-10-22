@@ -26,8 +26,13 @@ class Kinematics:
     drain_flying: float = 1 / 1500  # battery fraction per s (~25 min flight)
     drain_perched: float = 1 / 36000  # ~10 h perched (assumption, section 4)
     standoff: float = 40.0  # m a Verifier keeps from the point it looks at
+    max_speed: float = 25.0  # m/s the airframe flies at most, whatever a Command asks
 
-    def v(self, mode: Mode) -> float:
+    def v(self, mode: Mode, asked: float | None = None) -> float:
+        """The speed a Command gets: what it asked for (Follow), within max_speed, else the
+        Mode's cruise speed."""
+        if asked is not None:
+            return min(max(asked, 0.0), self.max_speed)
         default = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}
         return (self.speed or default)[mode]
 
@@ -107,7 +112,8 @@ class Twin2D:
         dist = math.hypot(dx, dy)
         if cmd.look_at is not None:  # keep a standoff, camera towards the target
             dist = max(0.0, dist - kin.standoff)
-        step = min(dist, kin.v(cmd.mode) * dt)
+        v = kin.v(cmd.mode, cmd.speed)
+        step = min(dist, v * dt)
         norm = math.hypot(dx, dy)
         if step > 1e-6 and norm > 1e-6:
             b.x += dx / norm * step
@@ -120,7 +126,7 @@ class Twin2D:
         dz = target_z - b.z
         b.z += math.copysign(min(abs(dz), kin.climb_rate * dt), dz)
 
-        b.rpm = kin.cruise_rpm if step > 0.1 * kin.v(cmd.mode) * dt else kin.hover_rpm
+        b.rpm = kin.cruise_rpm if step > 0.1 * max(v, 1.0) * dt else kin.hover_rpm
         b.battery = max(0.0, b.battery - kin.drain_flying * dt)
         if site is not None and dist <= kin.arrive_radius and abs(b.z - site.z) < 0.5:
             b.perched_on = site.id

@@ -17,6 +17,7 @@ class Command:
     perch_site: str | None = None  # LISTEN: land on this Perch Site, motors off
     camera_on: bool = False
     look_at: tuple[float, float] | None = None  # VERIFY: hold a standoff and face this point
+    speed: float | None = None  # m/s asked for (Follow); None: the Mode's cruise speed
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,8 @@ class SensorReading:
     bearing_sigma: float
     class_probs: tuple[float, float, float, float]  # indexed by TargetClass
     level: float  # dB (sound level or RF received power)
+    range: float = 0.0  # m to what the camera saw (geolocated, or a drone's box size); 0: none.
+    #                     Stays on the drone: a Follower steers by it, the radio never carries it
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,9 @@ class PolicyParams:
     outbid_cooldown: float = 5.0  # s an outbid drone leaves that place alone
     verify_timeout: float = 90.0  # s at the target without confirming -> given up (Ghost held up)
     follow_for: float = 0.0  # s a Verifier stays with what it confirmed (Follow); 0: hand off at once
+    follow_gap: float = 40.0  # m a Follower keeps behind its Quarry (match camera.standoff)
+    follow_gain: float = 0.25  # 1/s: m/s of speed above the Quarry's per metre it is behind
+    follow_max_speed: float = 25.0  # m/s a Follower sprints at most (the backend caps it too)
     max_verify_distance: float = math.inf  # m: no bid on a task further off (a big swarm has a
     #                                        nearer drone, though its Claim may be lost)
 

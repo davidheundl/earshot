@@ -62,3 +62,6 @@ camera:
   every: 2             # infer on every other rendered frame (5 Hz)
   resolution: [1280, 768]
   standoff: 25         # m the Verifier keeps from the point it looks at (default 40)
+
+params:
+  follow_for: 300   # a Verifier that confirms the drone stays on it, camera locked (Follow)

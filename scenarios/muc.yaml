@@ -39,3 +39,6 @@ radio:
   sf: 7
   bw_khz: 500
   nominal_range_m: 1200   # drones on 25-30 m roofs over an open airfield
+
+params:
+  follow_for: 300   # a Verifier that confirms the drone stays on it, camera locked (Follow)

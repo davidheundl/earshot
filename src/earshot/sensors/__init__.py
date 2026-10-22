@@ -21,6 +21,7 @@ A camera Detection's `label` says what the camera recognised (the stand-in: the 
 from __future__ import annotations
 
 import math
+import zlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -269,8 +270,12 @@ class SensorSuite:
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
             ranged = d if self.camera_reach and src.cls != TargetClass.DRONE else 0.0
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, ranged), src.id,
-                                 99.0, _label(src)))
+            # a drone's range from its box size: right up to its unknown real size (one scale
+            # per Source, no random draw, so every other number of the run stays the same)
+            size = 0.85 + 0.3 * (zlib.crc32(src.id.encode()) % 1000) / 1000.0
+            rng = ranged or (d * size if src.cls == TargetClass.DRONE else 0.0)
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, ranged, rng),
+                                 src.id, 99.0, _label(src)))
         if not out:
             nothing = (0.0, 0.0, 0.0, 1.0)
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
@@ -290,7 +295,7 @@ class SensorSuite:
         # the way in it has not yet looked at the place
         v = self.camera.verdict(hovering=moved <= CAMERA_HOVER_M)
         out = []
-        for b, sigma, _, label in v.hits:
+        for b, sigma, _, label, rng in v.hits:
             truth, best = None, CAMERA_MATCH_DEG
             for src, (sx, sy) in sources:
                 d = math.hypot(sx - s.x, sy - s.y)
@@ -300,8 +305,8 @@ class SensorSuite:
                     truth, best = src.id, err
             cls = self.camera.class_of(label)
             probs = tuple(0.95 if c == cls else 0.05 / 3 for c in TargetClass)
-            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0), truth, 99.0,
-                                 label))
+            out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, 0.0, rng), truth,
+                                 99.0, label))
         if not out and v.clear_radius is not None:
             nothing = (0.0, 0.0, 0.0, 1.0)
             out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,

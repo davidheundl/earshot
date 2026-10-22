@@ -33,7 +33,7 @@ def sensed_to_dict(s: Sensed) -> dict:
             "motor_rpm": st.motor_rpm, "camera_on": st.camera_on,
         },
         "readings": [
-            [int(r.sensor), r.bearing, r.bearing_sigma, list(r.class_probs), r.level]
+            [int(r.sensor), r.bearing, r.bearing_sigma, list(r.class_probs), r.level, r.range]
             for r in s.readings
         ],
         # no camera_frame: the world already turned it into CAMERA readings, and Agents never
@@ -47,7 +47,8 @@ def sensed_from_dict(d: dict) -> Sensed:
     return Sensed(
         state=DroneState(**st),
         readings=[
-            SensorReading(Sensor(s), b, bs, tuple(cp), lvl) for s, b, bs, cp, lvl in d["readings"]
+            SensorReading(Sensor(s), b, bs, tuple(cp), lvl, rng)
+            for s, b, bs, cp, lvl, rng in d["readings"]
         ],
         camera_frame=d.get("camera_frame"),
     )
@@ -55,10 +56,10 @@ def sensed_from_dict(d: dict) -> Sensed:
 
 def command_to_dict(c: Command) -> dict:
     return {"mode": int(c.mode), "goal": c.goal, "perch_site": c.perch_site,
-            "camera_on": c.camera_on, "look_at": c.look_at}
+            "camera_on": c.camera_on, "look_at": c.look_at, "speed": c.speed}
 
 
 def command_from_dict(d: dict) -> Command:
     return Command(Mode(d["mode"]), tuple(d["goal"]) if d["goal"] else None,
                    d["perch_site"], d["camera_on"],
-                   tuple(d["look_at"]) if d.get("look_at") else None)
+                   tuple(d["look_at"]) if d.get("look_at") else None, d.get("speed"))

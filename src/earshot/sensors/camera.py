@@ -38,11 +38,13 @@ DEFAULT_WEIGHTS = (Path(__file__).resolve().parents[3]
                    / "data/cv/verifier-demo-20261015/evaluation/drone-best.pt")
 TARGET = "quadcopter"
 MIN_SIGMA_DEG = 2.0
+DRONE_SPAN_M = 0.4  # a small quadcopter's width: its box width gives the range (monocular)
 
 
 @dataclass(frozen=True)
 class CameraVerdict:
-    hits: list[tuple[float, float, float, str]]  # (bearing deg, sigma deg, confidence, label)
+    hits: list[tuple[float, float, float, str, float]]  # (bearing deg, sigma deg, confidence,
+    #                                                    label, range m from the box width)
     clear_radius: float | None  # m looked at and empty; None = inconclusive
     others: tuple[str, ...] = ()  # harmless labels seen this window (classes -> nothing)
 
@@ -59,6 +61,12 @@ def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, fl
     off = math.degrees(math.atan2(xc, math.cos(p) - yc * math.sin(p)))
     sigma = max(MIN_SIGMA_DEG, math.degrees(math.atan2(bw / 2.0, f)))
     return (frame["yaw"] + off) % 360.0, sigma
+
+
+def box_range(bw: float, frame: dict, span: float = DRONE_SPAN_M) -> float:
+    """Metres to an object `span` metres wide whose box is `bw` pixels wide."""
+    f = frame["w"] / (2.0 * math.tan(frame["fov"] / 2.0))
+    return span * f / max(bw, 1.0)
 
 
 @dataclass
@@ -138,7 +146,7 @@ class YoloDetector:
             if current[key] >= self.confirm_frames:
                 x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
                 b, s = box_bearing((x1 + x2) / 2.0, (y1 + y2) / 2.0, x2 - x1, frame)
-                self._window_hits[key] = (b, s, score, label)
+                self._window_hits[key] = (b, s, score, label, box_range(x2 - x1, frame))
         self._streaks = current  # a missed frame resets a track's streak
 
     def verdict(self, hovering: bool = True) -> CameraVerdict:

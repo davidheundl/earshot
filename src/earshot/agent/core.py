@@ -25,6 +25,7 @@ from earshot.messages import (
     Message,
     Observation,
     Request,
+    Sensor,
     Track,
     TrackStatus,
     encode,
@@ -130,7 +131,13 @@ class Agent:
             self._broadcast_tracks(t, outbox)
 
         # 4. decide
-        decision = self.policy.decide(t, s, self._all_tracks(t), self.belief, self._claims)
+        # my own camera's hits of the Threat Class this tick: a Follower steers by them
+        sightings = [r for r in sensed.readings if r.sensor == Sensor.CAMERA
+                     and not math.isnan(r.bearing)
+                     and max(range(len(r.class_probs)), key=r.class_probs.__getitem__)
+                     == self.threat]
+        decision = self.policy.decide(t, s, self._all_tracks(t), self.belief, self._claims,
+                                      sightings)
         for tid, bid, lease, x, y in decision.claims:
             claim = Claim(self._next_header(CLAIM_HOPS), t, tid, bid, lease, x, y)
             self._claims[(self.me, tid)] = claim

@@ -34,8 +34,12 @@ Covering part of a neighbour's vacated Sector.
 The Drone currently in Verify; the only one rendering camera images.
 
 **Follow**:
-A Verifier staying with the threat it confirmed, camera on, so it stays Confirmed and the Threat Log gets its path; ends when the threat is lost or after `follow_for` seconds. Still Mode Verify.
-_Avoid_: chase, pursue, track (a Track is a fused Suspicion)
+A Verifier staying with the threat it confirmed, camera on, so it stays Confirmed and the Threat Log gets its path; ends when the threat is lost or after `follow_for` seconds. It faces its Quarry and matches its speed, closing in when it falls behind. Still Mode Verify.
+_Avoid_: chase, pursue, track (a Track is a fused Suspicion), lock (that is a Claim)
+
+**Quarry**:
+What a Follower knows of the threat it follows: position and velocity, from its own camera sightings and the Confirmed Track, coasting between them.
+_Avoid_: target (a Source), track
 
 **Sector**:
 The area a Drone is responsible for while patrolling; re-partitioned when a neighbour leaves.

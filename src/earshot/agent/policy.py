@@ -23,10 +23,14 @@ Concept section 7, as reworked on 2026-10-11:
 - A task follows its Suspicion as it drifts, but at most same_task_radius from where it was
   claimed; beyond that it is dropped and re-auctioned.
 - Follow (follow_for > 0): a Verifier that confirmed its threat stays with it, camera on,
-  flying to the nearest Confirmed Track of the Threat Class and renewing its Claim, until
-  follow_for has passed ("handed_off") or no Confirmed Track is near for dismiss_after
-  ("lost"). It reports where it is once a second ("following"); the runners log that as the
-  Threat Log. follow_for 0 releases at confirmation, as before.
+  renewing its Claim, until follow_for has passed ("handed_off") or neither its camera nor
+  a Confirmed Track of the Threat Class has seen it for dismiss_after ("lost"). Its Quarry
+  (agent/follow.py) fuses its own camera sightings and the Confirmed Track into a position
+  and velocity; the Follower faces where the Quarry is now (look_at: the camera stays on
+  it) and asks for the Quarry's speed plus follow_gain per metre it is more than follow_gap
+  behind, at most follow_max_speed. It reports where it is once a second ("following", with
+  the Quarry's speed); the runners log that as the Threat Log. follow_for 0 releases at
+  confirmation, as before.
 - Sectors are Voronoi cells of the homes of available drones (no active Claim); when a drone
   leaves, its neighbours' cells grow and patrollers fly Fill Gap.
 
@@ -44,9 +48,10 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from earshot.agent.belief import CONFIRM_RADIUS, TrackEst, cell_center
+from earshot.agent.follow import Quarry
 from earshot.city import City
 from earshot.messages import Claim, Mode, TrackStatus
-from earshot.state import Command, DroneState, SwarmConfig
+from earshot.state import Command, DroneState, SensorReading, SwarmConfig
 
 VERIFY = 0  # the only task kind (listening tasks were dropped: listeners hold their posts)
 KIND_NAME = {VERIFY: "verify"}
@@ -113,7 +118,8 @@ class Policy:
         self._arrived_at: float | None = None
         self._lost: tuple[float, float, float] | None = None  # (t, x, y) of the last outbid
         self._follow_since: float | None = None  # Follow: when the task's threat was confirmed
-        self._unseen_since: float | None = None  # Follow: no Confirmed Track near since then
+        self._quarry: Quarry | None = None  # Follow: where the confirmed threat is
+        self._sightings: list[SensorReading] = []  # this tick's own camera hits of the threat
         self._follow_said = -1e9  # Follow: last "following" event
         self._cooldown = self.p.outbid_cooldown
         xs = np.arange(city.bounds[0] + SECTOR_CELL / 2, city.bounds[2], SECTOR_CELL)
@@ -124,7 +130,11 @@ class Policy:
     # -- main -----------------------------------------------------------------------------
 
     def decide(self, t: float, s: DroneState, tracks: list[TrackEst], belief,
-               claims: dict[tuple[int, int], Claim]) -> Decision:
+               claims: dict[tuple[int, int], Claim],
+               sightings: list[SensorReading] = ()) -> Decision:
+        """`sightings`: this tick's own camera readings that saw the Threat Class (a
+        bearing, and `range` when the camera ranged it); Follow steers by them."""
+        self._sightings = list(sightings)
         active = {k: c for k, c in claims.items() if c.lease > 0 and t < c.t + c.lease}
         tasks = self._tasks(tracks, belief, active, s)
         d = Decision(command=self._default_command(t, s, active))
@@ -280,7 +290,8 @@ class Policy:
             if self.p.follow_for > 0:  # stay with it: Follow
                 d.events.append(self._event(t, "confirmed")
                                 | {"x": round(confirmed.x, 1), "y": round(confirmed.y, 1)})
-                self._follow_since, self._unseen_since = t, None
+                self._follow_since = t
+                self._quarry = Quarry(t, confirmed.x, confirmed.y)
                 self._follow(t, s, tracks, {}, d)
                 return
             self._release(t, d, "confirmed", confirmed)
@@ -300,23 +311,27 @@ class Policy:
             self._release(t, d, "obsolete")
 
     def _follow(self, t, s, tracks, active, d: Decision) -> None:
-        """Stay with the confirmed threat: fly to the nearest Confirmed Track of the Threat
-        Class within same_task_radius, keep the Claim alive, report once a second. Two
-        Verifiers that confirmed the same threat (Claims crossed on the air) do not both
-        follow it: the nearer keeps it, as in the auction."""
-        task = self._task
+        """Stay with the confirmed threat: update the Quarry from my own camera and the
+        nearest Confirmed Track of the Threat Class within same_task_radius of it, keep the
+        Claim alive, report once a second. Two Verifiers that confirmed the same threat
+        (Claims crossed on the air) do not both follow it: the nearer keeps it, as in the
+        auction."""
+        task, q = self._task, self._quarry
+        for r in self._sightings:
+            q.sight(t, s.x, s.y, r.bearing, r.range)
+        px, py = q.at(t)
         near = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
                 and tr.cls == self.swarm.threat
-                and math.hypot(tr.x - task.x, tr.y - task.y) <= self.p.same_task_radius]
-        conf = min(near, key=lambda tr: math.hypot(tr.x - task.x, tr.y - task.y), default=None)
+                and math.hypot(tr.x - px, tr.y - py) <= self.p.same_task_radius]
+        conf = min(near, key=lambda tr: math.hypot(tr.x - px, tr.y - py), default=None)
         if conf is not None:
-            task.x, task.y, task.track, task.target = conf.x, conf.y, conf, (conf.x, conf.y)
-            self._unseen_since = None
-        elif self._unseen_since is None:
-            self._unseen_since = t
-        if self._unseen_since is not None and t - self._unseen_since >= self.p.dismiss_after:
+            q.track(t, conf.x, conf.y)
+            task.track = conf
+        if t - q.last_seen >= self.p.dismiss_after:
             self._release(t, d, "lost")
             return
+        task.x, task.y = q.at(t)
+        task.target = (task.x, task.y)
         if t - self._follow_since >= self.p.follow_for:
             self._release(t, d, "handed_off")
             return
@@ -328,7 +343,7 @@ class Policy:
             return
         if t - self._follow_said >= 1.0:
             self._follow_said = t
-            d.events.append(self._event(t, "following"))
+            d.events.append(self._event(t, "following") | {"v": round(q.speed, 1)})
         if t - self._last_claim >= RENEW:
             self._send_claim(t, d, LEASE)
 
@@ -341,6 +356,7 @@ class Policy:
         self._task = None
         self._settled = False
         self._follow_since = None
+        self._quarry = None
 
     def _send_claim(self, t, d: Decision, lease: float) -> None:
         task = self._task
@@ -361,6 +377,11 @@ class Policy:
 
     def _task_command(self, s: DroneState) -> Command:
         target = self._task.target
+        if self._quarry is not None:  # Follow: camera on the Quarry, at its speed and more
+            behind = math.hypot(target[0] - s.x, target[1] - s.y) - self.p.follow_gap
+            speed = self._quarry.speed + self.p.follow_gain * max(0.0, behind)
+            return Command(Mode.VERIFY, goal=target, camera_on=True, look_at=target,
+                           speed=min(speed, self.p.follow_max_speed))
         near = math.hypot(target[0] - s.x, target[1] - s.y) <= 150.0
         return Command(Mode.VERIFY, goal=target, camera_on=near, look_at=target)
 
