@@ -46,7 +46,7 @@ from earshot.backend.webots import N_VIEWS, TRAIN_WAGONS, WEBOTS_LIVE_SLOTS, liv
 from earshot.city import City
 from earshot.scenario import Scenario
 
-BUILDER_VERSION = "6"
+BUILDER_VERSION = "7"
 PROTO = "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects"
 EXTERNPROTOS = [
     "objects/backgrounds/protos/TexturedBackground.proto",
@@ -1686,7 +1686,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     sky = "mountains" if biome == "savanna" else "noon_cloudy_countryside"  # HDR skies only
     haze = (0.80, 0.77, 0.70) if biome == "savanna" else (0.78, 0.82, 0.87)
     parts += [
-        'WorldInfo { info [ "Earshot" ] basicTimeStep 20 gravity 0 }',
+        # 50 ms: two basic steps per 0.1 s tick, fewer pose writes and step round trips; the
+        # camera periods (100, 200 ms, backend/webots.py) must stay multiples of it
+        'WorldInfo { info [ "Earshot" ] basicTimeStep 50 gravity 0 }',
         (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(0, 14)} position {cx:.0f} "
         f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} "
         f"far {14000 if raw.get('surround') else 25000}"  # with surroundings: only as far as the haze
