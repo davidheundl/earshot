@@ -1799,7 +1799,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     for sid, cls, kind in slots:
         parts += source_nodes(sid, cls, markers, kind, biome)
     # the RIG stays at the origin; its child Solids carry the cameras and are moved by the
-    # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0..3 (game screen views)
+    # supervisor: CAMV (the Verifier's camera, with recognition) and CAM_0.. (game screen views, N_VIEWS)
     # a trained detector needs pixels: the Scenario's camera.resolution (1280x768 sees a drone
     # at 30-60 m, data/cv/verifier-highres-20261015/REPORT.md); 400x240 is enough to recognise
     rig_w, rig_h = sc.camera.get("resolution", (400, 240))

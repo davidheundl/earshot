@@ -52,6 +52,9 @@
   #tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-height: 0; }
   #tiles .view { cursor: pointer; }
   #tiles .view:hover { border-color: var(--select); }
+  /* a backend with one view camera (Webots) sends no tiles: the main view takes their row */
+  body.onecam #left { grid-template-rows: minmax(0, 1fr) 108px; }
+  body.onecam #tiles { display: none; }
 
   /* swarm strip */
   #swarm { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
@@ -158,7 +161,7 @@
   }
 </style>
 </head>
-<body>
+<body class="onecam">
 <div id="app">
   <header>
     <h1>Earshot</h1>
@@ -387,7 +390,7 @@ function connectCams() {
     const f = JSON.parse(e.data);
     frames[f.k] = f;
     $(`cam${f.k}`).src = `data:image/jpeg;base64,${f.jpeg}`;
-    if (f.k > 0) $(`tag${f.k}`).textContent = `Drone ${f.drone}, ${f.mode} view`;
+    if (f.k > 0) { $(`tag${f.k}`).textContent = `Drone ${f.drone}, ${f.mode} view`; document.body.classList.remove("onecam"); }
     $("nocam").hidden = true;
     lastCam = performance.now();
     if (camStale) checkCams();

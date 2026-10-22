@@ -89,8 +89,8 @@ def look_rotation(heading_deg: float, pitch_down_deg: float) -> list[float]:
     return [x / n, y / n, z / n, 2 * math.acos(max(-1.0, min(1.0, w)))]
 
 
-N_VIEWS = 4  # view cameras on the RIG: CAM_0 (main, larger) .. CAM_3
-VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz
+N_VIEWS = 1  # view cameras on the RIG: CAM_0 only, the main view (each tile costs render time)
+VIEW_PERIOD_MS = (100, 200, 200, 200)  # main view 10 Hz, tiles 5 Hz (with N_VIEWS 4)
 VIEW_KEEPALIVE_S = 5.0  # view cameras render only while a screen asked for them this recently
 VERIFY_PERIOD_MS = 100  # the sensors read the Verifier camera once per 0.1 s tick
 TARGET_DROP_M = 10.0  # a Verifier cruises 10 m above an intruder (40 m vs. 30 m above ground)
