@@ -96,6 +96,8 @@ CHASE_PERCHED = {"back": 9.0, "up": 4.5, "pitch": 24.0}  # see the roof and what
 
 
 class WebotsBackend:
+    timing = None  # earshot live --profile: a runners.profile.TickProfile
+
     def __init__(self, city: City, scenario: Scenario):
         from controller import Supervisor  # only importable inside the Webots env
 
@@ -223,10 +225,18 @@ class WebotsBackend:
         n = max(1, round(dt * 1000 / self.basic_ms))
         states = {}
         for i in range(n):
+            t0 = time.perf_counter()
             states = self.twin.step(dt / n, commands if i == 0 else {})
+            t1 = time.perf_counter()
             if not self._quit:
                 self._push(states)
-                if self.sup.step(self.basic_ms) == -1:
+                t2 = time.perf_counter()
+                stepped = self.sup.step(self.basic_ms)
+                if self.timing is not None:
+                    self.timing.add("wb.twin", t1 - t0)
+                    self.timing.add("wb.push", t2 - t1)
+                    self.timing.add("wb.step", time.perf_counter() - t2)
+                if stepped == -1:
                     self._quit = True  # never touch the Supervisor again
                     self._verifier = None
                     print("[webots] Webots quit; the run goes on in the 2D twin, without "
@@ -282,7 +292,10 @@ class WebotsBackend:
         if self._due is None or now - self._due > CATCH_UP_S:
             self._due = now
         self._due += self.basic_ms / 1000
-        time.sleep(max(0.0, self._due - time.monotonic()))
+        slack = max(0.0, self._due - time.monotonic())
+        if self.timing is not None:
+            self.timing.add("wb.pace", slack)
+        time.sleep(slack)
 
     def _node(self, def_name: str):
         """(translation, rotation) fields of a DEF node, cached; None if the world lacks it."""

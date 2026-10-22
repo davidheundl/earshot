@@ -29,6 +29,7 @@ import zmq
 
 from earshot import config
 from earshot.city import City
+from earshot.runners.profile import TickProfile
 from earshot.runners.wire import command_from_dict, pack, sensed_to_dict, topic, unpack
 from earshot.scenario import Scenario
 from earshot.sensors import build_perception
@@ -107,6 +108,8 @@ def main(argv=None) -> None:
                     help="trained sound classifier (default: the Scenario's; 'none' for off)")
     ap.add_argument("--camera", choices=["yolo", "truth"],
                     help="Verifier camera (default: the Scenario's; webots only)")
+    ap.add_argument("--profile", action="store_true",
+                    help="print where each tick's wall time goes, every 10 s")
     a = ap.parse_args(argv)
 
     scenario = Scenario.load(a.scenario)
@@ -127,6 +130,10 @@ def main(argv=None) -> None:
     if camera is not None:
         print(f"[world] camera: YOLO {Path(camera.weights).name} on {camera.device}", flush=True)
     world = World(scenario, city, backend, audio, camera)
+    prof = TickProfile(budget_ms=scenario.dt * 1000 / a.speed,
+                       out=lambda m: print(m, flush=True)) if a.profile else None
+    if prof is not None and hasattr(backend, "timing"):
+        backend.timing = prof
 
     ctx = zmq.Context.instance()
     ctx.setsockopt(zmq.LINGER, 0)  # never block exit on unsent messages
@@ -194,7 +201,13 @@ def main(argv=None) -> None:
                 except Exception as e:  # noqa: BLE001 - a bad message must not stop the world
                     print(f"[world] ignored message: {type(e).__name__}: {e}", file=sys.stderr,
                           flush=True)
+            if prof:
+                prof.mark("drain")
             sensed = world.step(commands)
+            if prof:
+                prof.mark("world")
+                if any(s.camera_on for s in world.states.values()):
+                    prof.count("verifying")
             threats.look(world.detections)
             for line in threats.lines():
                 if threats_file is None:
@@ -215,11 +228,17 @@ def main(argv=None) -> None:
                     events_file.flush()
                 print(f"[world] t={ev['t']:.1f} {ev['note']}", flush=True)
             logged = len(world.applied)
+            if prof:
+                prof.mark("log")
             for did, s in sensed.items():
                 pub.send_multipart([topic("tick", did), pack(sensed_to_dict(s))])
+            if prof:
+                prof.mark("pub.ticks")
             if world.audio:  # float32, RMS 1.0 = waveform.FULL_SCALE_DB
                 pub.send_multipart([topic("audio"), pack({"t": world.t, "windows": {
                     str(w.drone): w.mix.astype("<f4").tobytes() for w in world.audio}})])
+            if prof:
+                prof.mark("pub.audio")
             snap = world.snapshot(telemetry)
             if round(world.t / scenario.dt) % round(PREVIEW_EVERY_S / scenario.dt) == 0:
                 snap["camera"] = world.camera_preview()
@@ -227,15 +246,28 @@ def main(argv=None) -> None:
             snap["counts"] = counts.as_dict()
             snap["threat"] = scenario.threat.name
             snap["threats"] = threats.entries(PATH_SHOWN)[-12:]
+            if prof:
+                prof.mark("snapshot")
             pub.send_multipart([topic("state"), pack(snap)])
+            if prof:
+                prof.mark("pub.state")
             if hasattr(backend, "view_frames"):  # main view every tick (10 Hz), tiles every 2nd
                 tick = round(world.t / scenario.dt)
                 frames = backend.view_frames([0] + ([1, 2, 3] if tick % 2 == 0 else []))
+                if prof:
+                    prof.mark("views.jpeg")
+                    if frames:
+                        prof.count("views")
                 if frames:
                     pub.send_multipart([topic("cams"), pack({"t": world.t, "frames": frames})])
+            if prof:
+                prof.mark("pub.cams")
             if self_paced:
                 next_t += period
                 time.sleep(max(0.0, next_t - time.monotonic()))
+            if prof:
+                prof.mark("sleep")
+                prof.end_tick()
         print(f"[world] finished after {end:.0f} s (--duration)", flush=True)
     except (KeyboardInterrupt, SystemExit):
         pass
