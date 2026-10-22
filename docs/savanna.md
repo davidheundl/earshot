@@ -4,7 +4,7 @@ The same swarm that guards Munich Airport against drones, flown over a 10 x 10 k
 
 ## The idea
 
-A perching swarm is not tied to an airport. Twenty drones sit on lookout towers 2-2.5 km apart and listen to the bush at night; together they cover 100 km². Engines and handheld radios are what gives poachers away: their pickup drives cross-country, where nobody else drives, and the crew talks on a UHF handheld. The swarm fuses sound bearings and radio energy into its Probability Map, the nearest drone flies out with its camera, the camera tells what it is (a poacher's pickup, an elephant herd, the rangers' own Land Cruiser), and a confirmed poacher is followed and logged. What the rangers do then is theirs.
+A perching swarm is not tied to an airport. Ten drones sit on every second lookout tower, 3-4 km apart (twenty until Oct 21, when live Webots could not keep real time with them; the results below are with twenty unless marked), and listen to the bush at night; together they cover 100 km². Engines and handheld radios are what gives poachers away: their pickup drives cross-country, where nobody else drives, and the crew talks on a UHF handheld. The swarm fuses sound bearings and radio energy into its Probability Map, the nearest drone flies out with its camera, the camera tells what it is (a poacher's pickup, an elephant herd, the rangers' own Land Cruiser), and a confirmed poacher is followed and logged. What the rangers do then is theirs.
 
 ```bash
 uv run earshot live --scenario scenarios/savanna.yaml

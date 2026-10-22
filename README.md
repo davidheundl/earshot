@@ -97,7 +97,7 @@ uv run python tools/muc_fetch.py
 uv run python tools/make_muc.py
 ```
 
-Anti-poaching in a 10 x 10 km game reserve in the South African lowveld (`scenarios/savanna.yaml`, [docs/savanna.md](docs/savanna.md)): twenty drones on lookout towers hunt vehicles instead of drones (`threat: vehicle`). Poachers drive cross-country to a rhino and an elephant herd, rangers and a game drive keep to the tracks, the game sounds like engines half the time; a Verifier that confirms a poacher follows it and the Threat Log records what its camera saw and where the poacher went (`runs/*.threats.jsonl`, and on the dashboard):
+Anti-poaching in a 10 x 10 km game reserve in the South African lowveld (`scenarios/savanna.yaml`, [docs/savanna.md](docs/savanna.md)): ten drones on lookout towers hunt vehicles instead of drones (`threat: vehicle`). Poachers drive cross-country to a rhino and an elephant herd, rangers and a game drive keep to the tracks, the game sounds like engines half the time; a Verifier that confirms a poacher follows it and the Threat Log records what its camera saw and where the poacher went (`runs/*.threats.jsonl`, and on the dashboard):
 
 ```bash
 uv run earshot live --scenario scenarios/savanna.yaml
