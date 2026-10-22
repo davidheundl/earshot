@@ -90,3 +90,22 @@ def test_webots_refuses_a_live_source_without_a_free_node():
         b.scenario.apply(op, t=1.0)
     assert "spare Webots nodes" in b.refuses(op)
     assert b.refuses({**op, "cls": "nuisance"}) is None and b.refuses({"op": "jam"}) is None
+
+
+def test_webots_view_jpegs_come_from_the_encoder_thread_newest_first():
+    import time
+
+    from earshot.backend.webots import _Encoder
+
+    enc = _Encoder()
+    grabbed = lambda shade: (bytes([shade, 0, 0, 255]) * 16 * 8, 16, 8, 1.0, 3, "pilot", 10.0)
+    enc.submit({0: grabbed(10), 1: grabbed(20)}, 72)
+    enc.submit({0: grabbed(30)}, 72)  # replaces camera 0's image if not yet encoded
+    frames = {}
+    for _ in range(200):
+        frames.update(enc.take())
+        if len(frames) == 2:
+            break
+        time.sleep(0.01)
+    assert set(frames) == {0, 1} and frames[0]["jpeg"][:3] == b"\xff\xd8\xff"
+    assert frames[1]["drone"] == 3 and frames[1]["w"] == 16 and enc.take() == {}

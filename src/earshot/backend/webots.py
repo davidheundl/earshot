@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 import time
 from collections.abc import Mapping
 
@@ -106,8 +107,52 @@ def _image(cam) -> bytes | None:
         return None
 
 
+class _Encoder:
+    """JPEG-encodes view images on a thread of its own, off the world's tick. One job waits at
+    most: a newer image of the same camera replaces one not yet encoded. Pillow releases the
+    GIL while it converts and encodes."""
+
+    def __init__(self):
+        self._cv = threading.Condition()
+        self._jobs: dict[int, tuple] = {}  # camera k -> (grabbed view, quality), waiting
+        self._done: dict[int, dict] = {}  # camera k -> frame, not yet taken
+        threading.Thread(target=self._run, name="view-jpeg", daemon=True).start()
+
+    def submit(self, views: dict[int, tuple], quality: int) -> None:
+        if views:
+            with self._cv:
+                self._jobs.update({k: (v, quality) for k, v in views.items()})
+                self._cv.notify()
+
+    def take(self) -> dict[int, dict]:
+        with self._cv:
+            done, self._done = self._done, {}
+        return done
+
+    def _run(self) -> None:
+        import io
+
+        from PIL import Image
+
+        while True:
+            with self._cv:
+                while not self._jobs:
+                    self._cv.wait()
+                jobs, self._jobs = self._jobs, {}
+            for k, ((raw, w, h, fov, drone, mode, pitch), quality) in jobs.items():
+                img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, "JPEG", quality=quality)
+                frame = {"drone": drone, "mode": mode, "w": w, "h": h,
+                         "fov": fov, "pitch": pitch,  # for the HUD
+                         "jpeg": buf.getvalue()}
+                with self._cv:
+                    self._done[k] = frame
+
+
 class WebotsBackend:
     timing = None  # earshot live --profile: a runners.profile.TickProfile
+    _encoder: _Encoder | None = None  # started with the first view frames
 
     def __init__(self, city: City, scenario: Scenario):
         from controller import Supervisor  # only importable inside the Webots env
@@ -178,24 +223,16 @@ class WebotsBackend:
                 self.views[k] = [did, mode]
 
     def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
-        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, jpeg}}."""
-        import io
-
-        from PIL import Image
-
-        out = {}
+        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, pitch, jpeg}}.
+        The images grabbed this tick go to the encoder thread; returned are the frames it
+        finished since the last call (a tick late, none while it is busy)."""
+        if self._quit:
+            return {}
         views = self._grabbed.get("views", {})
-        for k in which:
-            if self._quit or k not in views:
-                continue
-            raw, w, h, fov, drone, mode, pitch = views[k]
-            img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
-            buf = io.BytesIO()
-            img.save(buf, "JPEG", quality=quality)
-            out[k] = {"drone": drone, "mode": mode, "w": w, "h": h,
-                      "fov": fov, "pitch": pitch,  # for the HUD
-                      "jpeg": buf.getvalue()}
-        return out
+        if self._encoder is None:
+            self._encoder = _Encoder()
+        self._encoder.submit({k: views[k] for k in which if k in views}, quality)
+        return self._encoder.take()
 
     def _place_views(self, states: dict[int, DroneState]) -> None:
         on = (self._views_asked is not None
