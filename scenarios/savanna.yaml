@@ -67,15 +67,15 @@ params:
   same_task_radius: 1200  # a poacher drives on while the Verifier flies out: keep the task
   confirmed_shadow: 400   # the followed vehicle's trail is not a second poacher
   follow_for: 900         # stay with a confirmed poacher; what happens next is the rangers' job
-  max_verify_distance: 3000  # towers are 2-2.5 km apart: a nearer drone is always there, even
-  #                            when its Claim is lost on a busy channel
+  max_verify_distance: 3000  # set with twenty towers 2-2.5 km apart (a nearer drone was always
+  #                            there); with ten, 3-4 km apart, a spot can lie beyond it for all
 
 radio:
   sf: 7
   bw_khz: 500
   relay_radius_m: 4000    # relay Tracks and Claims only near where they are: nobody further
   #                         off flies there (a three-hop flood of all twenty filled the channel)
-  nominal_range_m: 3500   # drones on 12 m towers over open bush, 2-2.5 km apart (2500 m split
+  nominal_range_m: 3500   # drones on 12 m towers over open bush, 3-4 km apart (with twenty at 2-2.5 km, 2500 m split
   #                         the swarm: Claims did not reach, a drone flew 7 km to a poacher)
 
 camera:                   # the stand-in in every backend: it names the Source's kind
