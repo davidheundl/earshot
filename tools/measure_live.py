@@ -28,13 +28,6 @@ ap.add_argument("--label", default="")
 ap.add_argument("--views", action="store_true", help="keep the view cameras on (/view keepalive)")
 a = ap.parse_args()
 
-ctx = zmq.Context()
-sub = ctx.socket(zmq.SUB)
-sub.setsockopt(zmq.LINGER, 0)
-sub.setsockopt(zmq.RCVHWM, 10000)
-sub.connect("tcp://127.0.0.1:5550")
-for t in (b"state.", b"cams."):
-    sub.setsockopt(zmq.SUBSCRIBE, t)
 
 gpu, cpu = [], []
 stop = False
@@ -56,6 +49,14 @@ if a.views:
     threading.Thread(target=keepalive, daemon=True).start()
     time.sleep(3)  # the cameras switch on at the next tick
 time.sleep(a.skip)
+# connect only now: a socket connected during the skip would queue its messages and read
+# them back as a burst
+ctx = zmq.Context()
+sub = ctx.socket(zmq.SUB)
+sub.setsockopt(zmq.LINGER, 0)
+sub.connect("tcp://127.0.0.1:5550")
+for t in (b"state.", b"cams."):
+    sub.setsockopt(zmq.SUBSCRIBE, t)
 
 
 def sampler():
