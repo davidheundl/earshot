@@ -123,6 +123,7 @@ class WebotsBackend:
                 raise RuntimeError(f"world has no DEF DRONE_{d.id}; regenerate it")
             self._drones[d.id] = (node.getField("translation"), node.getField("rotation"))
         self._fields: dict[str, object | None] = {}  # DEF name -> translation field (cached)
+        self._written: dict[int, list[float]] = {}  # id(field) -> the value last written
         # all cameras ride on child Solids of the RIG, which stays at the origin, so a child's
         # local pose is its world pose (a Supervisor can only read its own robot's devices)
         self._camv = self._node("CAMV")
@@ -228,8 +229,8 @@ class WebotsBackend:
                 pitch = c["pitch"]
             rot = look_rotation(yaw, pitch)
             self._view_pitch[k] = pitch
-            node[0].setSFVec3f(pos)
-            node[1].setSFRotation(rot)
+            self._set_vec(node[0], pos)
+            self._set_rot(node[1], rot)
 
     # -- Backend interface ---------------------------------------------------------------
 
@@ -371,6 +372,17 @@ class WebotsBackend:
                 if node else None
         return self._fields[def_name]
 
+    def _set_vec(self, field, value: list[float]) -> None:
+        """Write a translation only when it changed: a parked Source or a perched drone once."""
+        if self._written.get(id(field)) != value:
+            self._written[id(field)] = value
+            field.setSFVec3f(value)
+
+    def _set_rot(self, field, value: list[float]) -> None:
+        if self._written.get(id(field)) != value:
+            self._written[id(field)] = value
+            field.setSFRotation(value)
+
     def _recognised(self) -> list[str]:
         """Class names of the Sources in view: object -> its node -> nearest SRC_ ancestor."""
         out = []
@@ -390,8 +402,8 @@ class WebotsBackend:
     def _push(self, states: dict[int, DroneState]) -> None:
         for did, s in states.items():
             tf, rf = self._drones[did]
-            tf.setSFVec3f([s.x, s.y, s.z])
-            rf.setSFRotation([0.0, 0.0, 1.0, _yaw(s.heading)])
+            self._set_vec(tf, [s.x, s.y, s.z])
+            self._set_rot(rf, [0.0, 0.0, 1.0, _yaw(s.heading)])
 
         t = self.twin.t
         placed: dict[str, tuple] = {}  # one pose per node; an active source wins
@@ -414,8 +426,8 @@ class WebotsBackend:
         for name, (pos, heading) in placed.items():
             node = self._node(name)
             if node is not None:
-                node[0].setSFVec3f(pos)
-                node[1].setSFRotation([0.0, 0.0, 1.0, _yaw(heading)])
+                self._set_vec(node[0], pos)
+                self._set_rot(node[1], [0.0, 0.0, 1.0, _yaw(heading)])
 
         # one rig: it stays with its Verifier until that camera goes off, so a second
         # Verifier arriving cannot take it mid-look (that one stays inconclusive)
@@ -434,10 +446,10 @@ class WebotsBackend:
             self._last_image, self._grabs = None, 0  # no frame of the previous look
         if self._camv is not None:
             if verifier is None:
-                self._camv[0].setSFVec3f(PARKED)
+                self._set_vec(self._camv[0], PARKED)
             else:
                 s = states[verifier]
                 self._verifier_heading = s.heading
-                self._camv[0].setSFVec3f([s.x, s.y, s.z - 0.3])
-                self._camv[1].setSFRotation(look_rotation(s.heading, self._verify_pitch))
+                self._set_vec(self._camv[0], [s.x, s.y, s.z - 0.3])
+                self._set_rot(self._camv[1], look_rotation(s.heading, self._verify_pitch))
         self._place_views(states)
