@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from earshot.runners.lockstep import run
 from earshot.scenario import Scenario
 
@@ -12,21 +14,26 @@ def _short(seed=42):
     return sc
 
 
-def test_six_agents_exchange_messages():
-    r = run(_short(), root=ROOT)
-    assert r.radio["delivered"] > 0
-    assert len(r.agents) == 6
-    assert sum(a["accepted"] for a in r.agents.values()) > 0
+@pytest.fixture(scope="module")
+def seed42():
+    """One 120 s seed-42 run, shared by the tests that only read it."""
+    return run(_short(), root=ROOT)
 
 
-def test_same_seed_same_run():
-    a, b = run(_short(), root=ROOT), run(_short(), root=ROOT)
-    assert a.radio == b.radio
-    assert a.agents == b.agents
+def test_six_agents_exchange_messages(seed42):
+    assert seed42.radio["delivered"] > 0
+    assert len(seed42.agents) == 6
+    assert sum(a["accepted"] for a in seed42.agents.values()) > 0
 
 
-def test_different_seed_differs():
-    assert run(_short(1), root=ROOT).radio != run(_short(2), root=ROOT).radio
+def test_same_seed_same_run(seed42):
+    again = run(_short(), root=ROOT)  # computed afresh, not shared
+    assert again.radio == seed42.radio
+    assert again.agents == seed42.agents
+
+
+def test_different_seed_differs(seed42):
+    assert run(_short(1), root=ROOT).radio != seed42.radio
 
 
 def test_demo_intruder_is_confirmed_and_the_train_is_left_alone():
