@@ -7,14 +7,23 @@ Interface:
     store = MessageStore(me, key, scheme="ours", relay_radius=inf)
     msg = store.receive(frame, margin_db, t, here)   accepted message, or None (duplicate / bad / own)
     frames = store.due(t)                       forwards and healing resends whose time has come
-    reqs = store.on_digest(digest, t)           Requests for ranges a neighbour has and we lack
-    store.on_request(request, t)                schedule resends of the Tracks/Claims asked for
-    store.digest()                              [(origin, highest healable seq held)]
+    reqs = store.on_digest(digest, t)           ranges to ask the Digest's sender for
+    store.on_request(request, t)                schedule resends of the Tracks/Claims asked for,
+                                                if the Request names me as its holder
+    store.digest(t)                             [(origin, newest seq worth healing at t)]
 
 Healing covers only what every drone should hold: Claims and Tracks that are not Explained.
 Observations go one hop and an Explained Track too (agent/core.py): a drone out of their
 range never gets them and must not keep asking for them. So the Digest names, per origin,
 the newest healable frame held, and a Request is answered with healable frames only.
+
+And only while a frame can still count where it arrives (`track_life`, `release_life`): a
+received Track counts for belief.RX_MAX_AGE after it was sent, a Claim while its lease runs,
+a release until the lease it ends has run out (policy.LEASE); a Track or Claim replaced by a
+newer one of the same id (origin, track or task id) counts no longer either. In the reserve
+a third of the resent Tracks were older than that and six in ten resends gave nobody
+anything they could use. An origin with nothing left to heal drops out of the Digest, and a
+Digest with no entries is not sent.
 
 Forwarding schemes (concept 8.1 / 8.3):
     "ours"      contention-based relaying: a receiver waits longer the stronger it heard the
@@ -86,18 +95,28 @@ class StoreStats:
     by_origin: dict = field(default_factory=dict)  # origin -> highest seq seen
 
 
+def identity(msg: Track | Claim) -> tuple[int, int, int]:
+    """What a newer frame replaces: an origin's Track with its track id, its Claim on a task."""
+    return (msg.TYPE, msg.header.origin, msg.track_id if isinstance(msg, Track) else msg.task_id)
+
+
 class MessageStore:
-    def __init__(self, me: int, key: bytes, scheme: str = "ours", relay_radius: float = math.inf):
+    def __init__(self, me: int, key: bytes, scheme: str = "ours", relay_radius: float = math.inf,
+                 track_life: float = math.inf, release_life: float = math.inf):
         self.me = me
         self.key = key
         self.scheme = scheme
         self.relay_radius = relay_radius
+        self.track_life = track_life  # s a received Track counts after it was sent
+        self.release_life = release_life  # s a release (lease 0) counts: the longest lease
         self._frames: dict[tuple[int, int, int], bytes] = {}
         self._pending: dict[tuple[int, int, int], tuple[float, bytes, str]] = {}
         self._asked: dict[int, float] = {}  # origin -> last Request time
         self._resent: dict[tuple[int, int, int], float] = {}
         self._kept: dict[tuple[int, int, int], float] = {}  # when each stored frame came
-        self._healable: set[tuple[int, int, int]] = set()  # stored frames a Request may resend
+        # stored frames a Request may resend -> (identity, time until which they count)
+        self._healable: dict[tuple[int, int, int], tuple[tuple[int, int, int], float]] = {}
+        self._newest: dict[tuple[int, int, int], tuple[int, int, int]] = {}  # identity -> key
         self._now = 0.0  # the latest time receive() or due() was called with
         self._pruned = 0.0
         self.stats = StoreStats()
@@ -109,9 +128,26 @@ class MessageStore:
         k = peek_key(frame)
         self._frames[k] = frame
         self._kept[k] = self._now
-        if healable(decode(frame, self.key)):
-            self._healable.add(k)
-            self._latest(k[1], k[2])  # in my own Digest too
+        msg = decode(frame, self.key)
+        if healable(msg):
+            self._heal_later(k, msg)  # in my own Digest too
+
+    def _heal_later(self, k, msg: Track | Claim) -> None:
+        if isinstance(msg, Track):
+            until = msg.t + self.track_life
+        else:
+            until = msg.t + (msg.lease if msg.lease > 0 else self.release_life)
+        ident = identity(msg)
+        self._healable[k] = (ident, until)
+        newest = self._newest.get(ident)
+        if newest is None or seq_newer(k[2], newest[2]):
+            self._newest[ident] = k
+        self._latest(k[1], k[2])
+
+    def _worth_healing(self, k, t: float) -> bool:
+        """Held, the newest of its id, and still counting where it would arrive."""
+        ident, until = self._healable.get(k, (None, -math.inf))
+        return t < until and self._newest.get(ident) == k
 
     def _latest(self, origin: int, seq: int) -> None:
         mine = self.stats.by_origin.get(origin)
@@ -130,7 +166,11 @@ class MessageStore:
             del self._kept[k]
             self._frames.pop(k, None)
             self._resent.pop(k, None)
-            self._healable.discard(k)
+        dead = set(old) | {k for k, (_, until) in self._healable.items() if until <= t}
+        for k in dead:
+            ident, _ = self._healable.pop(k, (None, 0.0))
+            if self._newest.get(ident) == k:
+                del self._newest[ident]
 
     # -- receiving ------------------------------------------------------------------------
 
@@ -143,7 +183,7 @@ class MessageStore:
             return None
         self._prune(t)
         k = peek_key(frame)
-        mtype, origin, seq = k
+        mtype, origin, _ = k
         if k in self._pending:  # someone else relayed or resent it first: stand down
             del self._pending[k]
             self.stats.cancelled += 1
@@ -158,8 +198,7 @@ class MessageStore:
         self._kept[k] = t
         self.stats.accepted += 1
         if healable(msg):
-            self._healable.add(k)
-            self._latest(origin, seq)
+            self._heal_later(k, msg)
         if msg.header.hops_left > 1 and self._relevant(msg, here):
             self._schedule_forward(k, with_hops(frame, msg.header.hops_left - 1), margin_db, t)
         return msg
@@ -186,6 +225,8 @@ class MessageStore:
         for k, (when, frame, why) in sorted(self._pending.items(), key=lambda kv: kv[1][0]):
             if when <= t:
                 del self._pending[k]
+                if why == "resend" and not self._worth_healing(k, t):
+                    continue  # went stale or was replaced while it waited
                 out.append(frame)
                 if why == "fwd":
                     self.stats.forwarded += 1
@@ -197,8 +238,13 @@ class MessageStore:
 
     # -- healing --------------------------------------------------------------------------
 
-    def digest(self) -> list[tuple[int, int]]:
-        return sorted(self.stats.by_origin.items())
+    def digest(self, t: float) -> list[tuple[int, int]]:
+        """(origin, newest seq worth healing at t), for origins with anything worth healing."""
+        newest: dict[int, int] = {}
+        for k in self._newest.values():
+            if self._worth_healing(k, t) and (k[1] not in newest or seq_newer(k[2], newest[k[1]])):
+                newest[k[1]] = k[2]
+        return sorted(newest.items())
 
     def on_digest(self, d: Digest, t: float) -> list[tuple[int, int, int]]:
         """(origin, from_seq, to_seq) ranges to request from the neighbour that sent `d`."""
@@ -217,16 +263,18 @@ class MessageStore:
         return out
 
     def on_request(self, r: Request, t: float) -> None:
-        """Schedule resends (1 hop) of stored Tracks/Claims in the asked range, newest first."""
+        """Schedule resends (1 hop) of stored Tracks/Claims in the asked range that are still
+        worth healing, newest first, if the Request names me as the holder."""
+        if r.holder != self.me:
+            return  # its Digest's sender answers: others nearby are no nearer the requester
         hits = sorted(
             (k for k in self._healable
              if k[1] == r.want_origin
              and (k[2] - r.from_seq) % SEQ_MOD <= (r.to_seq - r.from_seq) % SEQ_MOD
-             and t - self._resent.get(k, -1e9) >= RESEND_COOLDOWN),
+             and t - self._resent.get(k, -1e9) >= RESEND_COOLDOWN
+             and self._worth_healing(k, t)),
             key=lambda k: -((k[2] - r.from_seq) % SEQ_MOD),
         )[:MAX_RESEND_PER_REQUEST]
         for i, k in enumerate(hits):
             self._resent[k] = t
-            # small, id-staggered delay so one neighbour answers and the others overhear it
-            self._pending[k] = (t + 0.2 + 0.15 * self.me + 0.05 * i,
-                                with_hops(self._frames[k], 1), "resend")
+            self._pending[k] = (t + 0.2 + 0.05 * i, with_hops(self._frames[k], 1), "resend")

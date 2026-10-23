@@ -74,6 +74,7 @@ Built to rehearse and measure, and to learn what to rebuild better on the day. W
 - Threat Log (`src/earshot/threat_log.py`): per checked danger what the camera recognised, when, which Verifier, the followed path; `runs/*.threats.jsonl` and a dashboard panel, the dashboard reading the Threat Class from the run.
 - Performance measurement (Oct 21): `earshot live --profile` (`src/earshot/runners/profile.py`: where each world tick's wall time goes, Webots step and pacing split out) and `tools/measure_live.py` (tick jitter, real-time factor, camera rates, GPU and CPU of a live run); results in `docs/perf-2026-10-21.md`. Timing only, no change to a run.
 - Live Webots speed-up (Oct 21, `src/earshot/backend/webots.py`, `tools/build_webots_world.py`): the last basic step of a tick runs in Webots while the world works (`stepBegin`/`stepEnd`, camera data copied before the step opens), pose fields written only when they change, `basicTimeStep` 50 instead of 20, view JPEGs encoded on a thread of their own, one view camera instead of four (the HUD hides the empty tiles); savanna cut to ten drones. Before/after in `docs/perf-2026-10-21.md` (0.72x -> 1.00x real time), measured on the Webots R2025a nightly of 21 Oct 2026 on macOS 27.0.1 (the release does not start there, Webots issue #6976).
+- One Observation per drone and sensor window (Oct 21): the readings a drone takes in one 1 s window share a 40 B frame, up to two (time, position and Mode once, 8 B per reading), each still fused exactly once; the reserve's channel load 68 -> 63.5 %.
 
 ## Third-party
 

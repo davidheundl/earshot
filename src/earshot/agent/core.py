@@ -12,10 +12,17 @@ runner and the live agent process drive the exact same object.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from earshot.agent.belief import TRACK_SAME, Belief, TrackEst, merge_overlapping, mergeable
-from earshot.agent.policy import VERIFY, Policy, task_kind
+from earshot.agent.belief import (
+    RX_MAX_AGE,
+    TRACK_SAME,
+    Belief,
+    TrackEst,
+    merge_overlapping,
+    mergeable,
+)
+from earshot.agent.policy import LEASE, VERIFY, Policy, task_kind
 from earshot.agent.store import MessageStore
 from earshot.city import City
 from earshot.messages import (
@@ -62,7 +69,9 @@ class Agent:
         self.key = key
         self.city = city
         self.scheme = swarm.radio_scheme
-        self.store = MessageStore(me, key, swarm.radio_scheme, swarm.relay_radius)
+        # heal a Track only while a receiver still counts it, a Claim while its lease runs
+        self.store = MessageStore(me, key, swarm.radio_scheme, swarm.relay_radius,
+                                  track_life=RX_MAX_AGE, release_life=LEASE)
         self.threat = swarm.threat
         self.belief = Belief(city, cell=swarm.map_cell, threat=swarm.threat)
         self.policy = Policy(me, city, swarm)
@@ -97,17 +106,18 @@ class Agent:
         for frame, margin in inbox:
             self._absorb(self.store.receive(frame, margin, t, (s.x, s.y)), t, outbox)
 
-        # 2. own sensors -> Observations (Evidence)
+        # 2. own sensors -> Observations (Evidence): a window's readings share their frames
+        fresh = []
         for r in sensed.readings:
             last = self._last_obs.get(r.sensor, -1e9)
             if last != t and t - last < OBS_MIN_INTERVAL - OBS_SLACK:
                 continue  # same-tick readings are different sources; across ticks: <= 1 Hz
             self._last_obs[r.sensor] = t
-            hops = TRACK_HOPS if self.scheme != "ours" else OBS_HOPS  # baselines flood Evidence
-            obs = Observation(
-                self._next_header(hops), t, s.x, s.y, 2.0, r.bearing, r.bearing_sigma,
-                r.class_probs, r.sensor, s.mode, r.level,
-            )
+            fresh.append(replace(r, range=0.0))  # range stays on the drone (Follow)
+        hops = TRACK_HOPS if self.scheme != "ours" else OBS_HOPS  # baselines flood Evidence
+        for i in range(0, len(fresh), Observation.MAX_READINGS):
+            obs = Observation(self._next_header(hops), t, s.x, s.y, s.mode,
+                              tuple(fresh[i:i + Observation.MAX_READINGS]))
             self.belief.add_evidence(obs, t)
             self._emit(obs, outbox)
 
@@ -148,11 +158,12 @@ class Agent:
         outbox.extend(self.store.due(t))
         if t - self._last_digest >= DIGEST_INTERVAL:
             self._last_digest = t
-            held = self.store.digest()
-            start = (self._digests * Digest.MAX_ENTRIES) % max(1, len(held))
-            self._digests += 1  # rotate: with more than 6 origins, successive Digests cover all
-            entries = tuple((held[start:] + held[:start])[: Digest.MAX_ENTRIES])
-            outbox.append(encode(Digest(Header(self.me, 0, 1), t, entries), self.key))
+            held = self.store.digest(t)
+            if held:  # nothing worth healing: nobody needs to hear that
+                start = (self._digests * Digest.MAX_ENTRIES) % len(held)
+                self._digests += 1  # rotate: with more than 6 origins, successive Digests cover all
+                entries = tuple((held[start:] + held[:start])[: Digest.MAX_ENTRIES])
+                outbox.append(encode(Digest(Header(self.me, 0, 1), t, entries), self.key))
 
         telemetry = {
             "mode": decision.command.mode.name,
@@ -247,8 +258,9 @@ class Agent:
             if prev is None or msg.t >= prev.t:
                 self._claims[key] = msg
         elif isinstance(msg, Digest):
-            for origin, lo, hi in self.store.on_digest(msg, t):
-                self._emit_unstored(Request(Header(self.me, 0, 1), origin, lo, hi), outbox)
+            for origin, lo, hi in self.store.on_digest(msg, t):  # ask the Digest's sender
+                self._emit_unstored(Request(Header(self.me, 0, 1), origin, msg.header.origin,
+                                            lo, hi), outbox)
         elif isinstance(msg, Request):
             self.store.on_request(msg, t)
 

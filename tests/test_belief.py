@@ -17,7 +17,16 @@ from earshot.agent.belief import (
     merge_overlapping,
 )
 from earshot.city import City
-from earshot.messages import Header, Mode, Observation, Sensor, TargetClass, Track, TrackStatus
+from earshot.messages import (
+    Header,
+    Mode,
+    Observation,
+    Sensor,
+    SensorReading,
+    TargetClass,
+    Track,
+    TrackStatus,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 CITY = City.load(ROOT / "data/cities/synthetic.json")
@@ -32,8 +41,8 @@ def bearing(frm, to):
 def obs(origin, seq, t, at, target, probs=DRONE_P, sigma=5.0, sensor=Sensor.SOUND, level=40.0,
         mode=Mode.LISTEN):
     b = bearing(at, target) if target is not None else float("nan")
-    return Observation(Header(origin, seq, 1), t, at[0], at[1], 2.0, b, sigma, probs, sensor,
-                       mode, level)
+    return Observation(Header(origin, seq, 1), t, at[0], at[1], mode,
+                       (SensorReading(sensor, b, sigma, probs, level),))
 
 
 def listen(belief, origins_at, target, seconds=25, probs=DRONE_P, t0=0.0):
@@ -135,8 +144,8 @@ def test_stuck_bearing_is_flagged_as_faulty_sensor():
             b.add_evidence(obs(o, seq, k, at, TARGET), k)
         seq += 1
         stuck = obs(2, seq, k, (-220.0, -560.0), TARGET)  # 120 m east, clear line of sight
-        b.add_evidence(Observation(stuck.header, stuck.t, stuck.x, stuck.y, 2.0, 0.0, 5.0,
-                                   DRONE_P, Sensor.SOUND, Mode.LISTEN, 40.0), k)
+        b.add_evidence(Observation(stuck.header, stuck.t, stuck.x, stuck.y, Mode.LISTEN,
+                                   (SensorReading(Sensor.SOUND, 0.0, 5.0, DRONE_P, 40.0),)), k)
         b.tracks(k)
         b.check_faults(k)
     assert b.faulty == {2}

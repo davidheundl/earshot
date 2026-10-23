@@ -26,6 +26,7 @@ from earshot.messages import (
     Mode,
     Observation,
     Sensor,
+    SensorReading,
     TargetClass,
     TrackStatus,
     decode,
@@ -50,8 +51,8 @@ def _bearing(frm, to):
 def _obs(origin, seq, t, at, target, probs=VEHICLE_P, sigma=15.0, sensor=Sensor.SOUND,
          level=50.0, mode=Mode.LISTEN):
     b = _bearing(at, target) if target is not None else float("nan")
-    return Observation(Header(origin, seq, 1), t, at[0], at[1], 2.0, b, sigma, probs, sensor,
-                       mode, level)
+    return Observation(Header(origin, seq, 1), t, at[0], at[1], mode,
+                       (SensorReading(sensor, b, sigma, probs, level),))
 
 
 def _cell(b: Belief, x, y):
@@ -102,7 +103,7 @@ def test_the_radio_frame_carries_the_uhf_band():
     o = _obs(3, 9, 12.0, (10.0, 20.0), None, sensor=Sensor.RF_UHF, level=-80.0, mode=Mode.PATROL)
     frame = encode(o, b"k" * 16)
     assert len(frame) <= 40
-    assert decode(frame, b"k" * 16).sensor == Sensor.RF_UHF
+    assert decode(frame, b"k" * 16).readings[0].sensor == Sensor.RF_UHF
 
 
 def test_a_camera_sighting_of_the_threat_class_confirms_it():

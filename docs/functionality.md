@@ -11,7 +11,7 @@ Order within one tick, as the lockstep runner does it (`runners/lockstep.py:75-9
 1. `World.step(commands)` (`world.py:66-93`): apply due and live Events (`_apply_events`), move every drone by the last Command (`backend.step`), fetch the Verifier's camera frame, and run `SensorSuite.sense` per drone. Out come `{id: Sensed}` with readings only, and `world.detections` with the truth behind each reading (logs, metrics).
 2. Each `Agent.step(t, sensed, inbox)` (`agent/core.py:87-159`):
    1. radio in: each frame through the Message Store (duplicate filter, relay scheduling), then into the Belief (Observation), the received-Track table (Track), the Claim table (Claim), or healing (Digest, Request) (`core.py:218-234`);
-   2. own readings become Observations, at most one per sensor per second (`OBS_MIN_INTERVAL` 1 s with `OBS_SLACK` 0.15 s, `core.py:35-36, 96-107`), fused into its own Belief and sent;
+   2. own readings become Observations: each sensor at most once per second (`OBS_MIN_INTERVAL` 1 s with `OBS_SLACK` 0.15 s), and the readings of one window share their frames, up to two per Observation (`core.py:34-35, 99-112`); fused into its own Belief and sent;
    3. once per second (`TRACK_INTERVAL`): Faulty Sensor check, Track extraction, broadcast of the Tracks that changed (`core.py:109-126, 168-186`);
    4. Policy decides Mode, Command and Claims from own plus received Tracks, merged (`core.py:128-134, 194-214`);
    5. relays and healing resends that are due, and every 10 s a Digest (`core.py:136-144`).
@@ -45,7 +45,7 @@ Live: each process loops on its own; an agent that falls behind steps once on th
 
 ## 2. Sensors
 
-All sensor models live in the world process. A reading is a `SensorReading(sensor, bearing, bearing_sigma, class_probs, level)` (`state.py:36-44`); `class_probs` is indexed by Target Class (Drone, Vehicle, Train, Nothing).
+All sensor models live in the world process. A reading is a `SensorReading(sensor, bearing, bearing_sigma, class_probs, level)` (`messages.py:85-94`: what an Observation carries); `class_probs` is indexed by Target Class (Drone, Vehicle, Train, Nothing).
 
 ### Sound
 
@@ -156,15 +156,18 @@ Tunable numbers are `state.PolicyParams` (`state.py:66-88`): `verify_min_strengt
 
 | Type | Size | Airtime 500 kHz | Airtime 125 kHz | Hops | Stored / healed |
 |---|---|---|---|---|---|
-| Observation | 35 B | 19.3 ms | 77.1 ms | 1 (`ours`) | stored, not healed |
+| Observation, 1 reading | 32 B | 18.0 ms | 71.9 ms | 1 (`ours`) | stored, not healed |
+| Observation, 2 readings | 40 B | 20.5 ms | 82.2 ms | 1 (`ours`) | stored, not healed |
 | Track | 32 B | 18.0 ms | 71.9 ms | 3 | stored, healed |
 | Claim | 29 B | 16.7 ms | 66.8 ms | 3 | stored, healed |
 | Digest (6 entries) | 38 B | 20.5 ms | 82.2 ms | 1 | no |
 | Request | 20 B | 14.1 ms | 56.6 ms | 1 | no |
 
-Quantisation: positions 1 m, bearing 0.01°, bearing σ 0.5°, probabilities 1/255, Track axes 5 m, strength 0.1 log-odds up to 25.5, Observation `level` 0.01 (dB, dBm, or the camera's cleared radius in m).
+An Observation is one drone's readings of one sensor window (`Observation.MAX_READINGS` 2): time, position and Mode once (9 B), then 8 B per reading: sensor (3 bits) and bearing (13 bits) in one u16, bearing σ, P(drone, vehicle, train) and `level`; P(nothing) is what the three leave, since every producer's class probabilities sum to 1. A window with three readings sends two Observations. Most windows carry one reading (78 % of observing drone-seconds in the reserve, 76 % at Munich, 82 % in the demo); the rest are mostly sound+sound, UHF+sound or camera+UHF. Before 2026-10-21 every reading went in a 35 B frame of its own.
 
-**When frames are sent** (`agent/core.py:35-45`): Observations at most 1 Hz per sensor; up to 3 Tracks of the Threat Class per second, re-sent when changed, moved by 50 m, or every 10 s, and not when a neighbour said the same within 10 s (Trickle-style); Explained ones one hop only, at most one per 300 m every 30 s; Claims as the Policy decides; a Digest every 10 s, rotating through origins.
+Quantisation: positions 1 m, Observation bearing 0.044°, bearing σ 0.5°, probabilities 1/255, Track axes 5 m, strength 0.1 log-odds up to 25.5, Observation `level` 0.01 (dB, dBm, or the camera's cleared radius in m).
+
+**When frames are sent** (`agent/core.py:34-47`): Observations once per sensor window, each sensor at most 1 Hz, its readings together; up to 3 Tracks of the Threat Class per second, re-sent when changed, moved by 50 m, or every 10 s, and not when a neighbour said the same within 10 s (Trickle-style); Explained ones one hop only, at most one per 300 m every 30 s; Claims as the Policy decides; a Digest every 10 s, rotating through origins.
 
 **Medium** (`radio/medium.py`, defaults in `RadioConfig`, lines 31-44):
 

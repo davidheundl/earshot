@@ -59,13 +59,13 @@ Live flags: `earshot live` takes `--audio`, `--sounds DIR`, `--classifier MOD:AT
 - The City (`tools/make_savanna.py`, `biome: savanna`, `road_surfaces`) and the Webots builder's bushveld look. `camera.classes` maps any YOLO model's labels to Target Classes; the reserve keeps the stand-in (`detector: truth`) because COCO sees its primitive pickups as "bird".
 - `camera.range` (300 m): the stand-in sees a vehicle as far as a thermal camera does and geolocates it (a hit's `level` is its range), so the confirmed point and a Follower sit on the vehicle, not on the Verifier.
 - `params.max_verify_distance` (3000 m) and `radio.relay_radius_m` (4000 m), both off by default: no drone bids on a task further off, and Tracks and Claims are relayed only by drones near the place they are about. Without them, Claims lost on the busy channel sent drones 7 km across the reserve and every Track flooded all twenty.
-- Twenty drones: `map_cell` 50 m, `radio.nominal_range_m` 3500. For any world: Explained Tracks go one hop, at most one per 300 m per 30 s, and no longer take the Suspicions' six places in a map's Track list; a Digest names only frames worth healing (Claims, Tracks not Explained), so drones stop asking for one-hop frames they can never get.
+- Twenty drones: `map_cell` 50 m, `radio.nominal_range_m` 3500. For any world: Explained Tracks go one hop, at most one per 300 m per 30 s, and no longer take the Suspicions' six places in a map's Track list; a Digest names only frames worth healing (Claims, Tracks not Explained), so drones stop asking for one-hop frames they can never get. A drone's readings of one sensor window share one Observation, up to two per 40 B frame (68 -> 63.5 % load in the reserve).
 
 ## Modules and their seams
 
 | Module | Interface | Notes |
 |---|---|---|
-| `messages` | `encode(msg, key) -> bytes`, `decode(frame, key) -> msg` | The radio contract, ≤ 40 B per frame (ADR 0004). |
+| `messages` | `encode(msg, key) -> bytes`, `decode(frame, key) -> msg` | The radio contract, ≤ 40 B per frame (ADR 0004). An Observation carries up to two `SensorReading`s of one window; `Belief.add_evidence` folds each as one Evidence item. |
 | `city` | `City.load(json)`, `buildings_between`, `distance_to_rail/road`, `grid` | Static prior. Schema in the module docstring. |
 | `scenario` | `Scenario.load(yaml, seed)`, `active_sources(t)`, `jam_zones(t)`, `faults_for`, `apply(op, t)` | The only place ground truth lives. Every Event (YAML, hotkey, replay) goes through `apply`; op list in the module docstring. Optional keys `params:` (PolicyParams), `audio:`, `camera:` (see Perception), `threat:` (the Threat Class), `confusion:`; per Source `intruder:`, `kind:`. |
 | `backend` | `step(dt, commands) -> states`, `camera_frame(id)`, `close()` | Adapters, chosen by `--backend twin2d\|webots\|gazebo` (`world_proc.make_backend`): `twin2d.Twin2D`, `webots.WebotsBackend` (ADR 0002), `gazebo.GazeboBackend` (ADR 0008; talks to `gz_bridge.py`, which embeds Gazebo Sim in its own Python). All three fly the drones with `Twin2D(city, drones, Kinematics.for_scenario(scenario))`. `WebotsBackend.detector_frames` (set by the World) adds the image and camera geometry to each Verifier frame. |
@@ -101,7 +101,7 @@ Rule (concept section 14): infrastructure is built beforehand and declared ([DEC
 
 Open items worth doing on the day:
 - Ghosts beside a confirmed drone: its side lobes within 150 m are Explained now (`_follow_confirmed`), but bearings that point at it still cross other bearings further out and make Ghosts.
-- One aggregated Observation per drone per second, so the swarm also runs on a 125 kHz LoRa channel (it needs 500 kHz now).
+- A quieter channel, so the swarm also runs on a 125 kHz LoRa channel (it needs 500 kHz now). A window's readings already share one Observation (2026-10-21), but that was a quarter of the frames: at 125 kHz the demo still hits the 10 % duty cycle (9/12 confirmed, no agreement after the jam). In the reserve the rest was healing (resends and Requests, 29 % of the frames), relays (22 %) and own Tracks (19 %) ([savanna.md](savanna.md#results-in-the-reserve)).
 - Realism: airport background noise, honest RF, a camera stand-in with the detector's measured range (see [functionality.md](functionality.md#known-limitations-and-realism) and [review-2026-10-18.md](review-2026-10-18.md) section 3).
 
 ## Where Nikolas plugs in

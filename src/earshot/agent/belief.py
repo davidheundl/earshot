@@ -2,7 +2,8 @@
 
 Interface:
     belief = Belief(city, cell=20.0, threat=TargetClass.DRONE)
-    belief.add_evidence(obs, t_now)   Observation from anyone (own or received), each exactly once
+    belief.add_evidence(obs, t_now)   Observation from anyone (own or received), each exactly once:
+                                      every reading in it is one Evidence item
     belief.set_track(track)           a received Track; replaces that origin's older one there
     belief.advance(t_now)             decay to t_now (call before reading)
     belief.posterior()                (4, ny, nx) class probabilities, indexed by TargetClass
@@ -52,7 +53,16 @@ from itertools import combinations, pairwise
 import numpy as np
 
 from earshot.city import City
-from earshot.messages import RF_SENSORS, Mode, Observation, Sensor, TargetClass, Track, TrackStatus
+from earshot.messages import (
+    RF_SENSORS,
+    Mode,
+    Observation,
+    Sensor,
+    SensorReading,
+    TargetClass,
+    Track,
+    TrackStatus,
+)
 from earshot.sensors import acoustics as ac
 from earshot.sensors import rf
 
@@ -113,6 +123,27 @@ _LOUDEST = {TargetClass.DRONE: 89.0, TargetClass.VEHICLE: 108.0, TargetClass.TRA
 HEARING_RANGE = {
     (k, perched): _hearing_range(k, _LOUDEST[k], perched) for k in THREATS for perched in (True, False)
 }
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """One reading of an Observation, with who took it, where and when: what the map fuses."""
+
+    origin: int
+    t: float
+    x: float
+    y: float
+    mode: Mode
+    sensor: Sensor
+    bearing: float
+    bearing_sigma: float
+    class_probs: tuple[float, float, float, float]
+    level: float
+
+    @classmethod
+    def of(cls, obs: Observation, r: SensorReading) -> Evidence:
+        return cls(obs.header.origin, obs.t, obs.x, obs.y, obs.mode, r.sensor, r.bearing,
+                   r.bearing_sigma, r.class_probs, r.level)
 
 
 @dataclass(frozen=True)
@@ -251,9 +282,9 @@ class Belief:
         # (x, y, t_seen, t_moved): last camera sighting (the hold) and last move (the speed cap)
         self._confirmed: list[tuple[float, float, float, float]] = []
         self.faulty: set[int] = set()
-        self.last_sound: dict[int, Observation] = {}  # origin -> newest sound bearing
+        self.last_sound: dict[int, Evidence] = {}  # origin -> newest sound bearing
         self._fused: list[tuple[float, int, str]] = []  # (t, origin, family) for the dashboard
-        self._recent_sound: dict[int, list[Observation]] = {}  # origin -> bearings in window
+        self._recent_sound: dict[int, list[Evidence]] = {}  # origin -> bearings in window
         self._fault_streak: dict[int, int] = {}
         self._track_cache: list[TrackEst] = []  # last extracted Tracks, for check_faults
         self._fault_stats: dict[int, list[int]] = {}  # origin -> [checked, unconfirmed]
@@ -315,37 +346,42 @@ class Belief:
         self._t = t_now
 
     def add_evidence(self, obs: Observation, t_now: float | None = None) -> None:
-        """Fold one Observation into the map. Caller guarantees each (origin, seq) once."""
+        """Fold every reading of one Observation into the map. Caller guarantees each
+        (origin, seq) once: the Message Store accepts a frame once, readings and all."""
         t_now = self._t if t_now is None else t_now
         self.advance(t_now)
-        age = max(0.0, self._t - obs.t)
+        for r in obs.readings:
+            self._fold(Evidence.of(obs, r))
+
+    def _fold(self, ev: Evidence) -> None:
+        age = max(0.0, self._t - ev.t)
         self.n_evidence += 1
-        fam = "camera" if obs.sensor == Sensor.CAMERA else "sound" if obs.sensor == Sensor.SOUND else "rf"
-        self._fused.append((obs.t, obs.header.origin, fam))
-        if obs.sensor == Sensor.CAMERA:
+        fam = "camera" if ev.sensor == Sensor.CAMERA else "sound" if ev.sensor == Sensor.SOUND else "rf"
+        self._fused.append((ev.t, ev.origin, fam))
+        if ev.sensor == Sensor.CAMERA:
             w = math.exp(-age / TAU_CAMERA)
-            self._camera(obs, w)
+            self._camera(ev, w)
             return
         w = math.exp(-age / TAU)
-        family = "sound" if obs.sensor == Sensor.SOUND else "rf"
-        key = (obs.header.origin, family)
+        family = "sound" if ev.sensor == Sensor.SOUND else "rf"
+        key = (ev.origin, family)
         g = self._G.setdefault(key, np.zeros((3, *self.shape)))
         wgt = self._W.setdefault(key, np.zeros(self.shape))
-        self._newest[key] = max(self._newest.get(key, obs.t), obs.t)
-        if obs.sensor == Sensor.SOUND:
-            self._sound(obs, g, wgt, w)
-            last = self.last_sound.get(obs.header.origin)
-            if last is None or obs.t >= last.t:
-                self.last_sound[obs.header.origin] = obs
-            self._recent_sound.setdefault(obs.header.origin, []).append(obs)
-        elif obs.sensor in RF_SENSORS:
-            self._rf(obs, g, wgt, w)
+        self._newest[key] = max(self._newest.get(key, ev.t), ev.t)
+        if ev.sensor == Sensor.SOUND:
+            self._sound(ev, g, wgt, w)
+            last = self.last_sound.get(ev.origin)
+            if last is None or ev.t >= last.t:
+                self.last_sound[ev.origin] = ev
+            self._recent_sound.setdefault(ev.origin, []).append(ev)
+        elif ev.sensor in RF_SENSORS:
+            self._rf(ev, g, wgt, w)
 
-    def _geometry(self, obs: Observation):
+    def _geometry(self, obs: Evidence):
         dx, dy = self.X - obs.x, self.Y - obs.y
         return np.hypot(dx, dy), np.degrees(np.arctan2(dx, dy)) % 360.0
 
-    def _sound(self, obs: Observation, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
+    def _sound(self, obs: Evidence, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
         d, theta = self._geometry(obs)
         delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
         sigma = max(obs.bearing_sigma, 2.0)
@@ -361,7 +397,7 @@ class Belief:
             g[i] += w * obs.class_probs[k] * llr * gate
         wgt += w * gate_any
 
-    def _rf(self, obs: Observation, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
+    def _rf(self, obs: Evidence, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
         band = rf.BAND_OF_SENSOR[obs.sensor]
         d, _ = self._geometry(obs)
         at_1m = rf.mean_rx_power(band, 1.0, False)
@@ -376,9 +412,9 @@ class Belief:
         g[THREATS.index(band.emitter)] += w * obs.class_probs[band.emitter] * llr
         wgt += w
 
-    def _camera(self, obs: Observation, w: float) -> None:
+    def _camera(self, obs: Evidence, w: float) -> None:
         d, theta = self._geometry(obs)
-        o = obs.header.origin
+        o = obs.origin
         g = self._CG.setdefault(o, np.zeros((3, *self.shape)))
         wgt = self._CW.setdefault(o, np.zeros(self.shape))
         self._c_newest[o] = max(self._c_newest.get(o, obs.t), obs.t)
@@ -563,7 +599,7 @@ class Belief:
                 newly.add(o)
         return newly
 
-    def _should_hear(self, at: Observation, tr: TrackEst, d: float) -> bool:
+    def _should_hear(self, at: Evidence, tr: TrackEst, d: float) -> bool:
         """A source of the Track's class (planning level) would be heard more often than not."""
         if at.mode != Mode.LISTEN:
             return False  # flying drones are nearly deaf; never judge them on silence
