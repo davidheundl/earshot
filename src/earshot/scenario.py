@@ -68,6 +68,14 @@ class Source:
             object.__setattr__(self, "waits", tuple(float(p[2]) if len(p) > 2 else 0.0
                                                     for p in self.path))
             object.__setattr__(self, "path", [(p[0], p[1]) for p in self.path])
+        # the path's geometry, once: position() runs for every active Source on every tick
+        # (not fields: equality, repr and replace() stay the dataclass's own)
+        pts = np.asarray(self.path, dtype=float)
+        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1) if len(pts) > 1 else np.zeros(0)
+        object.__setattr__(self, "_pts", pts)
+        object.__setattr__(self, "_seg", seg)
+        object.__setattr__(self, "_cum", np.cumsum(seg))
+        object.__setattr__(self, "_s0", [seg[:i].sum() for i in range(len(seg))])
 
     def _along(self, t: float, seg: np.ndarray) -> float:
         """m along the path at time t when it stops on the way: constant speed between
@@ -89,15 +97,15 @@ class Source:
         (train wagons). None when inactive."""
         if not (self.start <= t <= self.end):
             return None
-        pts = np.asarray(self.path, dtype=float)
+        pts = self._pts
         if len(pts) == 1:
             return float(pts[0, 0]), float(pts[0, 1]), 0.0
-        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        seg = self._seg
         total = seg.sum()
         s = (self._along(t, seg) if self.waits
              else (t - self.start) / max(self.end - self.start, 1e-9) * total) - back
         s = min(max(s, 0.0), total)
-        cum = np.cumsum(seg)
+        cum = self._cum
         i = min(int(np.searchsorted(cum, s, side="right")), len(seg) - 1)
         s0 = cum[i] - seg[i]
         f = 0.0 if seg[i] == 0 else (s - s0) / seg[i]
@@ -108,14 +116,14 @@ class Source:
     def position(self, t: float) -> tuple[float, float] | None:
         if not (self.start <= t <= self.end):
             return None
-        pts = np.asarray(self.path, dtype=float)
+        pts = self._pts
         if len(pts) == 1 or self.end == self.start:
             return float(pts[0, 0]), float(pts[0, 1])
-        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        seg = self._seg
         s = (self._along(t, seg) if self.waits
              else (t - self.start) / (self.end - self.start) * seg.sum())
-        i = min(int(np.searchsorted(np.cumsum(seg), s, side="right")), len(seg) - 1)
-        s0 = seg[:i].sum()
+        i = min(int(np.searchsorted(self._cum, s, side="right")), len(seg) - 1)
+        s0 = self._s0[i]
         f = 0.0 if seg[i] == 0 else (s - s0) / seg[i]
         p = pts[i] + f * (pts[i + 1] - pts[i])
         return float(p[0]), float(p[1])
