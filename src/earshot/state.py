@@ -120,3 +120,12 @@ class SwarmConfig:
             threat=threat,
             relay_radius=relay_radius,
         )
+
+    @classmethod
+    def for_scenario(cls, scenario, params: dict | None = None) -> SwarmConfig:
+        """The Scenario's swarm (duck-typed: scenario.py imports this module). `params`:
+        PolicyParams overrides used instead of the Scenario's own (live --params merged in)."""
+        return cls.from_specs(scenario.drones, scenario.policy,
+                              scenario.radio.get("scheme", "ours"), scenario.map_cell,
+                              PolicyParams.from_dict(scenario.params if params is None else params),
+                              scenario.threat, float(scenario.radio.get("relay_radius_m", "inf")))

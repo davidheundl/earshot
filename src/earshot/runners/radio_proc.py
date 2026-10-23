@@ -11,11 +11,10 @@ import sys
 import traceback
 from types import SimpleNamespace
 
-import numpy as np
 import zmq
 
 from earshot import config
-from earshot.radio.medium import RadioConfig, RadioMedium
+from earshot.radio.medium import RadioMedium
 from earshot.runners.wire import pack, topic, unpack
 from earshot.scenario import Scenario
 
@@ -30,9 +29,7 @@ def main(argv=None) -> None:
     ap.add_argument("--scenario", default="scenarios/demo.yaml")
     a = ap.parse_args(argv)
     scenario = Scenario.load(a.scenario)
-    medium = RadioMedium(
-        RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)
-    )
+    medium = RadioMedium.for_scenario(scenario)
 
     ctx = zmq.Context.instance()
     ctx.setsockopt(zmq.LINGER, 0)  # never block exit on unsent messages

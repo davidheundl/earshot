@@ -33,6 +33,7 @@ nothing to see, find or follow, so it never enters metrics, the camera or a 3D w
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -214,6 +215,13 @@ def _confusion(d: dict | None) -> dict:
                              f"{[c.name.lower() for c in TargetClass]}")
         out[cls] = {_target_class(k): _float(v, f"confusion {true}.{k}") for k, v in row.items()}
     return out
+
+
+def load_params(path) -> dict:
+    """PolicyParams overrides from a JSON file (--params); `earshot tune`'s best.json keeps
+    them under "params"."""
+    d = json.loads(Path(path).read_text())
+    return d.get("params", d)
 
 
 @dataclass

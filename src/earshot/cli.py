@@ -181,10 +181,9 @@ def _audio(a, sc):
 def _params(a) -> dict | None:
     """--params FILE: a JSON object of state.PolicyParams overrides (`earshot tune` writes
     best.json with them under "params")."""
-    if not a.params:
-        return None
-    d = json.loads(Path(a.params).read_text())
-    return d.get("params", d)
+    from earshot.scenario import load_params
+
+    return load_params(a.params) if a.params else None
 
 
 def _eval_seed(a) -> int:

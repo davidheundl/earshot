@@ -8,7 +8,6 @@ Talks to nobody but the world (sensing, commands) and the radio (frames).
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -19,8 +18,8 @@ from earshot.agent import Agent
 from earshot.city import City
 from earshot.messages import Sensor
 from earshot.runners.wire import command_to_dict, pack, sensed_from_dict, topic, unpack
-from earshot.scenario import Scenario
-from earshot.state import PolicyParams, Sensed, SwarmConfig
+from earshot.scenario import Scenario, load_params
+from earshot.state import Sensed, SwarmConfig
 
 
 def merge_ticks(ticks: list[Sensed]) -> Sensed:
@@ -58,12 +57,8 @@ def main(argv=None) -> None:
     scenario = Scenario.load(a.scenario)
     params = dict(scenario.params)
     if a.params:  # earshot live --params FILE: over the Scenario's own
-        d = json.loads(Path(a.params).read_text())
-        params.update(d.get("params", d))
-    swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(params), scenario.threat,
-                                   float(scenario.radio.get("relay_radius_m", "inf")))
+        params.update(load_params(a.params))
+    swarm = SwarmConfig.for_scenario(scenario, params)
     agent = Agent(a.id, City.load(Path(scenario.city)), config.KEY, swarm)
 
     ctx = zmq.Context.instance()

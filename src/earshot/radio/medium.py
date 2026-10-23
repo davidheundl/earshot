@@ -102,6 +102,11 @@ class _Stats:
 class RadioMedium:
     REF_LOSS_DB = 31.7  # free space at 1 m, 915 MHz
 
+    @classmethod
+    def for_scenario(cls, scenario) -> RadioMedium:
+        """The Scenario's channel (`radio:`), with its own random stream (seed + 2)."""
+        return cls(RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2))
+
     def __init__(self, cfg: RadioConfig, rng: np.random.Generator):
         self.cfg = cfg
         self.rng = rng

@@ -11,15 +11,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-
 from earshot import config
 from earshot.agent import Agent
 from earshot.backend.twin2d import Kinematics, Twin2D
 from earshot.city import City
-from earshot.radio.medium import RadioConfig, RadioMedium
+from earshot.radio.medium import RadioMedium
 from earshot.scenario import Scenario
-from earshot.state import PolicyParams, SwarmConfig
+from earshot.state import SwarmConfig
 from earshot.threat_log import ThreatLog
 from earshot.world import World
 
@@ -44,13 +42,8 @@ def build(scenario: Scenario, root: Path = Path("."), audio=None):
     city = City.load(root / scenario.city)
     backend = Twin2D(city, scenario.drones, Kinematics.for_scenario(scenario))
     world = World(scenario, city, backend, audio)
-    radio = RadioMedium(
-        RadioConfig.from_dict(scenario.radio), np.random.default_rng(scenario.seed + 2)
-    )
-    swarm = SwarmConfig.from_specs(scenario.drones, scenario.policy,
-                                   scenario.radio.get("scheme", "ours"), scenario.map_cell,
-                                   PolicyParams.from_dict(scenario.params), scenario.threat,
-                                   float(scenario.radio.get("relay_radius_m", "inf")))
+    radio = RadioMedium.for_scenario(scenario)
+    swarm = SwarmConfig.for_scenario(scenario)
     agents = {d.id: Agent(d.id, city, config.KEY, swarm, heatmap=False)  # no dashboard here
               for d in scenario.drones}
     return city, world, radio, agents
