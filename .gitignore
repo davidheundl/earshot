@@ -21,6 +21,8 @@ webots/worlds/muc.wbt
 webots/worlds/muc_full.wbt
 webots/worlds/muc_demo.wbt
 webots/worlds/savanna.wbt
+webots/worlds/room.wbt
+webots/worlds/two_drones.wbt
 
 # real recordings dropped in by tools/fetch_sound_data.py (dataset licences: not redistributed)
 data/sounds/*/
