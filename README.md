@@ -127,10 +127,10 @@ uv run earshot arrays
 uv run earshot live --scenario scenarios/room.yaml --array 0=DEVICE@ROTATION --array 1=DEVICE@ROTATION
 ```
 
-Tests:
+Tests (`-n auto` runs them on every core; plain `uv run pytest` stays serial):
 
 ```bash
-uv run pytest
+uv run pytest -n auto
 ```
 
 ## Docs
