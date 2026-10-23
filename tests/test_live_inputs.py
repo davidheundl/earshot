@@ -130,15 +130,16 @@ def test_view_keepalive_keeps_the_assignment():
     assert b.views == [[1, "chase"], [0, "pilot"]]
 
 
-def _tick(t, readings):
+def _tick(t, readings, guide=None):
     st = DroneState(1, t, 0.0, 0.0, 40.0, 0.0, Mode.LISTEN, None, 1.0, 0.0, False)
     return Sensed(st, [SensorReading(Sensor.SOUND, b, 5.0, (1.0, 0.0, 0.0, 0.0), 50.0)
-                       for b in readings])
+                       for b in readings], guide=guide)
 
 
 def test_merge_ticks_keeps_skipped_readings():
-    ticks = [_tick(1.0, [10.0]), _tick(1.1, []), _tick(1.2, [20.0, 30.0])]
+    ticks = [_tick(1.0, [10.0]), _tick(1.1, []), _tick(1.2, [20.0, 30.0], guide=(5.0, 6.0))]
     merged = merge_ticks(ticks)
     assert merged.state == ticks[-1].state
+    assert merged.guide == (5.0, 6.0)  # the demo's Guide survives an agent falling behind
     assert [r.bearing for r in merged.readings] == [10.0, 20.0, 30.0]
     assert merge_ticks(ticks[-1:]) is ticks[-1]

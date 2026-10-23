@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import zmq
@@ -23,12 +24,12 @@ from earshot.state import PolicyParams, Sensed, SwarmConfig
 
 
 def merge_ticks(ticks: list[Sensed]) -> Sensed:
-    """The newest tick's state and camera frame, with the readings of all ticks (oldest
-    first). Sensors report once per second per drone, so a dropped tick would lose them."""
+    """The newest tick (state, guide), with the readings of all ticks (oldest first).
+    Sensors report once per second per drone, so a dropped tick would lose them."""
     newest = ticks[-1]
     if len(ticks) == 1:
         return newest
-    return Sensed(newest.state, [r for s in ticks for r in s.readings], newest.camera_frame)
+    return replace(newest, readings=[r for s in ticks for r in s.readings])
 
 
 def main(argv=None) -> None:
@@ -109,7 +110,7 @@ def main(argv=None) -> None:
                 sensed = merge_ticks([sensed_from_dict(unpack(p)) for p in payloads])
                 if array is not None:  # real sound replaces the simulated sound readings
                     keep = [r for r in sensed.readings if r.sensor != Sensor.SOUND]
-                    sensed = Sensed(sensed.state, keep + array.readings(), sensed.camera_frame)
+                    sensed = replace(sensed, readings=keep + array.readings())
                 drain_radio()  # frames that arrived since the poll belong to this tick too
                 out = agent.step(sensed.state.t, sensed, inbox)
                 inbox.clear()
