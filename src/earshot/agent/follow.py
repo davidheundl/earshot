@@ -4,6 +4,7 @@ Interface:
     q = Quarry(t, x, y)                     at the confirmed point, standing still
     q.sight(t, sx, sy, bearing, rng)        own camera hit -> bool (False: gated out)
     q.track(t, x, y)                        the Confirmed Track's point (the swarm's estimate)
+    q.guide(t, x, y)                        demo mock: where it really is (Sensed.guide)
     q.at(t) -> (x, y)                       predicted position now
     q.vx, q.vy, q.speed                     velocity, m/s
     q.last_seen                             t of the newest sighting or Confirmed Track
@@ -44,6 +45,7 @@ GATE_PER_S = 15.0  # m the gate widens per second since the last update
 MAX_SPEED = 40.0  # m/s the estimate is clamped to: a bad fix must not fling the Follower off
 CAMERA_FRESH = 3.0  # s after a ranged sighting the Confirmed Track is not needed
 COAST = 3.0  # s the prediction runs on the velocity at most
+GUIDE_SMOOTH = 0.5  # s over which a guided velocity follows the true one
 
 
 class Quarry:
@@ -86,6 +88,16 @@ class Quarry:
         if self._last_ranged is not None and t - self._last_ranged < CAMERA_FRESH:
             return False  # the camera ranges it: the swarm's point adds only its error
         return self._update(t, x, y, TRACK_GAINS)
+
+    def guide(self, t: float, x: float, y: float) -> None:
+        """The demo mock's true position: taken as it is, velocity from the last one."""
+        dt = t - self.t
+        if dt > 1e-6:
+            a = min(1.0, dt / GUIDE_SMOOTH)
+            self.vx += a * ((x - self.x) / dt - self.vx)
+            self.vy += a * ((y - self.y) / dt - self.vy)
+        self.x, self.y, self.t = x, y, t
+        self.last_seen = t
 
     def _update(self, t: float, zx: float, zy: float, gains: tuple[float, float]) -> bool:
         px, py = self.at(t)

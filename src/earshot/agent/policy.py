@@ -31,6 +31,11 @@ Concept section 7, as reworked on 2026-10-11:
   behind, at most follow_max_speed. It reports where it is once a second ("following", with
   the Quarry's speed); the runners log that as the Threat Log. follow_for 0 releases at
   confirmation, as before.
+- Guide (demo mock, Scenario `guide: true`): a Verifier in flight is told where its intruder
+  really is (`guide`, from the World). It flies there instead of to the Suspicion, does not
+  drop the task when it drifts, confirms on its own camera's sighting or GUIDE_CONFIRM s
+  after arriving, and its Quarry follows the guide exactly. Without a guide (a Ghost far
+  from any intruder, every honest Scenario) nothing changes.
 - Sectors are Voronoi cells of the homes of available drones (no active Claim); when a drone
   leaves, its neighbours' cells grow and patrollers fly Fill Gap.
 
@@ -60,6 +65,7 @@ RENEW = 4.0
 NEAREST_BID = 655.0  # verify bid = NEAREST_BID - metres / 10: highest bid = nearest drone
 # the tunable thresholds (strength gate, settle window, ...) are state.PolicyParams: self.p
 SECTOR_CELL = 100.0
+GUIDE_CONFIRM = 3.0  # s at a guided intruder before it counts as confirmed without a sighting
 
 
 TASK_STRIDE = 16384  # 100 m cells per task kind: cities up to 12.8 x 12.8 km; one kind fits u16
@@ -120,6 +126,7 @@ class Policy:
         self._follow_since: float | None = None  # Follow: when the task's threat was confirmed
         self._quarry: Quarry | None = None  # Follow: where the confirmed threat is
         self._sightings: list[SensorReading] = []  # this tick's own camera hits of the threat
+        self._guide: tuple[float, float] | None = None  # demo mock: where the intruder is
         self._follow_said = -1e9  # Follow: last "following" event
         self._cooldown = self.p.outbid_cooldown
         xs = np.arange(city.bounds[0] + SECTOR_CELL / 2, city.bounds[2], SECTOR_CELL)
@@ -131,10 +138,13 @@ class Policy:
 
     def decide(self, t: float, s: DroneState, tracks: list[TrackEst], belief,
                claims: dict[tuple[int, int], Claim],
-               sightings: list[SensorReading] = ()) -> Decision:
+               sightings: list[SensorReading] = (),
+               guide: tuple[float, float] | None = None) -> Decision:
         """`sightings`: this tick's own camera readings that saw the Threat Class (a
-        bearing, and `range` when the camera ranged it); Follow steers by them."""
+        bearing, and `range` when the camera ranged it); Follow steers by them. `guide`: the
+        demo mock's true intruder position while I verify (Sensed.guide), else None."""
         self._sightings = list(sightings)
+        self._guide = guide
         active = {k: c for k, c in claims.items() if c.lease > 0 and t < c.t + c.lease}
         tasks = self._tasks(tracks, belief, active, s)
         d = Decision(command=self._default_command(t, s, active))
@@ -238,6 +248,20 @@ class Policy:
             self._follow(t, s, tracks, active, d)
             return
         current = tasks.get(task.tid) or self._drifted(task, tasks) or self._held(task, tracks)
+        if self._guide is not None and self._settled:  # demo mock: fly to where it really is
+            task.x, task.y = self._guide
+            task.target = self._guide
+            # every Verifier near the intruder is guided to the same place: the nearest keeps it
+            self._my_bid = self._bid(task, s)
+            rival = self._rival(task, active)
+            if rival is not None and rival > (self._my_bid, -self.me):
+                self._lost = (t, task.x, task.y)
+                self._release(t, d, "outbid")
+                return
+            self._verify_progress(t, s, tracks, current, d)
+            if self._task is not None and t - self._last_claim >= RENEW:
+                self._send_claim(t, d, LEASE)
+            return
         if current is not None and task.claimed is not None and math.hypot(
                 current.x - task.claimed[0], current.y - task.claimed[1]) > self.p.same_task_radius:
             self._release(t, d, "drifted")  # walked too far from its Claim: re-auction it
@@ -284,17 +308,18 @@ class Policy:
 
     def _verify_progress(self, t, s, tracks, current, d: Decision) -> None:
         task = self._task
+        if self._guide is not None and self._settled:  # demo mock: the intruder is right here
+            gx, gy = self._guide
+            if math.hypot(gx - s.x, gy - s.y) <= self.p.arrive and self._arrived_at is None:
+                self._arrived_at = t
+            if self._sightings or (self._arrived_at is not None
+                                   and t - self._arrived_at >= GUIDE_CONFIRM):
+                self._confirm(t, s, tracks, d, gx, gy)
+            return
         confirmed = next((tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
                           and math.hypot(tr.x - task.x, tr.y - task.y) <= CONFIRM_RADIUS), None)
         if confirmed is not None and self._settled:
-            if self.p.follow_for > 0:  # stay with it: Follow
-                d.events.append(self._event(t, "confirmed")
-                                | {"x": round(confirmed.x, 1), "y": round(confirmed.y, 1)})
-                self._follow_since = t
-                self._quarry = Quarry(t, confirmed.x, confirmed.y)
-                self._follow(t, s, tracks, {}, d)
-                return
-            self._release(t, d, "confirmed", confirmed)
+            self._confirm(t, s, tracks, d, confirmed.x, confirmed.y)
             return
         dist = math.hypot(task.target[0] - s.x, task.target[1] - s.y)
         if self._settled and dist <= self.p.arrive and self._arrived_at is None:
@@ -310,6 +335,15 @@ class Policy:
         elif current is None and not self._settled:
             self._release(t, d, "obsolete")
 
+    def _confirm(self, t, s, tracks, d: Decision, x: float, y: float) -> None:
+        if self.p.follow_for > 0:  # stay with it: Follow
+            d.events.append(self._event(t, "confirmed") | {"x": round(x, 1), "y": round(y, 1)})
+            self._follow_since = t
+            self._quarry = Quarry(t, x, y)
+            self._follow(t, s, tracks, {}, d)
+            return
+        self._release(t, d, "confirmed", at=(x, y))
+
     def _follow(self, t, s, tracks, active, d: Decision) -> None:
         """Stay with the confirmed threat: update the Quarry from my own camera and the
         nearest Confirmed Track of the Threat Class within same_task_radius of it, keep the
@@ -317,14 +351,16 @@ class Policy:
         (Claims crossed on the air) do not both follow it: the nearer keeps it, as in the
         auction."""
         task, q = self._task, self._quarry
-        for r in self._sightings:
+        if self._guide is not None:  # demo mock: the Quarry is where the intruder really is
+            q.guide(t, *self._guide)
+        for r in self._sightings if self._guide is None else ():
             q.sight(t, s.x, s.y, r.bearing, r.range)
         px, py = q.at(t)
         near = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED
                 and tr.cls == self.swarm.threat
                 and math.hypot(tr.x - px, tr.y - py) <= self.p.same_task_radius]
         conf = min(near, key=lambda tr: math.hypot(tr.x - px, tr.y - py), default=None)
-        if conf is not None:
+        if conf is not None and self._guide is None:
             q.track(t, conf.x, conf.y)
             task.track = conf
         if t - q.last_seen >= self.p.dismiss_after:
@@ -347,10 +383,10 @@ class Policy:
         if t - self._last_claim >= RENEW:
             self._send_claim(t, d, LEASE)
 
-    def _release(self, t, d: Decision, why: str, track: TrackEst | None = None) -> None:
+    def _release(self, t, d: Decision, why: str, at: tuple[float, float] | None = None) -> None:
         ev = self._event(t, why)
-        if track is not None:
-            ev.update(x=round(track.x, 1), y=round(track.y, 1))
+        if at is not None:
+            ev.update(x=round(at[0], 1), y=round(at[1], 1))
         d.events.append(ev)
         self._send_claim(t, d, 0.0)
         self._task = None
@@ -383,6 +419,9 @@ class Policy:
             return Command(Mode.VERIFY, goal=target, camera_on=True, look_at=target,
                            speed=min(speed, self.p.follow_max_speed))
         near = math.hypot(target[0] - s.x, target[1] - s.y) <= 150.0
+        if self._guide is not None:  # demo mock: it knows where the intruder is, so it sprints
+            return Command(Mode.VERIFY, goal=target, camera_on=near, look_at=target,
+                           speed=self.p.follow_max_speed)
         return Command(Mode.VERIFY, goal=target, camera_on=near, look_at=target)
 
     def _default_command(self, t, s: DroneState, active) -> Command:

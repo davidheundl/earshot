@@ -137,7 +137,7 @@ class Agent:
                      and max(range(len(r.class_probs)), key=r.class_probs.__getitem__)
                      == self.threat]
         decision = self.policy.decide(t, s, self._all_tracks(t), self.belief, self._claims,
-                                      sightings)
+                                      sightings, sensed.guide)
         for tid, bid, lease, x, y in decision.claims:
             claim = Claim(self._next_header(CLAIM_HOPS), t, tid, bid, lease, x, y)
             self._claims[(self.me, tid)] = claim

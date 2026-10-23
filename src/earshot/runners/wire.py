@@ -36,6 +36,7 @@ def sensed_to_dict(s: Sensed) -> dict:
             [int(r.sensor), r.bearing, r.bearing_sigma, list(r.class_probs), r.level, r.range]
             for r in s.readings
         ],
+        "guide": s.guide,
         # no camera_frame: the world already turned it into CAMERA readings, and Agents never
         # read images (a Webots frame would be ~400 KB per tick)
     }
@@ -51,6 +52,7 @@ def sensed_from_dict(d: dict) -> Sensed:
             for s, b, bs, cp, lvl, rng in d["readings"]
         ],
         camera_frame=d.get("camera_frame"),
+        guide=tuple(d["guide"]) if d.get("guide") else None,
     )
 
 

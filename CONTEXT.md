@@ -41,6 +41,10 @@ _Avoid_: chase, pursue, track (a Track is a fused Suspicion), lock (that is a Cl
 What a Follower knows of the threat it follows: position and velocity, from its own camera sightings and the Confirmed Track, coasting between them.
 _Avoid_: target (a Source), track
 
+**Guide**:
+A demo mock (`guide: true`, `scenarios/muc_demo.yaml`): a Verifier in flight is told where its intruder really is, flies straight to it, confirms and follows. Detection stays honest; this is the one place truth reaches an Agent, never in an evaluation.
+_Avoid_: oracle, cheat
+
 **Sector**:
 The area a Drone is responsible for while patrolling; re-partitioned when a neighbour leaves.
 

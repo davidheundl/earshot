@@ -14,17 +14,21 @@ so Agents cannot see ground truth (ADR 0001). Runners own the clock.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 
 import numpy as np
 
 from earshot.backend import Backend
 from earshot.city import City
+from earshot.messages import Mode
 from earshot.scenario import Scenario
 from earshot.sensors import Audio, SensorSuite
 from earshot.sensors.camera import YoloDetector
 from earshot.sensors.waveform import spectrum
 from earshot.state import Command, DroneState, Sensed
+
+GUIDE_RADIUS = 600.0  # m around a Verifier's goal its Guide looks for the intruder
 
 
 class World:
@@ -63,6 +67,17 @@ class World:
                 note = f"rejected {op.get('op')}: {e}"
             self.applied.append({**op, "t": round(self.t, 3), "note": note})
 
+    def _guide(self, cmd: Command | None) -> tuple[float, float] | None:
+        """Demo mock (Scenario `guide: true`): the true position of the intruder nearest to
+        where a Verifier flies, within GUIDE_RADIUS; a Verifier sent to a Ghost far from any
+        intruder gets nothing and is dismissed as usual."""
+        if not self.scenario.guide or cmd is None or cmd.mode != Mode.VERIFY or cmd.goal is None:
+            return None
+        near = [(math.hypot(p[0] - cmd.goal[0], p[1] - cmd.goal[1]), p)
+                for src, p in self.scenario.active_sources(self.t) if src.intruder]
+        d, p = min(near, default=(math.inf, None), key=lambda e: e[0])
+        return (float(p[0]), float(p[1])) if d <= GUIDE_RADIUS else None
+
     def step(self, commands: Mapping[int, Command]) -> dict[int, Sensed]:
         self._apply_events()
         self.states = self.backend.step(self.scenario.dt, commands)
@@ -85,7 +100,8 @@ class World:
                     "truth": det.truth, "snr": det.snr_db,
                     **({"label": det.label} if det.label else {}),
                 })
-            sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame)
+            sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame,
+                                 guide=self._guide(commands.get(did)))
         for w in self.audio:
             self._spectra[w.drone] = spectrum(w.mix)
         self._recent = [d for d in self._recent if self.t - d["t"] < 3.0] + [

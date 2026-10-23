@@ -197,6 +197,7 @@ class Scenario:
     confusion: dict = field(default_factory=dict)  # sound stand-in rows: sensors.CONFUSION
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
+    guide: bool = False  # demo mock: a Verifier is told where its intruder really is (Guide)
     _live_count: int = 0
 
     @classmethod
@@ -259,6 +260,7 @@ class Scenario:
             radio=d.get("radio", {}),
             environment=Environment(**d.get("environment", {})),
             events=sorted(d.get("events", []), key=lambda e: e["t"]),
+            guide=bool(d.get("guide", False)),
         )
         bad = [f.kind for f in sc.faults if f.kind not in FAULT_KINDS]
         if bad:

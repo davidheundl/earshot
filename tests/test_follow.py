@@ -130,3 +130,31 @@ def test_the_camera_ranges_a_drone_by_its_size_for_the_follower_only():
             if d.reading.sensor == Sensor.CAMERA and not math.isnan(d.reading.bearing)]
     assert hits and all(0.85 * 60.0 <= r.range <= 1.15 * 60.0 for r in hits)
     assert all(r.level == 0.0 for r in hits)  # the Belief and the radio still get a bearing
+
+
+def test_a_guided_verifier_flies_to_the_intruder_confirms_and_stays_on_it():
+    """Demo mock: the Suspicion sits 250 m off the real drone, the camera never fires; the
+    guide alone brings the Verifier there, confirms it and keeps it within the gap."""
+    D = TargetClass.DRONE
+    spec = DroneSpec(0, -300.0, -300.0, home=(-300.0, -300.0))
+    swarm = SwarmConfig.from_specs([spec], params=PolicyParams.from_dict({"follow_for": 600.0}))
+    p = Policy(0, CITY, swarm)
+    twin = Twin2D(CITY, [spec], Kinematics())
+    s = twin.states()[0]
+    truth = lambda t: (100.0 + 10.0 * t, 100.0)
+    events, gaps = [], []
+    for k in range(1200):
+        t = round(k * 0.1, 1)
+        x, y = truth(t)
+        ghost = TrackEst(cell_id(x - 250, y, CITY.bounds), x - 250, y, 120.0, 60.0, 0.0, D,
+                         0.9, TrackStatus.SUSPECTED, origins=2, strength=9.0)
+        cmd = p._task_command(s) if p._task is not None and p._settled else None
+        guide = (x, y) if cmd is not None and cmd.mode == Mode.VERIFY else None
+        d = p.decide(t, s, [ghost], Belief(CITY), {}, (), guide)
+        events += [(t, e["kind"]) for e in d.events if e["kind"] != "following"]
+        s = twin.step(0.1, {0: d.command})[0]
+        if p._follow_since is not None:
+            gaps.append(math.dist((s.x, s.y), truth(t)))
+    kinds = [k for _, k in events]
+    assert kinds[:3] == ["claim", "dispatch", "confirmed"] and "lost" not in kinds
+    assert gaps and max(gaps[100:]) < 50.0  # on the real drone, not on the Suspicion
