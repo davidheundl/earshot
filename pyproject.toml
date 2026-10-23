@@ -20,7 +20,7 @@ dependencies = [
 earshot = "earshot.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6"]  # uv run pytest -n auto: in parallel
 # Camera detector (YOLO: earshot.sensors.camera, tools/cv_demos.py): `uv sync --group cv`.
 cv = ["ultralytics>=8.4", "lap>=0.5.12"]  # 8.4: track(persist=...) honoured per call
 # Live microphone arrays in the room (concept section 10). Nikolas' area.
