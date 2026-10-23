@@ -279,7 +279,7 @@ const threatCls = () => last?.state?.threat || "DRONE";  // what this swarm hunt
 const threatName = () => CLS_NAME[threatCls()];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
-let city = null, scen = null, base = null, last = null;
+let city = null, base = null, last = null;
 let selected = 0, mainMode = "chase", evidence = false, showHeat = true, showTruth = false;
 let views = null, mouse = null, lastConfirmed = 0;
 const hist = {};      // drone -> readings (last 120 s)
@@ -418,7 +418,6 @@ function checkCams() {
 setInterval(checkCams, 500);
 function layout() {
   // map-first: no camera images, live view; the map (and its Suspicion line) moves into the main area
-  document.body.classList.toggle("nocam", camStale);
   const mapFirst = camStale && !evidence;
   document.body.classList.toggle("mapfirst", mapFirst);
   const home = mapFirst ? $("left") : $("right");
@@ -496,7 +495,7 @@ function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._h
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 
 /* ---------- map (scope) ---------- */
-const map = $("map"), mctx = map.getContext("2d");
+const map = $("map");
 function fitCanvas(c) {
   const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   const W = Math.floor(r.width * dpr), H = Math.floor(r.height * dpr);  // the size setters truncate too
@@ -1157,7 +1156,6 @@ function sendOp(op) {
 function loadStatic(again) {
   const q = again ? `?run=${Date.now()}` : "";  // a new run may bring a new city
   const img = new Image(); img.onload = () => { base = img; schedule(); }; img.onerror = () => { base = null; }; img.src = `/basemap.png${q}`;
-  fetch(`/scenario${q}`).then(r => r.json()).then(s => scen = s).catch(() => {});
   return fetch(`/city${q}`).then(r => r.json()).then(c => { city = c; schedule(); });
 }
 loadStatic(false).then(() => { connect(); connectCams(); });
