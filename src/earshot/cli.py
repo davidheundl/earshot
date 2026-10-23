@@ -431,16 +431,15 @@ def cmd_doctor(a) -> None:
               fatal=False)
     else:
         check("Gazebo bridge venv (made by the first `earshot live --backend gazebo`)", True)
+    taken = set(busy_ports(gazebo=True))
     for name, ep in [("world pub", config.WORLD_PUB), ("world pull", config.WORLD_PULL),
                      ("radio pull", config.RADIO_PULL), ("radio pub", config.RADIO_PUB),
                      ("gazebo bridge", config.GAZEBO_BRIDGE)]:
         port = int(ep.rsplit(":", 1)[1])
-        with socket.socket() as s:
-            check(f"port {port} free ({name})", s.connect_ex((config.HOST, port)) != 0,
-                  "an earlier run is still alive: pkill -f earshot")
-    with socket.socket() as s:
-        check(f"port {config.DASHBOARD_PORT} free (dashboard)",
-              s.connect_ex((config.HOST, config.DASHBOARD_PORT)) != 0, "pkill -f earshot")
+        check(f"port {port} free ({name})", port not in taken,
+              "an earlier run is still alive: pkill -f earshot")
+    check(f"port {config.DASHBOARD_PORT} free (dashboard)", config.DASHBOARD_PORT not in taken,
+          "pkill -f earshot")
     stale = stale_webots()
     check(f"no leftover Earshot Webots on port {config.WEBOTS_PORT}", not stale,
           f"close its window or: kill {' '.join(stale)}")
