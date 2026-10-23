@@ -14,7 +14,6 @@ It is drawn from its own random stream: the rest of each world stays as it was.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 
@@ -25,9 +24,9 @@ from earshot.scenario import JamZone, Scenario, Source
 SECOND_SHARE = 0.3  # worlds with a second intruder
 
 
-def generate(base: Scenario, seed: int, root: Path = Path(".")) -> Scenario:
+def generate(base: Scenario, seed: int) -> Scenario:
     rng = np.random.default_rng(10_000 + seed)
-    city = City.load(root / base.city)
+    city = City.load(base.city)
     x0, y0, x1, y1 = city.bounds
     sc = Scenario(name=f"random-{seed}", seed=seed, city=base.city, duration=base.duration,
                   dt=base.dt, drones=base.drones, sources=[], radio=dict(base.radio),

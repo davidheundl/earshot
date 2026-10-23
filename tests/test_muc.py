@@ -1,5 +1,6 @@
 """The Munich Airport City (tools/make_muc.py) and its scenario."""
 
+import json
 import math
 from pathlib import Path
 
@@ -15,7 +16,7 @@ CITY = ROOT / "data/cities/muc.json"
 
 def test_city_fits_the_task_ids_and_its_assets_exist():
     c = City.load(CITY)
-    raw = c.to_json()
+    raw = json.loads(CITY.read_text())
     x0, y0, x1, y1 = c.bounds
     assert math.ceil((x1 - x0) / 100) * math.ceil((y1 - y0) / 100) <= 4096  # policy.task_id
     files = [raw["landuse"]["image"], raw["basemap"]]

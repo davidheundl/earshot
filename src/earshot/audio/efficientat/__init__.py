@@ -25,8 +25,6 @@ from .model import get_model
 SR = 32000  # the AudioSet models' rate
 N_MELS, N_FFT, WIN, HOP = 128, 1024, 800, 320
 FMIN, FMAX = 0.0, SR // 2 - 1000  # AugmentMelSTFT's eval-mode defaults
-WEIGHTS = "mn10_as_mAP_471.pt"
-WEIGHTS_URL = f"https://github.com/fschmid56/EfficientAT/releases/download/v0.0.1/{WEIGHTS}"
 
 
 def _mel(f: np.ndarray) -> np.ndarray:

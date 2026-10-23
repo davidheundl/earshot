@@ -18,9 +18,8 @@ import math
 import numpy as np
 import pyroomacoustics as pra
 
-from earshot.messages import TargetClass
+from earshot.sensors.acoustics import SPEED_OF_SOUND
 
-SPEED_OF_SOUND = 343.0
 BAND = (500.0, 4000.0)  # Hz; below 500 Hz a 6.5 cm array cannot resolve direction
 NFFT = 512
 
@@ -78,6 +77,3 @@ def coarse_class_probs(block: np.ndarray, fs: int) -> tuple[float, float, float,
         p = np.array([0.7, 0.1, 0.05, 0.15])
     return tuple(float(x) for x in p)  # type: ignore[return-value]
 
-
-def class_name(probs) -> str:
-    return TargetClass(int(np.argmax(probs))).name

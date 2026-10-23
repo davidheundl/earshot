@@ -70,11 +70,11 @@ def test_the_shot_is_fired_standing_at_the_kill(world):
 
 
 def test_the_land_use_raster_speaks_the_builders_classes(world):
-    _, city = world
+    sc, _ = world
     sys.path.insert(0, str(ROOT / "tools"))
     from build_webots_world import LANDUSE
 
-    raw = city.to_json()
+    raw = json.loads((ROOT / sc.city).read_text())
     assert raw["landuse"]["classes"] == LANDUSE and raw["biome"] == "savanna"
     assert len(raw["road_surfaces"]) == len(raw["roads"])
 

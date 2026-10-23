@@ -60,8 +60,6 @@ class PerchSite:
 
 class City:
     def __init__(self, data: dict):
-        self.name: str = data.get("name", "unnamed")
-        self.origin: dict = data.get("origin", {})
         self.bounds: tuple[float, float, float, float] = tuple(data["bounds"])
         self.buildings = [
             Building(b["id"], Polygon(b["footprint"]), float(b["height"]),
@@ -78,7 +76,6 @@ class City:
         self.rails = [LineString(r) for r in data.get("rails", [])]
         self.roads = [LineString(r) for r in data.get("roads", [])]
         self._tree = STRtree([b.footprint for b in self.buildings])
-        self._raw = data
 
     def ground(self, x, y):
         """Terrain height at (x, y), bilinear; 0 on a flat map. Works on arrays too."""
@@ -125,23 +122,6 @@ class City:
     @classmethod
     def load(cls, path: str | Path) -> City:
         return cls(json.loads(Path(path).read_text()))
-
-    def to_json(self) -> dict:
-        return self._raw
-
-    def buildings_between(self, a: tuple[float, float], b: tuple[float, float]) -> int:
-        """How many building footprints the straight segment a->b crosses (2D).
-
-        Endpoints sitting on a roof do not count that building as blocking.
-        """
-        seg = LineString([a, b])
-        n = 0
-        for i in self._tree.query(seg, predicate="intersects"):
-            fp = self.buildings[i].footprint
-            if fp.covers(Point(a)) or fp.covers(Point(b)):
-                continue
-            n += 1
-        return n
 
     def distance_to_rail(self, x: float, y: float) -> float:
         p = Point(x, y)
