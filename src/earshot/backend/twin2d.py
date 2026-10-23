@@ -15,10 +15,13 @@ from earshot.messages import Mode
 from earshot.state import Command, DroneSpec, DroneState
 
 
+CRUISE = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}  # m/s
+
+
 @dataclass(frozen=True)
 class Kinematics:
     cruise_alt: float = 40.0  # m above ground
-    speed: dict | None = None  # m/s per Mode
+    speed: dict | None = None  # m/s per Mode, over CRUISE
     climb_rate: float = 4.0  # m/s
     arrive_radius: float = 2.0  # m
     hover_rpm: float = 6000.0  # hovering is near the most power-hungry state (section 4)
@@ -33,14 +36,20 @@ class Kinematics:
         Mode's cruise speed."""
         if asked is not None:
             return min(max(asked, 0.0), self.max_speed)
-        default = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}
-        return (self.speed or default)[mode]
+        return min((self.speed or {}).get(mode, CRUISE[mode]), self.max_speed)
 
     @classmethod
     def for_scenario(cls, scenario) -> Kinematics:
         """A Scenario's `camera: {standoff: m}` brings the Verifier closer: a real detector
-        sees a drone at 30-60 m, not at the stand-in's 100 m."""
-        return cls(standoff=float(scenario.camera.get("standoff", cls.standoff)))
+        sees a drone at 30-60 m, not at the stand-in's 100 m. Its `kinematics:` block
+        (`speed: {verify: m/s, ...}`, `climb_rate`, `max_speed`) flies a demo faster; what it
+        leaves out keeps the defaults."""
+        k = getattr(scenario, "kinematics", None) or {}
+        speed = {Mode[m.upper()]: float(v) for m, v in (k.get("speed") or {}).items()}
+        return cls(standoff=float(scenario.camera.get("standoff", cls.standoff)),
+                   speed=speed or None,
+                   climb_rate=float(k.get("climb_rate", cls.climb_rate)),
+                   max_speed=float(k.get("max_speed", cls.max_speed)))
 
 
 class _Body:

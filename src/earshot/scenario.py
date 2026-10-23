@@ -233,6 +233,7 @@ class Scenario:
     params: dict = field(default_factory=dict)  # state.PolicyParams overrides
     audio: dict = field(default_factory=dict)  # {classifier: "mod:attr", sounds: dir}
     camera: dict = field(default_factory=dict)  # {detector: yolo, ...}: sensors/camera.py
+    kinematics: dict = field(default_factory=dict)  # {speed: {verify: m/s}, climb_rate}: twin2d
     threat: TargetClass = TargetClass.DRONE  # the Threat Class the swarm hunts
     confusion: dict = field(default_factory=dict)  # sound stand-in rows: sensors.CONFUSION
     environment: Environment = field(default_factory=Environment)
@@ -280,6 +281,7 @@ class Scenario:
             params=dict(d.get("params") or {}),
             audio=dict(d.get("audio") or {}),
             camera=dict(d.get("camera") or {}),
+            kinematics=dict(d.get("kinematics") or {}),
             threat=threat,
             confusion=_confusion(d.get("confusion")),
             sources=[

@@ -4,6 +4,7 @@ them, and a stand-in (never a crash) when a model cannot load."""
 from pathlib import Path
 
 from earshot.backend.twin2d import Kinematics
+from earshot.messages import Mode
 from earshot.scenario import Scenario
 from earshot.sensors import build_perception
 
@@ -27,6 +28,16 @@ def test_muc_full_asks_for_both_models():
     assert sc.camera["detector"] == "yolo"
     assert Kinematics.for_scenario(sc).standoff == 25.0
     assert Kinematics.for_scenario(load("muc.yaml")).standoff == Kinematics.standoff
+
+
+def test_a_kinematics_block_flies_faster_and_keeps_what_it_leaves_out():
+    assert Kinematics.for_scenario(load("muc.yaml")) == Kinematics()
+    kin = Kinematics.for_scenario(load("demo.yaml", kinematics={
+        "speed": {"verify": 22, "listen": 15}, "climb_rate": 8}))
+    assert kin.v(Mode.VERIFY) == 22.0 and kin.v(Mode.LISTEN) == 15.0
+    assert kin.v(Mode.PATROL) == Kinematics().v(Mode.PATROL)
+    assert kin.climb_rate == 8.0 and kin.max_speed == Kinematics.max_speed
+    assert Kinematics(speed={Mode.VERIFY: 40.0}).v(Mode.VERIFY) == Kinematics.max_speed
 
 
 def test_a_classifier_that_cannot_load_falls_back_with_a_message():
