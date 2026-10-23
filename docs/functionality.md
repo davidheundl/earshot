@@ -132,7 +132,7 @@ One per drone, a grid of `map_cell` metres (20 m default, 25 m in Munich) over t
 
 **Modes.** Listen (perched on the Perch Site nearest its home, motors off), Patrol (circle in its Sector), Fill Gap (Patrol in a Sector that grew), Verify (fly to a Suspicion, camera on within 150 m). Fixed (array) drones always Listen (`policy.py:91-95, 121-123`).
 
-**Tasks** (`_tasks`, `policy.py:140-165`). Drop Confirmed Tracks and every Track within `confirmed_shadow` of a confirmed one; keep drone Suspicions, strongest first, the top `top_suspicions`; a Suspicion with confidence ≥ `verify_min_confidence` and strength ≥ `verify_min_strength` becomes a Verify task with id `kind × 4096 + cell` (`policy.py:54-62`).
+**Tasks** (`_tasks`, `policy.py:140-165`). Drop Confirmed Tracks and every Track within `confirmed_shadow` of a confirmed one; keep drone Suspicions, strongest first, the top `top_suspicions`; a Suspicion with confidence ≥ `verify_min_confidence` and strength ≥ `verify_min_strength` becomes a Verify task with id `kind × TASK_STRIDE (16384) + cell` (`policy.py:54-62`).
 
 **Auction** (`policy.py:167-208`). Bid = 655 - metres / 10, rounded as the Claim carries it: the nearest drone bids highest, ties to the lower id. Rivals are other drones' active Claims of the same kind within `same_task_radius` + 100 m: the auction is by place, not task id. A free drone claims its best task that no rival holds with a higher bid.
 

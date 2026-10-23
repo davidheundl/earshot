@@ -9,8 +9,8 @@ Concept section 7, as reworked on 2026-10-11:
   their roof, patrollers in their Sector) to catch further dangers. A Suspicion (a Track of
   the Threat Class, SwarmConfig.threat, that is not Explained or Confirmed; overlapping ones
   are already merged, see belief.merge_overlapping) becomes a VERIFY task once it is likely
-  and strong. Task ids are kind * 16384 + the Suspicion's 100 m cell, so every bidder can
-  decode where a task is.
+  and strong. Task ids are kind * TASK_STRIDE + the Suspicion's 100 m cell (decode_task); a
+  Claim carries its target point, and the auction compares those places, not ids (_rival).
 - Allocation without a central node: each free drone bids on its nearest task and broadcasts a
   Claim (task, bid, lease, target point). Bid = NEAREST_BID - metres / 10, so the highest bid
   is the nearest drone (ties to the lower id); it follows the Verifier's distance as it flies.
@@ -101,7 +101,6 @@ class _Task:
 class Policy:
     def __init__(self, me: int, city: City, swarm: SwarmConfig):
         self.me = me
-        self.city = city
         self.swarm = swarm
         self.p = swarm.params
         self.home = swarm.homes[me]
@@ -146,8 +145,8 @@ class Policy:
         self._sightings = list(sightings)
         self._guide = guide
         active = {k: c for k, c in claims.items() if c.lease > 0 and t < c.t + c.lease}
-        tasks = self._tasks(tracks, belief, active, s)
-        d = Decision(command=self._default_command(t, s, active))
+        tasks = self._tasks(tracks, s)
+        d = Decision(command=self._default_command(t, active))
         if self.fixed:
             return d  # a microphone array on a roof: it listens, it never flies
 
@@ -168,25 +167,21 @@ class Policy:
 
     # -- tasks ----------------------------------------------------------------------------
 
-    def _tasks(self, tracks, belief, active, s) -> dict[int, _Task]:
+    def _tasks(self, tracks, s) -> dict[int, _Task]:
         out: dict[int, _Task] = {}
         confirmed = [tr for tr in tracks if tr.status == TrackStatus.CONFIRMED]
         tracks = sorted((tr for tr in tracks if tr.status != TrackStatus.CONFIRMED and not any(
             math.hypot(c.x - tr.x, c.y - tr.y) <= self.p.confirmed_shadow for c in confirmed)),
             key=lambda tr: -tr.strength)
-        if self.swarm.policy != "nearest":
+        if self.swarm.policy != "nearest":  # Explained: not every alarm deserves a drone
             tracks = [tr for tr in tracks if tr.cls == self.swarm.threat
                       and tr.status == TrackStatus.SUSPECTED][:self.p.top_suspicions]
         for tr in tracks:
-            if tr.status == TrackStatus.CONFIRMED:
-                continue
             if self.swarm.policy == "nearest":
                 if tr.confidence >= self.p.verify_min_confidence:
                     tid = task_id(VERIFY, tr.track_id)
                     out[tid] = _Task(tid, VERIFY, tr.x, tr.y, tr, (tr.x, tr.y))
                 continue
-            if tr.cls != self.swarm.threat or tr.status != TrackStatus.SUSPECTED:
-                continue  # Explained: not every alarm deserves a drone
             if math.hypot(tr.x - s.x, tr.y - s.y) > self.p.max_verify_distance:
                 continue  # a nearer drone is there, though its Claim may not reach me
             # one Verifier per Suspicion and nobody else moves: the other drones hold their
@@ -424,12 +419,12 @@ class Policy:
                            speed=self.p.follow_max_speed)
         return Command(Mode.VERIFY, goal=target, camera_on=near, look_at=target)
 
-    def _default_command(self, t, s: DroneState, active) -> Command:
+    def _default_command(self, t, active) -> Command:
+        if self.default == Mode.LISTEN and self._home_site is not None:
+            return Command(Mode.LISTEN, perch_site=self._home_site.id)
         busy = {o for (o, _tid) in active}  # drones holding a Claim have left their Sector
         available = [i for i in self.swarm.homes if i == self.me or i not in busy]
         cx, cy, radius, grew = self._sector(available)
-        if self.default == Mode.LISTEN and self._home_site is not None:
-            return Command(Mode.LISTEN, perch_site=self._home_site.id)
         a = t / 25.0 + self.me
         goal = (cx + radius * math.cos(a), cy + radius * math.sin(a))
         return Command(Mode.FILL_GAP if grew else Mode.PATROL, goal=goal)
