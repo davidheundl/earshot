@@ -147,7 +147,7 @@ class GazeboBackend:
                 and time.monotonic() - self._views_asked < VIEW_KEEPALIVE_S)
 
     def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
-        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, pitch, jpeg}}."""
+        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, yaw, pitch, jpeg}}."""
         if not self._views_on():
             return {}
         rep = self.link.call({"op": "frames", "which": list(which), "quality": quality})
@@ -155,8 +155,8 @@ class GazeboBackend:
         for k, f in rep.get("frames", {}).items():
             k = int(k)
             out[k] = {"drone": self.views[k][0], "mode": self.views[k][1], "w": f["w"],
-                      "h": f["h"], "fov": VIEW_FOV, "pitch": self._view_pitch.get(k, 0.0),
-                      "jpeg": f["jpeg"]}
+                      "h": f["h"], "fov": VIEW_FOV, "yaw": self._view_yaw.get(k),
+                      "pitch": self._view_pitch.get(k, 0.0), "jpeg": f["jpeg"]}
         return out
 
     def _view_poses(self, states: dict[int, DroneState], out: dict) -> None:

@@ -15,6 +15,11 @@ The look (ADR 0005 superseded: the venue has WLAN, Webots fetches PROTO assets o
 Assets go to <world>_assets/ next to the world; a hash skips rebuilding when nothing changed.
 A City without terrain (the flat test city) gets the same look on flat ground.
 
+A City with runways (Munich Airport, tools/make_muc.py) builds its trees, cars, fences, masts
+and power lines in 3D only on the airfield (`airfield`: the runways' hull and AIRFIELD_M
+around it), and none of the villages around it: the aerial photo shows them flat, and the
+world loads and renders a fraction of the triangles.
+
 A City with `biome: savanna` (tools/make_savanna.py) is drawn as bushveld instead: golden
 grass and thornveld, flat-crowned acacias, shrubs and riverine trees, boulders on the kopjes,
 red dirt tracks as draped strips (`road_surfaces`), steel lookout towers, a clear sky. Its
@@ -63,11 +68,32 @@ LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "indus
 #           (tools/make_savanna.py); a City's raster ids index this list
 TEXTURE_PX = 2048
 TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
+AIRFIELD_M = 500.0  # m around the runways' hull an airport builds in 3D (all drone homes, the intruder's loop)
+CAR_PARK_FULL = 0.25  # share of car-park bays with a car (0.72 looks real, but is ~9000 cars at the airport)
 INTRUDER_RGB = (1.0, 0.15, 0.15)
 rng = np.random.default_rng(5)
 
 
 # -- helpers ----------------------------------------------------------------------------------
+
+
+def airfield(raw: dict) -> Polygon | None:
+    """An airport City's airfield: the convex hull of its runways grown by AIRFIELD_M. None
+    for a City without runways, where everything is built."""
+    pts = [p for rw in raw.get("runways", []) for p in rw["line"]]
+    if len(pts) < 3:
+        return None
+    area = shapely.MultiPoint(pts).convex_hull.buffer(AIRFIELD_M)
+    shapely.prepare(area)
+    return area
+
+
+def on(area: Polygon | None, pts) -> np.ndarray:
+    """Which of the (x, y) points lie in `area` (all of them when it is None)."""
+    pts = np.asarray(pts, float).reshape(-1, 2)
+    if area is None:
+        return np.ones(len(pts), bool)
+    return shapely.contains_xy(area, pts[:, 0], pts[:, 1])
 
 def fmt(v, nd=2):
     return " ".join(f"{x:.{nd}f}" for x in v)
@@ -261,10 +287,11 @@ def trunk(x, y, z0, z1, r, k=3):
 
 
 def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False,
-          extra=None, far=None) -> list[tuple[str, str]]:
+          extra=None, far=None, area: Polygon | None = None) -> list[tuple[str, str]]:
     """Forests and scattered trees on the ground, merged by species and shade within each
     TREE_TILE square, so a camera only draws the tiles in its view. Returns (species, file).
-    forest_only: no scattered trees (an aerial photo already shows where they stand)."""
+    forest_only: no scattered trees (an aerial photo already shows where they stand).
+    area: the land-use trees only there (`airfield`)."""
     x0, y0, x1, y1 = city.bounds
     nrow, ncol = lu.shape[:2]
     spacing = 9.5
@@ -279,6 +306,8 @@ def trees(lu: np.ndarray, city: City, assets: Path, forest_only: bool = False,
                     ("industrial", 0.01)):
         keep_p[LANDUSE.index(name)] = p if name == "forest" or not forest_only else 0.0
     keep = rng.random(cls.shape) < keep_p[cls]
+    if area is not None:
+        keep &= on(area, np.column_stack([gx.ravel(), gy.ravel()])).reshape(keep.shape)
     xs, ys = gx[keep], gy[keep]
     if extra is not None and len(extra):  # single trees and tree rows mapped in OSM
         ex = np.asarray(extra, float)
@@ -832,10 +861,12 @@ def osm_trees(raw: dict, city_dir: Path) -> list:
     return pts
 
 
-def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: list[dict]) -> tuple[list, list]:
+def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: list[dict],
+                 area: Polygon | None = None) -> tuple[list, list]:
     """Hedges, walls, fences, light and radio masts, power lines, cars on the surface car
     parks and jet bridges to the parked aircraft. Returns the mesh files and the car-park
-    polygons (the photo under them is cleaned of its flat cars)."""
+    polygons (the photo under them is cleaned of its flat cars). area: only the props there
+    (`airfield`)."""
     ref = raw.get("features")
     feats = json.loads((city_dir / ref).read_text()) if ref else {}
     ms = MeshSet("props", city.bounds[:2])
@@ -845,10 +876,15 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
     reach = 1500.0  # small props further out than this would be sub-pixel: leave them out
 
     def near(line) -> bool:
+        if area is not None:
+            return bool(on(area, [p[:2] for p in line]).any())
         return any(bx0 - reach < x < bx1 + reach and by0 - reach < y < by1 + reach for x, y in line)
 
     for k in ("hedges", "walls", "fences", "parking"):
         feats[k] = [ln for ln in feats.get(k, []) if near(ln)]
+    if area is not None:  # a pylon off the airfield takes its spans with it (tower_set)
+        feats["masts"] = [m for m in feats.get("masts", []) if near([m])]
+        feats["power_towers"] = [p for p in feats.get("power_towers", []) if near([p])]
 
     for line in feats.get("hedges", []):
         for a, b in itertools.pairwise(line):
@@ -943,7 +979,7 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
         for row_v in rows:
             for bay_u in np.arange(bay / 2 + 0.2, lu_ - bay / 2, bay):
                 c = o + u * bay_u + wdt * row_v
-                if prng.random() > 0.72 or not inner.contains(Point(*c)):
+                if prng.random() > CAR_PARK_FULL or not inner.contains(Point(*c)):
                     continue
                 z = float(g(*c))
                 paint = f"car{int(prng.integers(6))}"
@@ -1357,10 +1393,12 @@ def house_texture(out: Path) -> None:
     Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(out)
 
 
-def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[list[str], list, list, tuple]:
+def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str,
+                   area: Polygon | None = None) -> tuple[list[str], list, list, tuple]:
     """The land around the City: its aerial photo as plates, the LoD2 villages (plastered
     walls, tiled or gravel roofs). Returns VRML parts, tree points for the forests there
-    (denser near the City) and the bounds it covers."""
+    (denser near the City) and the bounds it covers. area: villages and forests only
+    there (`airfield`), the photo everywhere."""
     sur = raw.get("surround")
     if not sur:
         return [], [], [], None
@@ -1384,6 +1422,8 @@ def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[l
     for mesh in sur["meshes"]:
         kind, i, j = mesh.rsplit("_", 2)
         tx, ty = rx0 + 1000 * int(i), ry0 + 1000 * int(j)  # its 1 km tile
+        if area is not None and not area.intersects(shapely.box(tx, ty, tx + 1000, ty + 1000)):
+            continue
         gap = max(0.0, cx0 - (tx + 1000), tx - cx1, cy0 - (ty + 1000), ty - cy1)
         v = data[f"{mesh}_v"].astype(float) / 10
         f = data[f"{mesh}_f"]
@@ -1417,7 +1457,7 @@ def surround_parts(raw: dict, city_dir: Path, assets: Path, rel: str) -> tuple[l
             cand = np.column_stack([frng.uniform(bx0, bx1, 3 * n), frng.uniform(by0, by1, 3 * n)])
             inside = shapely.contains_xy(poly, cand[:, 0], cand[:, 1])
             pts = cand[inside][:n]
-            out_city = ~((pts[:, 0] > x0) & (pts[:, 0] < x1) & (pts[:, 1] > y0) & (pts[:, 1] < y1))
+            out_city = ~((pts[:, 0] > x0) & (pts[:, 0] < x1) & (pts[:, 1] > y0) & (pts[:, 1] < y1)) & on(area, pts)
             (trees_ if far < 1500 else far_trees).extend(tuple(p) for p in pts[out_city])
     return parts, trees_, far_trees, tuple(sur["bounds"])
 
@@ -1636,8 +1676,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     biome = raw.get("biome", "temperate")
     lu = landuse(raw, city_file.parent, city)
     photo = raw.get("ground_tiles")  # a real aerial photo instead of the painted land use
+    area = airfield(raw)  # an airport builds trees, cars and villages in 3D only here
     aircraft, stands = stand_aircraft(raw, city, assets)
-    props, lots = street_props(raw, city, city_file.parent, assets, stands)
+    props, lots = street_props(raw, city, city_file.parent, assets, stands, area)
     if photo:  # with the flat aircraft and cars taken out where 3D ones stand
         for t in photo:
             clean_photo(Image.open(city_file.parent / t["image"]), t["bounds"], stands, lots, lu, city.bounds, city.buildings,
@@ -1657,15 +1698,16 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     if meshes:
         facade_texture(assets / "facade.png")
     rel = assets.name
-    ring_parts, ring_trees, far_trees, ring_bounds = surround_parts(raw, city_file.parent, assets, rel)
+    ring_parts, ring_trees, far_trees, ring_bounds = surround_parts(raw, city_file.parent, assets, rel, area)
     osm_near, osm_far = [], []  # mapped trees: full detail near the City, cones further out
-    for x, y in osm_trees(raw, city_file.parent):
+    mapped = osm_trees(raw, city_file.parent)
+    for x, y in itertools.compress(mapped, on(area, mapped)):
         (osm_near if x0 - 1500 < x < x1 + 1500 and y0 - 1500 < y < y1 + 1500 else osm_far).append((x, y))
     if biome == "savanna":
         tree_tiles = savanna_trees(lu, city, assets)
     else:
         tree_tiles = trees(lu, city, assets, forest_only=bool(photo), extra=osm_near + ring_trees,
-                           far=far_trees + osm_far)
+                           far=far_trees + osm_far, area=area)
     tracks = dirt_tracks(city, raw, assets)
     rail_meshes(city, assets)
 
@@ -1800,7 +1842,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     views = " ".join(
         f'DEF CAM_{k} Solid {{ translation 0 0 -100 name "cam{k}" children [ Camera {{ name "view{k}" '
         f'width {854 if k == 0 else 384} height {480 if k == 0 else 216} fieldOfView 1.15 near 0.05 far 9000 '
-        f'antiAliasing TRUE ambientOcclusionRadius {2 if k == 0 else 0} bloomThreshold 6 }} ] }}'
+        f'antiAliasing TRUE ambientOcclusionRadius {2 if k == 0 else 0} bloomThreshold 6 '
+        f'recognition Recognition {{ maxRange {reach:g} }} }} ] }}'  # the HUD's boxes
         for k in range(N_VIEWS))
     parts.append(
         'DEF RIG Robot { translation 0 0 0 name "supervisor" supervisor TRUE controller "<extern>" '
