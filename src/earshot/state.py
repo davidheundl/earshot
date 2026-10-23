@@ -41,7 +41,6 @@ class Sensed:
 
     state: DroneState
     readings: list[SensorReading] = field(default_factory=list)
-    camera_frame: object | None = None  # backend-specific image, only for the Verifier
     guide: tuple[float, float] | None = None  # demo mock (Scenario `guide: true`): where the
     #   intruder a Verifier flies to really is. The one place truth reaches an Agent; off by
     #   default, never in eval

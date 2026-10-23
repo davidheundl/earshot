@@ -100,7 +100,7 @@ class World:
                     "truth": det.truth, "snr": det.snr_db,
                     **({"label": det.label} if det.label else {}),
                 })
-            sensed[did] = Sensed(state=s, readings=[d.reading for d in dets], camera_frame=frame,
+            sensed[did] = Sensed(state=s, readings=[d.reading for d in dets],
                                  guide=self._guide(commands.get(did)))
         if self.sensors.camera is None and getattr(self.backend, "detector_frames", False):
             self.backend.detector_frames = False  # the detector broke: the stand-in's view

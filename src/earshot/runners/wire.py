@@ -37,8 +37,8 @@ def sensed_to_dict(s: Sensed) -> dict:
             for r in s.readings
         ],
         "guide": s.guide,
-        # no camera_frame: the world already turned it into CAMERA readings, and Agents never
-        # read images (a Webots frame would be ~400 KB per tick)
+        # no image: the World turns the Verifier's frame into CAMERA readings and keeps it
+        # (World.camera); Agents never read images (ADR 0001; a Webots frame is 0.4-3.9 MB)
     }
 
 
@@ -51,7 +51,6 @@ def sensed_from_dict(d: dict) -> Sensed:
             SensorReading(Sensor(s), b, bs, tuple(cp), lvl, rng)
             for s, b, bs, cp, lvl, rng in d["readings"]
         ],
-        camera_frame=d.get("camera_frame"),
         guide=tuple(d["guide"]) if d.get("guide") else None,
     )
 

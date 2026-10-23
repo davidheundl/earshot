@@ -36,7 +36,7 @@ The live world outlives its script: after the Scenario's `duration` the scripted
 
 ### Perception: where the models run
 
-Trained models run in the world process only. Agents get `SensorReading`s, never audio or images: `wire.sensed_to_dict` drops the camera frame (`wire.py:39-40`), and in fast mode the Agent ignores it (ADR 0001).
+Trained models run in the world process only. Agents get `SensorReading`s, never audio or images: `Sensed` has no image field; the World turns the Verifier's frame into CAMERA readings and keeps the frame itself (`World.camera`, for the detector and the preview) (ADR 0001).
 
 - `sensors.build_perception(scenario, classifier=, sounds=, audio=, camera=, renders=)` (`sensors/__init__.py:249`) returns `(Audio | None, YoloDetector | None)` from the Scenario's `audio:` and `camera:` keys, overridden by the command line (`--classifier none` and `--camera truth` turn them off). A model that cannot load (no torch or ultralytics, missing weights) is reported and replaced by its stand-in; it never stops a run.
 - Sound: `audio: {classifier: "mod:attr", sounds: dir}`. With a classifier, every sound window is rendered as audio and each detected Source's beam is classified (`earshot.audio.classifier:efficientat`); without one, the `CONFUSION` table stands in.
