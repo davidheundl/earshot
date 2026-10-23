@@ -3,10 +3,10 @@
 # the bush at night, and hunt vehicles instead of drones (threat: vehicle): an engine off the
 # tracks is a Suspicion, one on a track is a ranger or a game drive (Explained by the City).
 #
-# - poacher1 cuts the south fence at 60 s and drives cross-country to the white rhino in the
+# - poacher1 cuts the south fence at 15 s and drives cross-country to the white rhino in the
 #   thicket south-west of the centre, circles it and leaves through the fence; its crew talks
 #   on a UHF handheld (RF, push-to-talk);
-# - poacher2 comes through the east fence at 280 s for the elephant herd by the river, no radio;
+# - poacher2 comes through the east fence at 150 s for the elephant herd by the river, no radio;
 #   it stops 150 m from the herd, shoots (a Shot every tower within a few km hears) and stays
 #   five minutes at the kill;
 # - a ranger patrol drives the gravel spine (radio silence at night: a scanner would hear it
@@ -45,10 +45,10 @@ environment:
 
 sources:           # path: list of points, or {road: i}; kind: what it is (camera label, 3D model)
   # a 4x4 cross-country in low gear: 105 dB(A), as a truck (sensors/acoustics.py SOUND_POWER)
-  - {id: poacher1, cls: vehicle, kind: poacher pickup, start: 60, end: 860, level_db: 105, rf: [uhf],
+  - {id: poacher1, cls: vehicle, kind: poacher pickup, start: 15, end: 815, level_db: 105, rf: [uhf],
      path: [[-1700, -4990], [-1850, -4200], [-2100, -3400], [-1950, -2600], [-1900, -2380], [-1720, -2260], [-1980, -2140], [-2080, -2380], [-1650, -2850], [-1250, -3500], [-950, -4990]]}
   # [x, y, s]: stops there s seconds (the kill); `end` beyond the run keeps its driving speed
-  - {id: poacher2, cls: vehicle, kind: poacher bakkie, start: 280, end: 1200, level_db: 105,
+  - {id: poacher2, cls: vehicle, kind: poacher bakkie, start: 150, end: 1070, level_db: 105,
      path: [[4995, 2700], [4200, 2450], [3400, 2050], [2900, 1700], [2620, 1560, 300], [2450, 1880], [3000, 2300], [4000, 2850], [4995, 3050]]}
   - {id: ranger1, cls: vehicle, kind: ranger Land Cruiser, intruder: false, start: 20, end: 880, level_db: 102, path: {road: 1}}
   - {id: safari1, cls: vehicle, kind: safari game drive, intruder: false, start: 150, end: 700, level_db: 100, path: {road: 5}}
@@ -64,7 +64,7 @@ sources:           # path: list of points, or {road: i}; kind: what it is (camer
 # poacher2 fires at the elephants from its stop, 160 m off: a Shot every tower within a few km
 # hears, with a sharp bearing (sensors/acoustics.py SHOT)
 events:
-  - {t: 570, op: shot, source: poacher2}
+  - {t: 440, op: shot, source: poacher2}
 
 # the stand-in sound classifier (no trained head for African wildlife): animal calls are
 # heard as an engine 45 % of the time
@@ -109,3 +109,9 @@ camera:                   # the stand-in in every backend: it names the Source's
   # standoff: 120         # with YOLO: the camera then aims at the ground 120 m off (18 deg
   #                         down), where it sees a car; at 30 m it looks 53 deg down and a car is
   #                         a phone or an airplane. For the stand-in 120 m lost seed 1000 of 4
+
+# the demo flies livelier than the code defaults (backend/twin2d.py CRUISE; eval baselines keep
+# those): Verifier 22 m/s instead of 15, take-off in 5 s instead of 10
+kinematics:
+  speed: {verify: 22, listen: 15, fill_gap: 15}
+  climb_rate: 8

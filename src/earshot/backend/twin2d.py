@@ -14,7 +14,6 @@ from earshot.city import City
 from earshot.messages import Mode
 from earshot.state import Command, DroneSpec, DroneState
 
-
 CRUISE = {Mode.PATROL: 8.0, Mode.LISTEN: 10.0, Mode.VERIFY: 15.0, Mode.FILL_GAP: 10.0}  # m/s
 
 
