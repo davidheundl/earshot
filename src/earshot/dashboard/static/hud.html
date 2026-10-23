@@ -254,6 +254,7 @@
     <tr><td><kbd>x</kbd></td><td>Live view or evidence</td></tr>
     <tr><td><kbd>h</kbd></td><td>Probability map on the scope</td></tr>
     <tr><td><kbd>g</kbd></td><td>Ground truth on the scope</td></tr>
+    <tr><td><kbd>z</kbd></td><td>Scope: follow the action or show the whole map</td></tr>
     <tr><td><kbd>l</kbd></td><td>Listen to the selected drone's microphone (needs <code>--audio</code>)</td></tr>
     <tr><td colspan="2" class="muted" style="padding-top:6px">With the mouse over the map:</td></tr>
     <tr><td><kbd>d</kbd> <kbd>v</kbd> <kbd>t</kbd> <kbd>n</kbd></td><td>Add a drone, truck, train, fan</td></tr>
@@ -293,9 +294,10 @@ let wsOpen = false, pumpUp = true, lastData = 0, lastT = -Infinity;
 const CAM_STALE_MS = 3000;  // no camera frame this long: drop the last one, the map takes the main view
 let lastCam = performance.now(), camStale = false;  // counted from page load, so a twin run flips once
 
-/* ---------- motion: drones glide between states ---------- */
-// States arrive at 10 Hz (slower when the sim lags). Each one starts a glide from where a drone
-// is drawn now to where the state puts it, lasting the measured time between states.
+/* ---------- motion: drones, ground truth and Tracks glide between states ---------- */
+// States arrive at 10 Hz (slower when the sim lags). Each one starts a glide from where a thing
+// is drawn now to where the state puts it, lasting the measured time between states. Keys: a
+// drone's id, "s:<Source id>" for ground truth, "t:<drone>:<Track id>" for a drone's Tracks.
 const glide = { from: {}, to: {}, at: 0, period: 100 };
 function poseAt(id, now) {
   const a = glide.from[id], b = glide.to[id]; if (!b) return null;
@@ -304,16 +306,22 @@ function poseAt(id, now) {
   const dh = ((b.heading - a.heading + 540) % 360) - 180;  // the short way round
   return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, heading: (a.heading + dh * k + 360) % 360 };
 }
-function startGlide(ds) {
+function startGlide(st) {
   const now = performance.now(), from = {}, to = {};
   if (glide.at) glide.period = Math.min(600, Math.max(40, 0.8 * glide.period + 0.2 * (now - glide.at)));
-  for (const d of ds) {
-    to[d.id] = { x: d.x, y: d.y, heading: d.heading, perched: !!d.perched_on };
-    const p = poseAt(d.id, now);
-    from[d.id] = p && Math.hypot(p.x - d.x, p.y - d.y) < 300 ? p : to[d.id];  // jumps (a new run) snap
+  const add = (key, x, y, heading = 0, perched = false) => {
+    to[key] = { x, y, heading, perched };
+    const p = poseAt(key, now);
+    from[key] = p && Math.hypot(p.x - x, p.y - y) < 300 ? p : to[key];  // jumps (a new run, a new peak) snap
+  };
+  for (const d of st.drones) {
+    add(d.id, d.x, d.y, d.heading, !!d.perched_on);
+    for (const tr of d.telemetry?.tracks || []) add(`t:${d.id}:${tr.id}`, tr.x, tr.y);
   }
+  for (const tr of st.truth || []) add(`s:${tr.id}`, tr.x, tr.y);
   Object.assign(glide, { from, to, at: now });
 }
+const glided = (key, o, now) => { const p = poseAt(key, now); return p ? { ...o, x: p.x, y: p.y } : o; };
 // ground speed, vertical speed and track over ground, from consecutive states (smoothed)
 const kin = {};
 function trackKinematics(st) {
@@ -342,7 +350,7 @@ function newRun() {
   // the run restarted with the tab open: forget everything of the old run
   for (const k of [hist, spectro, spectroKey, heat]) for (const d in k) delete k[d];
   stream.length = 0; seen.clear(); $("stream").textContent = ""; heatSrc = null;
-  lastConfirmed = 0; views = null; Object.assign(glide, { from: {}, to: {}, at: 0, period: 100 });
+  lastConfirmed = 0; views = null; scope = null; Object.assign(glide, { from: {}, to: {}, at: 0, period: 100 });
   loadStatic(true);
 }
 function connect() {
@@ -355,7 +363,7 @@ function connect() {
     const t = msg.state.t;
     if (t < lastT - 1) newRun();
     lastT = t; lastData = Date.now(); pumpUp = true; linkStatus();
-    startGlide(msg.state.drones);
+    startGlide(msg.state);
     trackKinematics(msg.state);
     for (const d of msg.state.drones) {
       const tm = d.telemetry ||= {};
@@ -495,16 +503,58 @@ function fitCanvas(c) {
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [r.width, r.height, ctx];
 }
+// The scope shows the whole City, or with `z` follows the action: it eases toward a box around
+// the Verifier and its task (else a confirmed threat, the strongest Suspicion, the selected drone).
+const ZOOM_SPAN = 1200, ZOOM_PAD = 250, ZOOM_TAU = 600;  // m shown at least, m margin, ms to ease
+let zoomed = false, scope = null;  // scope: {cx, cy, s} as drawn now
+function fitView(w, h) {
+  const [x0, y0, x1, y1] = city.bounds;
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, s: Math.min(w / (x1 - x0), h / (y1 - y0)) };
+}
+function zoomTarget(w, h) {
+  const fit = fitView(w, h); if (!zoomed) return fit;
+  const st = last.state, ds = shownDrones(performance.now()), pts = [];
+  const v = ds.filter(d => d.mode === "VERIFY").sort((a, b) => (b.id === selected) - (a.id === selected))[0];
+  const live = (st.threats || []).filter(e => e.status === "confirmed" || e.status === "following").pop();
+  const sus = (droneById(selected)?.telemetry?.tracks || []).filter(tr => tr.cls === threatCls() && tr.status !== "EXPLAINED")
+    .sort((a, b) => b.strength - a.strength)[0];
+  if (v) { pts.push([v.x, v.y]); const task = v.telemetry?.task; if (task) pts.push([task.x, task.y]); }
+  else if (live) { pts.push([live.x, live.y]); const d = ds.find(d => d.id === live.drone); if (d) pts.push([d.x, d.y]); }
+  else if (sus) pts.push([sus.x, sus.y]);
+  else { const d = ds.find(d => d.id === selected); if (d) pts.push([d.x, d.y]); }
+  if (!pts.length) return fit;
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const [ax, bx, ay, by] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const s = Math.min(w / Math.max(ZOOM_SPAN, bx - ax + 2 * ZOOM_PAD), h / Math.max(ZOOM_SPAN, by - ay + 2 * ZOOM_PAD));
+  return { cx: (ax + bx) / 2, cy: (ay + by) / 2, s: Math.max(s, fit.s) };  // never further out than the whole City
+}
+function stepScope(w, h, now) {
+  const t = zoomTarget(w, h), k = scope?.at ? 1 - Math.exp(-(now - scope.at) / ZOOM_TAU) : 1;
+  const s = scope ? Math.exp(Math.log(scope.s) + (Math.log(t.s) - Math.log(scope.s)) * k) : t.s;
+  scope = scope ? { cx: scope.cx + (t.cx - scope.cx) * k, cy: scope.cy + (t.cy - scope.cy) * k, s, at: now } : { ...t, at: now };
+}
 function mapView(w, h) {
-  const [x0, y0, x1, y1] = city.bounds, s = Math.min(w / (x1 - x0), h / (y1 - y0));
-  const ox = (w - s * (x1 - x0)) / 2, oy = (h - s * (y1 - y0)) / 2;
-  return { s, P: (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s], inv: (px, py) => [x0 + (px - ox) / s, y1 - (py - oy) / s] };
+  const { cx, cy, s } = scope || fitView(w, h);
+  return { s, P: (x, y) => [w / 2 + (x - cx) * s, h / 2 - (y - cy) * s], inv: (px, py) => [cx + (px - w / 2) / s, cy - (py - h / 2) / s] };
 }
 const heatCanvas = document.createElement("canvas");
-let mapStatic = null;  // basemap and buildings, drawn again only when the size or city changes
-function mapBase(w, h, P) {
-  const dpr = devicePixelRatio || 1, key = `${w}x${h}@${dpr}`;
-  if (mapStatic && mapStatic.key === key && mapStatic.city === city && mapStatic.base === base) return mapStatic.canvas;
+let mapStatic = null;  // basemap and buildings over a box around the view; drawn again only when
+//                       the view leaves that box, zooms well past its scale, or the size or city changes
+function drawMapBase(ctx, w, h, view) {
+  const dpr = devicePixelRatio || 1, key = `${w}x${h}@${dpr}`, [cx, cy] = view.inv(w / 2, h / 2), s = view.s;
+  const [vx0, vy1] = view.inv(0, 0), [vx1, vy0] = view.inv(w, h), m = mapStatic, e = 1 / s;  // a pixel of slack
+  const fresh = m && m.key === key && m.city === city && m.base === base && s / m.s > 0.8 && s / m.s < 1.25
+    && vx0 >= m.box[0] - e && vy0 >= m.box[1] - e && vx1 <= m.box[2] + e && vy1 <= m.box[3] + e;
+  if (!fresh) {
+    const f = zoomed || scope?.s > fitView(w, h).s * 1.01 ? 2 : 1;  // zoomed: room to pan before the next redraw
+    const cw = w * f, ch = h * f, box = [cx - cw / 2 / s, cy - ch / 2 / s, cx + cw / 2 / s, cy + ch / 2 / s];
+    mapStatic = { key, city, base, s, box, canvas: mapBaseCanvas(cw, ch, (x, y) => [(x - box[0]) * s, (box[3] - y) * s]) };
+  }
+  const [ax, ay] = view.P(mapStatic.box[0], mapStatic.box[3]), [bx, by] = view.P(mapStatic.box[2], mapStatic.box[1]);
+  ctx.drawImage(mapStatic.canvas, ax, ay, bx - ax, by - ay);
+}
+function mapBaseCanvas(w, h, P) {
+  const dpr = devicePixelRatio || 1;
   const c = document.createElement("canvas"); c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr);
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, w, h);
@@ -513,12 +563,14 @@ function mapBase(w, h, P) {
   else { ctx.fillStyle = css("--panel"); ctx.fillRect(ax, ay, bx - ax, by - ay); }
   ctx.fillStyle = "rgba(232,238,244,.18)";
   for (const b of city.buildings) { line(ctx, P, b.footprint); ctx.fill(); }
-  mapStatic = { key, city, base, canvas: c };
   return c;
 }
 function drawMap(now) {
-  const [w, h, ctx] = fitCanvas(map), { s, P } = mapView(w, h), st = last.state, ds = shownDrones(now);
-  ctx.drawImage(mapBase(w, h, P), 0, 0, w, h);
+  const [w, h, ctx] = fitCanvas(map);
+  stepScope(w, h, now);
+  const view = mapView(w, h), { s, P } = view, st = last.state, ds = shownDrones(now);
+  ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, w, h);
+  drawMapBase(ctx, w, h, view);
   const me = droneById(selected);
   if (showHeat && me?.telemetry?.heatmap) drawHeat(ctx, P, me.telemetry.heatmap);
   for (const j of st.jamming || []) { if (!(j.r > 0)) continue; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,90,82,.14)"; ctx.fill(); ctx.strokeStyle = "rgba(255,90,82,.6)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
@@ -534,13 +586,13 @@ function drawMap(now) {
     ctx.strokeStyle = r.drone === selected ? "rgba(245,181,59,.85)" : "rgba(245,181,59,.35)";
     ctx.lineWidth = r.drone === selected ? 1.5 : 1; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
   }
-  each(me?.telemetry?.tracks, tr => drawTrack(ctx, P, s, tr));
+  each(me?.telemetry?.tracks, tr => drawTrack(ctx, P, s, glided(`t:${me.id}:${tr.id}`, tr, now)));
   // tasks: commanded lines in magenta
   for (const d of ds) { const task = d.telemetry?.task; if (!task) continue;
     const [a, b] = P(d.x, d.y), [c, e] = P(task.x, task.y);
     ctx.strokeStyle = css("--task"); ctx.lineWidth = 1.5; ctx.setLineDash(task.settled ? [] : [3, 3]);
     ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); }
-  if (showTruth) for (const tr of st.truth) { const [a, b] = P(tr.x, tr.y); ctx.strokeStyle = css(CLS_COL[tr.cls]); ctx.lineWidth = 2;
+  if (showTruth) for (const tr of (st.truth || []).map(tr => glided(`s:${tr.id}`, tr, now))) { const [a, b] = P(tr.x, tr.y); ctx.strokeStyle = css(CLS_COL[tr.cls]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke();
     if (tr.kind) { ctx.fillStyle = css(CLS_COL[tr.cls]); ctx.font = "10px B612, sans-serif"; ctx.fillText(tr.kind, a + 7, b + 3); } }
   drawThreatLog(ctx, P);
@@ -1060,6 +1112,7 @@ addEventListener("keydown", e => {
   if (e.key === "x") { setEvidence(!evidence); return; }
   if (e.key === "h") { showHeat = !showHeat; schedule(); return; }
   if (e.key === "g") { showTruth = !showTruth; schedule(); return; }
+  if (e.key === "z") { zoomed = !zoomed; toast(zoomed ? "scope follows the action" : "scope shows the whole map"); schedule(); return; }
   if (e.key === "l") { setListen(!listen); return; }
   if (e.key === "?") { $("help").classList.toggle("show"); return; }
   const env = last?.state.environment || {};
