@@ -88,17 +88,24 @@ radio:
 
 camera:                   # the stand-in in every backend: it names the Source's kind
   range: 300              # m the stand-in sees a vehicle at night: a thermal camera sees the
-  #                         engine's heat far beyond the 100 m a quadcopter takes
-  detector: truth         # COCO YOLO is wired (below) but sees the primitive pickups as
-  #                         "bird", not "car": with it the Verifier dismisses the poacher
-  # detector: yolo        # to try it in Webots (`uv sync --group cv`):
-  # weights: yolo11n.pt
+  #                         engine's heat far beyond the 100 m a quadcopter takes; it geolocates
+  #                         a vehicle from the drone's height and the depression angle
+  detector: truth         # COCO YOLO (below) in a live Webots run on 2026-10-21: four checks
+  #                         near poacher1, all "nothing"; it sees a car only 50-160 m ahead in a
+  #                         57 deg wedge, the Suspicion of a vehicle at 8 m/s lags 200-500 m
+  #                         (docs/savanna.md, data/cv/savanna-vehicles-20261021/)
+  # detector: yolo        # to try it in Webots (`uv sync --group cv`), with standoff 120 below
+  # weights: yolo11n.pt   # and params.arrive: 150 (above the standoff)
   # classes: {car: vehicle, truck: vehicle, bus: vehicle, motorcycle: vehicle,
   #           elephant: nothing, zebra: nothing, giraffe: nothing, cow: nothing, horse: nothing,
   #           sheep: nothing, dog: nothing, cat: nothing, bear: nothing, bird: nothing}
-  # verify_conf: 0.4
+  # conf: 0.15            # yolo11n calls the rendered Range Rover "car" mostly at 0.15-0.5;
+  # verify_conf: 0.3      #   no animal or empty view above 0.22
   # confirm_frames: 3
-  # clear_radius: 60      # m: a car is far bigger than a quadcopter
+  # clear_radius: 150     # m: "nothing" around a Verifier holding still 120 m off the place
   # every: 2
   resolution: [1280, 768]
   standoff: 30
+  # standoff: 120         # with YOLO: the camera then aims at the ground 120 m off (18 deg
+  #                         down), where it sees a car; at 30 m it looks 53 deg down and a car is
+  #                         a phone or an airplane. For the stand-in 120 m lost seed 1000 of 4

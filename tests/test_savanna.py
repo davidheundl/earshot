@@ -87,14 +87,77 @@ def test_a_short_run_goes_through():
     assert r.steps == 80 and r.radio["sent"] > 0 and r.threats == []
 
 
+# scenarios/savanna.yaml keeps the stand-in; its commented COCO block, as measured
+# (data/cv/savanna-vehicles-20261021/REPORT.md)
+COCO = {"detector": "yolo", "weights": "yolo11n.pt", "conf": 0.15, "verify_conf": 0.3,
+        "confirm_frames": 3, "clear_radius": 150, "every": 2,
+        "classes": {"car": "vehicle", "truck": "vehicle", "elephant": "nothing", "bird": "nothing"}}
+
+
 def test_the_reserves_coco_mapping_builds_a_detector(world):
-    # scenarios/savanna.yaml keeps the stand-in; its commented YOLO block must still load
     from earshot.sensors.camera import load_detector
 
     sc, _ = world
     assert load_detector(sc.camera) is None  # detector: truth
-    det = load_detector({**sc.camera, "detector": "yolo", "weights": "yolo11n.pt",
-                         "classes": {"car": "vehicle", "truck": "vehicle", "elephant": "nothing"}})
+    det = load_detector({**sc.camera, **COCO})  # the world's and the kinematics' keys are not its own
+    assert det.verify_conf >= 0.25  # ByteTrack opens a track at 0.25: below, nothing verifies
     assert det.class_of("truck") == TargetClass.VEHICLE
     assert det.class_of("elephant") == TargetClass.NOTHING
     assert det.class_of("quadcopter") == TargetClass.NOTHING  # not in this model's map
+
+
+def test_a_yolo_car_in_the_reserve_is_geolocated(world):
+    # the camera 40 m up, aimed at the ground 120 m ahead, a car box standing on the image centre
+    # three frames running: a vehicle reading 120 m along the bearing, as the stand-in's
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from earshot.messages import Sensor
+    from earshot.sensors import SensorSuite
+    from earshot.sensors.camera import load_detector
+    from earshot.state import DroneState
+
+    class Car:
+        def __init__(self):
+            self.names = {0: "car"}
+
+        def track(self, img, **kw):
+            box = SimpleNamespace(cls=[0], conf=[0.4], id=[1],
+                                  xyxy=[SimpleNamespace(tolist=lambda: [620, 370, 660, 384])])
+            return [SimpleNamespace(boxes=[box], speed={})]
+
+    sc, city = world
+    det = load_detector({**sc.camera, **COCO})
+    det.model, det.device = Car(), "cpu"
+    suite = SensorSuite(city, sc, np.random.default_rng(0), camera=det)
+    frame = {"bgra": bytes(1280 * 768 * 4), "w": 1280, "h": 768, "fov": 1.0, "yaw": 90.0,
+             "pitch": math.atan2(40.0, 120.0), "height": 40.0}
+    cams = []
+    for k in range(12):
+        t = 100.0 + k * 0.1
+        me = DroneState(3, t, 0.0, 0.0, 400.0, 90.0, Mode.VERIFY, None, 1.0, 5700.0, True)
+        cams += [d for d in suite.sense(me, t, frame) if d.reading.sensor == Sensor.CAMERA]
+    assert cams and all(d.label == "car" for d in cams)
+    r = cams[0].reading
+    assert int(np.argmax(r.class_probs)) == TargetClass.VEHICLE
+    assert r.bearing == pytest.approx(90.0, abs=1.0) and r.level == pytest.approx(120.0, rel=0.02)
+
+
+def test_a_detector_camera_aims_at_the_ground_the_stand_in_looks_out(world):
+    # Webots: a trained detector needs the vehicle in its pixels, so the Verifier camera looks
+    # at the ground where it holds its standoff; the stand-in's recogniser sees out to
+    # camera.range with the airport's tilt, which reaches the horizon
+    from types import SimpleNamespace
+
+    from earshot.backend.webots import WebotsBackend
+
+    sc, _ = world
+    b = object.__new__(WebotsBackend)
+    b.scenario, b.detector_frames = sc, False
+    b.twin = SimpleNamespace(kin=Kinematics(standoff=120.0))
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(10.0, 120.0)))
+    b.detector_frames = True
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(39.5, 120.0)))  # 18 deg
+    b.scenario = Scenario.load(ROOT / "scenarios/demo.yaml")  # the airport: a drone 10 m below
+    assert b._verify_pitch() == pytest.approx(math.degrees(math.atan2(10.0, 120.0)))

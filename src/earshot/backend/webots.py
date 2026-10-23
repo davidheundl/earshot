@@ -175,8 +175,7 @@ class WebotsBackend:
         self.camera = self.sup.getDevice("camera")
         self._verifier: int | None = None
         self._verifier_heading = 0.0
-        # the camera looks down at the point it keeps its standoff from: 14 deg at 40 m
-        self._verify_pitch = math.degrees(math.atan2(TARGET_DROP_M, self.twin.kin.standoff))
+        self._rig_at = (0.0, 0.0, 0.0)  # where the Verifier camera is (x, y, z)
         self.detector_frames = False  # set by the World when a trained detector reads images
         ids = [d.id for d in scenario.drones]
         self.views: list[list] = [[ids[k % len(ids)], "chase" if k == 0 else "pilot"]
@@ -325,7 +324,9 @@ class WebotsBackend:
             g["verify"] = {"w": c.getWidth(), "h": c.getHeight(), "fov": c.getFov(),
                            "bgra": self._verify_image(),
                            "objects": self._recognised() if c.hasRecognition() else None,
-                           "yaw": self._verifier_heading}
+                           "yaw": self._verifier_heading,
+                           "pitch": math.radians(self._verify_pitch()),
+                           "height": self._rig_at[2] - float(self.twin.city.ground(*self._rig_at[:2]))}
         if self._views_on:
             g["views"] = {}
             for k, (cam, _) in enumerate(self._view_cams):
@@ -361,16 +362,17 @@ class WebotsBackend:
 
     def camera_frame(self, drone_id: int) -> object | None:
         """{"w", "h", "objects"}: what the Verifier recognises. With `detector_frames` (a trained
-        detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad)}; else
-        the image is handed over only on request (`camera_image`, the dashboard preview).
-        Served from the copy `_grab` took before the current step opened."""
+        detector reads the images) also {"bgra", "fov" (rad), "yaw" (deg), "pitch" (rad),
+        "height" (m the camera is above the ground below it)}; else the image is handed over
+        only on request (`camera_image`, the dashboard preview). Served from the copy `_grab`
+        took before the current step opened."""
         g = self._grabbed.get("verify")
         if self._quit or drone_id != self._verifier or g is None:
             return None
         frame = {"w": g["w"], "h": g["h"]}
         if self.detector_frames:
-            frame.update(bgra=g["bgra"], fov=g["fov"], yaw=g["yaw"],
-                         pitch=math.radians(self._verify_pitch))
+            frame.update(bgra=g["bgra"], fov=g["fov"], yaw=g["yaw"], pitch=g["pitch"],
+                         height=g["height"])
         if g["objects"] is not None:
             # the Webots recogniser is the stand-in detector: it reports each Solid's model,
             # which the world generator sets to the Source's class
@@ -400,6 +402,17 @@ class WebotsBackend:
         if self.timing is not None:
             self.timing.add("wb.pace", slack)
         time.sleep(slack)
+
+    def _verify_pitch(self) -> float:
+        """Degrees the Verifier camera looks down, at the point it keeps its standoff from. A
+        trained detector (`detector_frames`) needs the target in its pixels: the camera aims at
+        the hunted class's height there, a drone 10 m below (14 deg at 40 m), a vehicle on the
+        ground (18 deg at 120 m; at 30 m, 53 deg). The stand-in's recogniser sees out to
+        camera.range, so it keeps the drone's tilt, which reaches the horizon."""
+        drop = TARGET_DROP_M
+        if self.detector_frames:
+            drop = self.twin.kin.cruise_alt - SOURCE_Z[self.scenario.threat.name]
+        return math.degrees(math.atan2(drop, self.twin.kin.standoff))
 
     def _node(self, def_name: str):
         """(translation, rotation) fields of a DEF node, cached; None if the world lacks it."""
@@ -487,6 +500,7 @@ class WebotsBackend:
             else:
                 s = states[verifier]
                 self._verifier_heading = s.heading
-                self._set_vec(self._camv[0], [s.x, s.y, s.z - 0.3])
-                self._set_rot(self._camv[1], look_rotation(s.heading, self._verify_pitch))
+                self._rig_at = (s.x, s.y, s.z - 0.3)
+                self._set_vec(self._camv[0], list(self._rig_at))
+                self._set_rot(self._camv[1], look_rotation(s.heading, self._verify_pitch()))
         self._place_views(states)

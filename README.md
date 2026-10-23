@@ -103,7 +103,7 @@ Anti-poaching in a 10 x 10 km game reserve in the South African lowveld (`scenar
 uv run earshot live --scenario scenarios/savanna.yaml
 ```
 
-In Webots (bushveld, acacias, the game as herds, pickups; all from primitives, nothing to download). The Verifier camera is the stand-in: the COCO detector is wired but sees the primitive pickups as "bird":
+In Webots (bushveld, acacias, the game as herds from primitives, Webots' Range Rover for the vehicles: fetched once on first open). The Verifier camera is the stand-in: COCO YOLO sees the Range Rovers as cars only 50-160 m ahead and missed the moving poacher in a live run ([docs/savanna.md](docs/savanna.md#the-verifier-camera-in-webots-what-coco-yolo-sees); its settings are a commented block in the scenario):
 
 ```bash
 uv run earshot live --scenario scenarios/savanna.yaml --backend webots --no-webots-view

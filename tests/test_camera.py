@@ -9,7 +9,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from earshot.sensors.camera import DEFAULT_WEIGHTS, YoloDetector, box_bearing, load_detector
+from earshot.sensors.camera import (
+    DEFAULT_WEIGHTS,
+    YoloDetector,
+    box_bearing,
+    ground_range,
+    load_detector,
+)
 
 HIGHRES = Path(__file__).resolve().parents[1] / "data/cv/verifier-highres-20261015"
 
@@ -41,6 +47,17 @@ def test_pitch_corrects_corner_bearings():
     assert pitched != pytest.approx(flat, abs=0.5)
 
 
+def test_a_ground_target_is_ranged_from_the_depression_angle():
+    # 40 m up, aimed at the ground 120 m ahead: a box standing on the image centre is there,
+    # one standing lower in the image is nearer, one off to the side a little further
+    f = {**frame(yaw=0.0, pitch=math.atan2(40.0, 120.0)), "height": 40.0}
+    assert ground_range(640, 384, f) == pytest.approx(120.0)
+    assert ground_range(640, 600, f) < 100.0
+    assert ground_range(1000, 384, f) > 120.0
+    assert ground_range(640, 384, frame()) == 0.0  # no height: a bearing only
+    assert ground_range(640, 0, {**f, "pitch": 0.0}) == 0.0  # above the horizon
+
+
 class FakeModel:
     """model.track(...) returning scripted boxes: [(track id or None, score, (x1, y1, x2, y2))]."""
 
@@ -67,6 +84,17 @@ def test_a_track_is_verified_after_three_consecutive_frames():
     v = det.verdict()
     assert len(v.hits) == 1 and v.hits[0][0] == pytest.approx(90.0, abs=1.0)
     assert v.clear_radius is None
+
+
+def test_a_hit_carries_its_ground_range_when_the_frame_says_how_high_the_camera_is():
+    f = {**frame(pitch=math.atan2(40.0, 120.0)), "height": 40.0}
+    det = YoloDetector(model=FakeModel([[(1, 0.8, (620, 360, 660, 384))]] * 6), device="cpu")
+    for _ in range(3):
+        det.observe(f)
+    assert det.verdict().hits[0][4] == pytest.approx(120.0)
+    for _ in range(3):
+        det.observe(frame())
+    assert det.verdict().hits[0][4] == 0.0
 
 
 def test_a_missed_frame_resets_the_streak():
@@ -214,3 +242,25 @@ def test_a_detector_that_breaks_hands_over_to_the_stand_in():
     suite.camera.model = Broken([])
     suite.sense(_verifier(1.0), 1.0, frame())
     assert suite.camera is None
+
+
+def test_a_broken_detector_gives_the_backend_back_to_the_stand_in():
+    # the World told the backend a detector reads its images (Webots then aims the camera for
+    # it); once the detector is gone, the stand-in's recogniser looks again
+    from earshot.backend.twin2d import Twin2D
+    from earshot.city import City
+    from earshot.scenario import Scenario
+    from earshot.world import World
+
+    root = Path(__file__).resolve().parents[1]
+    sc = Scenario.load(root / "scenarios/demo.yaml")
+    city = City.load(root / sc.city)
+    backend = Twin2D(city, sc.drones)
+    backend.detector_frames = False
+    world = World(sc, city, backend, camera=YoloDetector(model=FakeModel([]), device="cpu"))
+    assert backend.detector_frames
+    world.step({})
+    assert backend.detector_frames
+    world.sensors.camera = None  # what SensorSuite does when the model raises
+    world.step({})
+    assert not backend.detector_frames

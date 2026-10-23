@@ -4,7 +4,7 @@ World side only: the World feeds it the Verifier's camera images (Webots renders
 turns its verdicts into CAMERA SensorReadings; Agents never see an image (ADR 0001).
 
     det = YoloDetector()                 # lazy: ultralytics loads on the first frame
-    det.observe(frame)                   # every rendered tick: {"bgra", "w", "h", "fov", "yaw", "pitch"}
+    det.observe(frame)                   # every rendered tick: {"bgra", "w", "h", "fov", "yaw", "pitch"[, "height"]}
     det.verdict() -> CameraVerdict       # once per 1 s sensor window
 
 Verification is multi-frame, as in Nikolas' tools/cv_demos.py: a box counts once ByteTrack has
@@ -21,6 +21,11 @@ of a threat class (anything but nothing) are what a track streak verifies and wh
 view from counting as empty; labels mapped to nothing (an elephant, a zebra) are only named
 in the verdict (`others`), for the Threat Log; unmapped labels are ignored. A Reserve uses
 the COCO model (yolo11n.pt): car, truck, motorcycle, bus -> vehicle, the animals -> nothing.
+A frame that says how high the camera is (`height`) also gets each hit's ground range from
+the box's bottom edge: where a vehicle stands, not only its bearing.
+
+`EARSHOT_CV_DUMP=<dir>` saves every processed frame with its boxes (JPEG) and a line per frame
+in <dir>/frames.jsonl: what the detector saw, for a run that did not confirm what it should.
 """
 
 from __future__ import annotations
@@ -43,8 +48,9 @@ DRONE_SPAN_M = 0.4  # a small quadcopter's width: its box width gives the range 
 
 @dataclass(frozen=True)
 class CameraVerdict:
-    hits: list[tuple[float, float, float, str, float]]  # (bearing deg, sigma deg, confidence,
-    #                                                    label, range m from the box width)
+    # (bearing deg, sigma deg, confidence, label, ground range m (0 = a bearing only),
+    #  range m from the box width as if it were a drone)
+    hits: list[tuple[float, float, float, str, float, float]]
     clear_radius: float | None  # m looked at and empty; None = inconclusive
     others: tuple[str, ...] = ()  # harmless labels seen this window (classes -> nothing)
 
@@ -67,6 +73,21 @@ def box_range(bw: float, frame: dict, span: float = DRONE_SPAN_M) -> float:
     """Metres to an object `span` metres wide whose box is `bw` pixels wide."""
     f = frame["w"] / (2.0 * math.tan(frame["fov"] / 2.0))
     return span * f / max(bw, 1.0)
+
+
+def ground_range(cx: float, by: float, frame: dict) -> float:
+    """Horizontal distance (m) to where the ray through (cx, by), a box's bottom centre,
+    meets flat ground `height` m below the camera: a ground target geolocated from the
+    gimbal's depression angle. 0 when the frame has no height or the ray does not come down."""
+    height = frame.get("height")
+    if not height or height <= 0:
+        return 0.0
+    w, h = frame["w"], frame["h"]
+    f = w / (2.0 * math.tan(frame["fov"] / 2.0))
+    xc, yc = (cx - w / 2.0) / f, (by - h / 2.0) / f
+    p = frame.get("pitch", 0.0)
+    ahead, down = math.cos(p) - yc * math.sin(p), math.sin(p) + yc * math.cos(p)
+    return height * math.hypot(ahead, xc) / down if down > 1e-3 else 0.0
 
 
 @dataclass
@@ -129,6 +150,8 @@ class YoloDetector:
             self.infer_ms.append(float(speed["inference"]))
         names = {int(k): str(v).lower() for k, v in model.names.items()}
         classes = self._classes()
+        if os.environ.get("EARSHOT_CV_DUMP"):
+            _dump(Path(os.environ["EARSHOT_CV_DUMP"]), img, res, names, frame)
         current: dict[int, int] = {}
         for box in res.boxes:
             label = names.get(int(box.cls[0]))
@@ -146,7 +169,8 @@ class YoloDetector:
             if current[key] >= self.confirm_frames:
                 x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
                 b, s = box_bearing((x1 + x2) / 2.0, (y1 + y2) / 2.0, x2 - x1, frame)
-                self._window_hits[key] = (b, s, score, label, box_range(x2 - x1, frame))
+                rng = ground_range((x1 + x2) / 2.0, y2, frame)
+                self._window_hits[key] = (b, s, score, label, rng, box_range(x2 - x1, frame))
         self._streaks = current  # a missed frame resets a track's streak
 
     def verdict(self, hovering: bool = True) -> CameraVerdict:
@@ -187,6 +211,30 @@ class YoloDetector:
                 raise FileNotFoundError(f"camera detector weights not found: {self.weights}")
             self.model = YOLO(str(self.weights))
         return self.model
+
+
+def _dump(out: Path, img: np.ndarray, res, names: dict, frame: dict) -> None:
+    """One processed frame with its boxes, for debugging (EARSHOT_CV_DUMP)."""
+    import json
+    import time
+
+    from PIL import Image, ImageDraw
+
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"{time.time():.2f}"
+    boxes = [{"label": names.get(int(b.cls[0])), "conf": round(float(b.conf[0]), 3),
+              "id": None if b.id is None else int(b.id[0]),
+              "xyxy": [round(float(v)) for v in b.xyxy[0].tolist()]} for b in res.boxes]
+    im = Image.fromarray(img[..., ::-1].copy())
+    draw = ImageDraw.Draw(im)
+    for b in boxes:
+        draw.rectangle(b["xyxy"], outline=(255, 40, 40), width=2)
+        draw.text((b["xyxy"][0], b["xyxy"][1] - 11), f"{b['label']} {b['conf']} #{b['id']}",
+                  fill=(255, 40, 40))
+    im.save(out / f"{name}.jpg", quality=85)
+    meta = {k: frame.get(k) for k in ("yaw", "pitch", "height")}
+    with open(out / "frames.jsonl", "a") as f:
+        f.write(json.dumps({"img": name, **meta, "boxes": boxes}) + "\n")
 
 
 def _best_device() -> str:

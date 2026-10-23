@@ -18,9 +18,10 @@ A City without terrain (the flat test city) gets the same look on flat ground.
 A City with `biome: savanna` (tools/make_savanna.py) is drawn as bushveld instead: golden
 grass and thornveld, flat-crowned acacias, shrubs and riverine trees, boulders on the kopjes,
 red dirt tracks as draped strips (`road_surfaces`), steel lookout towers, a clear sky. Its
-Sources get a model by their `kind`, all from primitives (no PROTO to download): elephants,
-giraffes, rhinos, buffalo, zebras, impala, lions and hyenas, a herd as several animals, and
-pickups in the colours of poachers, rangers and a game drive.
+Sources get a model by their `kind`: elephants, giraffes, rhinos, buffalo, zebras, impala, lions
+and hyenas from primitives, a herd as several animals, and Webots' Range Rover in the colours of
+poachers, rangers and a game drive (the one PROTO a reserve fetches once: COCO YOLO calls a
+pickup built from boxes an airplane or a chair, the Range Rover a car; docs/savanna.md).
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ EXTERNPROTOS = [
     "objects/road/protos/Road.proto",
     "vehicles/protos/generic/TruckSimple.proto",
 ]
+RANGE_ROVER = "vehicles/protos/range_rover/RangeRoverSportSVRSimple.proto"  # declared only where used
 LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "industrial",
            "runway", "taxiway", "apron",  # airfields (tools/make_muc.py)
            "grass", "bush", "thicket", "riverine", "sand", "rock", "track", "camp"]  # bushveld
@@ -474,7 +476,9 @@ ANIMALS = {
 ANIMALS["antelope"] = ANIMALS["impala"]
 HERD = {"elephant": 5, "buffalo": 8, "zebra": 6, "impala": 9, "antelope": 6, "lion": 4, "hyena": 4,
         "giraffe": 3, "rhino": 1}
-VEHICLE_RGB = {"poacher": (0.16, 0.17, 0.15), "ranger": (0.36, 0.40, 0.27), "safari": (0.72, 0.64, 0.46)}
+# a white bakkie, the rangers' olive, a game drive's khaki (a white car reads as a car more often
+# than a dark one: docs/savanna.md)
+VEHICLE_RGB = {"poacher": (0.9, 0.9, 0.88), "ranger": (0.36, 0.40, 0.27), "safari": (0.72, 0.64, 0.46)}
 
 
 def _ellipsoid(x, y, z, rx, ry, rz, look: str) -> str:
@@ -503,28 +507,17 @@ def _animal(name: str) -> str:
     return " ".join(parts)
 
 
-def pickup(kind: str) -> str:
-    """A 4x4 pickup from boxes, x forward, wheels on the ground: cab, load bed, bull bar."""
+def is_range_rover(cls: str, kind: str, biome: str) -> bool:
+    """A vehicle Source in the bushveld, or one whose kind names a reserve's vehicle."""
+    return cls == "VEHICLE" and (biome == "savanna" or any(k in kind.lower() for k in VEHICLE_RGB))
+
+
+def range_rover(sid: str, kind: str) -> str:
+    """Webots' Range Rover (a Robot, so top-level as TruckSimple is) in its kind's colours."""
     rgb = next((v for k, v in VEHICLE_RGB.items() if k in kind.lower()), VEHICLE_RGB["poacher"])
-    paint = f"CAR_{'_'.join(f'{int(c * 100)}' for c in rgb)}"
-    body, dark, tyre = "body", "dark", "tyre"
-    looks = {"body": (paint, rgb, 0.45), "dark": ("CAR_GLASS", (0.05, 0.06, 0.07), 0.15),
-             "tyre": ("CAR_TYRE", (0.06, 0.06, 0.06), 0.9)}
-
-    def box(x, z, sx, sy, sz, look, y=0.0):
-        return (f"Pose {{ translation {x} {y} {z} children [ Shape {{ appearance {_look(*looks[look])} geometry "
-                f"Box {{ size {sx} {sy} {sz} }} castShadows FALSE }} ] }}")
-
-    parts = [box(0, 0.85, 5.0, 1.9, 0.55, body), box(0.75, 1.5, 2.0, 1.82, 0.8, body),
-             box(1.76, 1.52, 0.04, 1.7, 0.62, dark), box(0.75, 1.55, 1.7, 1.86, 0.5, dark),
-             box(-1.3, 1.25, 2.3, 0.08, 0.45, body, 0.91), box(-1.3, 1.25, 2.3, 0.08, 0.45, body, -0.91),
-             box(-2.45, 1.25, 0.08, 1.9, 0.45, body), box(2.55, 0.85, 0.12, 1.7, 0.5, dark)]
-    for wx in (1.55, -1.55):
-        for wy in (0.88, -0.88):
-            parts.append(f"Pose {{ translation {wx} {wy} 0.42 rotation 1 0 0 1.5708 children [ Shape {{ "
-                         f"appearance {_look(*looks[tyre])} geometry Cylinder {{ radius 0.42 height 0.32 "
-                         f"subdivision 12 }} castShadows FALSE }} ] }}")
-    return " ".join(parts)
+    col = " ".join(f"{c:g}" for c in rgb)
+    return (f'DEF SRC_{sid} RangeRoverSportSVRSimple {{ translation 0 0 -100 name "src_{sid}" '
+            f"color {col} recognitionColors [ 1 0.6 0.1 ] }}")
 
 
 def herd(sid: str, kind: str) -> str | None:
@@ -1597,10 +1590,8 @@ def source_nodes(sid: str, cls: str, markers: bool, kind: str = "", biome: str =
     if cls == "DRONE":
         return [intruder_drone(f"SRC_{sid}", f"src_{sid}", markers)]
     if cls == "VEHICLE":
-        if biome == "savanna" or any(k in kind.lower() for k in VEHICLE_RGB):
-            # the backend lifts VEHICLE Sources 0.5 m (SOURCE_Z): wheels down again
-            return [(f'DEF SRC_{sid} Solid {{ translation 0 0 -100 name "src_{sid}" recognitionColors '
-                     f"[ 1 0.6 0.1 ] children [ Pose {{ translation 0 0 -0.5 children [ {pickup(kind)} ] }} ] }}")]
+        if is_range_rover(cls, kind, biome):  # its origin is 0.4 m up, SOURCE_Z 0.5: no matter
+            return [range_rover(sid, kind)]
         return [(f'DEF SRC_{sid} TruckSimple {{ translation 0 0 -100 name "src_{sid}" '
                 f"color 0.55 0.3 0.12 recognitionColors [ 1 0.6 0.1 ] }}")]
     if cls == "TRAIN":
@@ -1681,6 +1672,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     parts = ["#VRML_SIM R2025a utf8",
              f"# generated by tools/build_webots_world.py from {scenario_path} -- do not edit by hand"]
     parts += [f'EXTERNPROTO "{PROTO}/{p}"' for p in EXTERNPROTOS]
+    if any(is_range_rover(s.cls.name, s.kind, biome) for s in sc.sources) or biome == "savanna":
+        parts.append(f'EXTERNPROTO "{PROTO}/{RANGE_ROVER}"')  # the live slots there too
     span = max(x1 - x0, y1 - y0)
     cx = (x0 + x1) / 2
     sky = "mountains" if biome == "savanna" else "noon_cloudy_countryside"  # HDR skies only

@@ -13,7 +13,16 @@ import pytest
 
 from earshot.agent.belief import HEARING_RANGE, SHOT_HEARING_RANGE, Belief
 from earshot.city import City
-from earshot.messages import Header, Mode, Observation, Sensor, TargetClass, decode, encode
+from earshot.messages import (
+    Header,
+    Mode,
+    Observation,
+    Sensor,
+    SensorReading,
+    TargetClass,
+    decode,
+    encode,
+)
 from earshot.scenario import Scenario, Source
 from earshot.sensors import SensorSuite
 from earshot.sensors import acoustics as ac
@@ -34,8 +43,8 @@ def _bearing(frm, to):
 
 
 def _obs(origin, seq, t, at, target, sensor, probs=SHOT_P, sigma=2.0):
-    return Observation(Header(origin, seq, 1), t, at[0], at[1], 2.0, _bearing(at, target),
-                       sigma, probs, sensor, Mode.LISTEN, 60.0)
+    return Observation(Header(origin, seq, 1), t, at[0], at[1], Mode.LISTEN,
+                       (SensorReading(sensor, _bearing(at, target), sigma, probs, 60.0),))
 
 
 def _tower(city, x, y, t=0.0, i=0):
@@ -162,4 +171,4 @@ def test_the_radio_frame_carries_a_shot():
     frame = encode(o, b"k" * 16)
     assert len(frame) <= 40
     back = decode(frame, b"k" * 16)
-    assert back.sensor == Sensor.SHOT and back.bearing_sigma == 2.0
+    assert back.readings[0].sensor == Sensor.SHOT and back.readings[0].bearing_sigma == 2.0
