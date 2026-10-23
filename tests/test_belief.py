@@ -11,6 +11,7 @@ from earshot.agent.belief import (
     CONFIRM_SPEED,
     N_EFF,
     TAU,
+    TRACK_SUPPRESS,
     Belief,
     TrackEst,
     cell_id,
@@ -359,3 +360,13 @@ def test_a_newer_track_from_the_same_origin_replaces_the_older_one():
     assert b.received_tracks(11.0) == [new, other]
     assert b.received_tracks(25.5) == [new]  # the older origin's Track aged out
     assert list(b._tracks_rx) == [3]
+
+
+@pytest.mark.parametrize("cell", [20.0, 25.0, 33.3, 50.0])
+def test_a_peaks_window_holds_every_cell_it_can_suppress(cell):
+    b = Belief(CITY, cell=cell)
+    for iy, ix in [(0, 0), (b.shape[0] // 2, b.shape[1] // 3), (b.shape[0] - 1, b.shape[1] - 1)]:
+        inside = np.zeros(b.shape, dtype=bool)
+        inside[b._window(iy, ix)] = True
+        near = np.hypot(b.X - b.X[iy, ix], b.Y - b.Y[iy, ix]) <= TRACK_SUPPRESS + cell
+        assert inside[near].all()

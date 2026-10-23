@@ -385,12 +385,15 @@ class Belief:
         elif ev.sensor in RF_SENSORS:
             self._rf(ev, g, wgt, w)
 
-    def _geometry(self, obs: Evidence):
-        dx, dy = self.X - obs.x, self.Y - obs.y
-        return np.hypot(dx, dy), np.degrees(np.arctan2(dx, dy)) % 360.0
+    def _distance(self, obs: Evidence) -> np.ndarray:
+        return np.hypot(self.X - obs.x, self.Y - obs.y)
+
+    def _bearing(self, obs: Evidence) -> np.ndarray:
+        """Compass bearing (degrees) from where the reading was taken to each cell."""
+        return np.degrees(np.arctan2(self.X - obs.x, self.Y - obs.y)) % 360.0
 
     def _sound(self, obs: Evidence, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
-        d, theta = self._geometry(obs)
+        d, theta = self._distance(obs), self._bearing(obs)
         delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
         sigma = max(obs.bearing_sigma, 2.0)
         # bearing density relative to uniform: von-Mises-like wedge mixed with "other source"
@@ -410,7 +413,7 @@ class Belief:
 
     def _rf(self, obs: Evidence, g: np.ndarray, wgt: np.ndarray, w: float) -> None:
         band = rf.BAND_OF_SENSOR[obs.sensor]
-        d, _ = self._geometry(obs)
+        d = self._distance(obs)
         at_1m = rf.mean_rx_power(band, 1.0, False)
         logd = np.log10(np.maximum(d, 1))
         # line of sight unknown: accept either path-loss exponent (two concentric rings)
@@ -424,7 +427,7 @@ class Belief:
         wgt += w
 
     def _camera(self, obs: Evidence, w: float) -> None:
-        d, theta = self._geometry(obs)
+        d = self._distance(obs)
         o = obs.origin
         g = self._CG.setdefault(o, np.zeros((3, *self.shape)))
         wgt = self._CW.setdefault(o, np.zeros(self.shape))
@@ -447,7 +450,7 @@ class Belief:
             blob = np.exp(-0.5 * np.hypot(self.X - x, self.Y - y) ** 2 / spread**2) * disc
         else:  # a bearing only: somewhere along it within the camera's range
             disc = d <= CAMERA_RANGE
-            delta = (theta - obs.bearing + 180.0) % 360.0 - 180.0
+            delta = (self._bearing(obs) - obs.bearing + 180.0) % 360.0 - 180.0
             blob = np.exp(-0.5 * (delta / 15.0) ** 2) * disc
         for i, k in enumerate(THREATS):
             g[i] += w * A_CAMERA * obs.class_probs[k] * blob
@@ -500,9 +503,9 @@ class Belief:
                 if key[0] not in self.faulty}
 
     def _logits(self, contribs: dict | None = None) -> np.ndarray:
-        total = self.prior + self._camera_evidence()
+        total = self.prior + self._camera_evidence()  # a new array: safe to add into
         for c in (self._contributions() if contribs is None else contribs).values():
-            total = total + c
+            total += c
         return total
 
     def _contribution(self, key, g: np.ndarray) -> np.ndarray:
@@ -627,18 +630,20 @@ class Belief:
         iy = int(np.clip(round((y - y0) / self.cell), 0, self.shape[0] - 1))
         return iy, ix
 
+    def _window(self, iy: int, ix: int) -> tuple[slice, slice]:
+        """The block of cells around (iy, ix) that holds every cell within TRACK_SUPPRESS
+        (and so TRACK_RADIUS): a peak's ellipse and suppression need no more of the grid."""
+        r = math.ceil(TRACK_SUPPRESS / self.cell) + 1
+        return slice(max(iy - r, 0), iy + r + 1), slice(max(ix - r, 0), ix + r + 1)
+
     def tracks(self, t_now: float) -> list[TrackEst]:
         self.advance(t_now)
         contribs = self._contributions()
         z = self._logits(contribs)
         post = self._posterior_of(z)
         self._post = (self._stamp(), post)
-        threat = post[:3].sum(axis=0)
-        alive = threat.copy()
+        alive = post[:3].sum(axis=0)  # threat probability; peaks are zeroed as they are taken
         out: list[TrackEst] = []
-        support: dict[int, np.ndarray] = {}
-        for key, c in contribs.items():
-            support[key[0]] = support.get(key[0], 0) + c
         with np.errstate(divide="ignore"):  # -inf where every class is impossible: fine
             zt = np.log(np.exp(z).sum(axis=0))  # threat log-odds: sharp where bearings cross
         kept = {False: 0, True: 0}  # explained?: how many taken
@@ -650,25 +655,30 @@ class Belief:
             if peak < TRACK_THRESHOLD:
                 break
             px, py = self.X[iy, ix], self.Y[iy, ix]
-            dist = np.hypot(self.X - px, self.Y - py)
+            win = self._window(iy, ix)
+            X, Y = self.X[win], self.Y[win]
+            dist = np.hypot(X - px, Y - py)
             if kept[True] >= MAX_TRACKS and self._explained_peak(post, iy, ix, px, py):
-                alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)  # one more on a full list
+                alive[win][dist <= TRACK_SUPPRESS] = 0.0  # one more on a full list
                 continue
             near = dist <= TRACK_RADIUS
             # relative likelihood, not probability: probability saturates into a plateau
-            wts = np.where(near, np.exp(np.clip(zt - zt[iy, ix], -30, 0)), 0.0)
+            wts = np.where(near, np.exp(np.clip(zt[win] - zt[iy, ix], -30, 0)), 0.0)
             wts[wts < 0.05] = 0.0
             wsum = wts.sum()
-            mx, my = (wts * self.X).sum() / wsum, (wts * self.Y).sum() / wsum
-            cov = np.cov(np.stack([self.X[wts > 0], self.Y[wts > 0]]), aweights=wts[wts > 0]) \
+            mx, my = (wts * X).sum() / wsum, (wts * Y).sum() / wsum
+            cov = np.cov(np.stack([X[wts > 0], Y[wts > 0]]), aweights=wts[wts > 0]) \
                 if (wts > 0).sum() > 2 else np.eye(2) * (self.cell / 2) ** 2
             evals, evecs = np.linalg.eigh(cov)
             a, b = 2 * math.sqrt(max(evals[1], 1.0)), 2 * math.sqrt(max(evals[0], 1.0))
             ang = math.degrees(math.atan2(evecs[1, 1], evecs[0, 1])) % 180.0
-            mass = [(post[i] * wts).sum() for i in range(3)]
+            mass = [(post[i][win] * wts).sum() for i in range(3)]
             ci = int(np.argmax(mass))
             cls = THREATS[ci]
-            origins = sum(1 for s in support.values() if s[ci][iy, ix] > 1.0)
+            support: dict[int, float] = {}  # origin -> its log-odds for the class at the peak
+            for (o, _), c in contribs.items():
+                support[o] = support.get(o, 0) + c[ci, iy, ix]
+            origins = sum(1 for s in support.values() if s > 1.0)
             by_sensor = tuple(sorted(
                 ((o, fam, round(float(c[ci, iy, ix]), 2)) for (o, fam), c in contribs.items()),
                 key=lambda e: -abs(e[2])))
@@ -688,7 +698,7 @@ class Belief:
                     strength=float(zt[iy, ix]),
                     support=by_sensor + ((-2, "prior", prior),),
                 ))
-            alive = np.where(dist <= TRACK_SUPPRESS, 0.0, alive)
+            alive[win][dist <= TRACK_SUPPRESS] = 0.0
         out = self._follow_confirmed(out, t_now)
         self._track_cache = out  # raw peaks: the Faulty Sensor check wants tight ellipses
         return merge_overlapping(out, self.city.bounds, self.threat)
