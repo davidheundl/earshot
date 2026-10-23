@@ -230,6 +230,7 @@ cv-navigation = [
 ]
 data = [
     { name = "pyproj" },
+    { name = "scipy" },
 ]
 dev = [
     { name = "pytest" },
@@ -237,6 +238,7 @@ dev = [
 ]
 ml = [
     { name = "pyarrow" },
+    { name = "scipy" },
     { name = "soundfile" },
     { name = "torch" },
     { name = "torchvision" },
@@ -265,13 +267,17 @@ cv = [
     { name = "ultralytics", specifier = ">=8.4" },
 ]
 cv-navigation = [{ name = "transformers", specifier = ">=4.45,<5" }]
-data = [{ name = "pyproj", specifier = ">=3.6" }]
+data = [
+    { name = "pyproj", specifier = ">=3.6" },
+    { name = "scipy", specifier = ">=1.11" },
+]
 dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 ml = [
     { name = "pyarrow", specifier = ">=15" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "torch", specifier = ">=2.5,<2.10" },
     { name = "torchvision", specifier = ">=0.20,<0.25" },

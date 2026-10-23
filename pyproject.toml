@@ -25,11 +25,13 @@ dev = ["pytest>=8", "ruff>=0.6"]
 cv = ["ultralytics>=8.4", "lap>=0.5.12"]  # 8.4: track(persist=...) honoured per call
 # Live microphone arrays in the room (concept section 10). Nikolas' area.
 audio = ["sounddevice>=0.4", "pyroomacoustics>=0.7"]
-# Building cities from open data (tools/muc_fetch.py, tools/make_muc.py); not needed at runtime.
-data = ["pyproj>=3.6"]
+# Building cities from open data (tools/muc_fetch.py, tools/make_muc.py, make_valley.py,
+# make_savanna.py); not needed at runtime.
+data = ["pyproj>=3.6", "scipy>=1.11"]
 # Sound classifier (src/earshot/audio/classifier.py, tools/*sound*): EfficientAT on the CPU.
 # Not a default group: the swarm runs without torch. `uv sync --group ml` to add it.
-ml = ["torch>=2.5,<2.10", "torchvision>=0.20,<0.25", "soundfile>=0.12", "pyarrow>=15"]
+ml = ["torch>=2.5,<2.10", "torchvision>=0.20,<0.25", "soundfile>=0.12", "pyarrow>=15",
+      "scipy>=1.11"]
 # Offline visual localization and depth (tools/cv_navigation.py), on top of `cv`.
 cv-navigation = [
     "transformers>=4.45,<5",
