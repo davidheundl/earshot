@@ -21,6 +21,8 @@ import urllib.request
 import msgpack
 import zmq
 
+from earshot import config
+
 ap = argparse.ArgumentParser()
 ap.add_argument("--seconds", type=float, default=30)
 ap.add_argument("--skip", type=float, default=0, help="seconds to wait before measuring")
@@ -34,8 +36,9 @@ stop = False
 
 
 def keepalive():
+    url = f"http://{config.HOST}:{config.DASHBOARD_PORT}/view"
     while not stop:
-        req = urllib.request.Request("http://127.0.0.1:8000/view", method="POST",
+        req = urllib.request.Request(url, method="POST",
                                      data=json.dumps({"views": None}).encode(),
                                      headers={"Content-Type": "application/json"})
         try:
@@ -54,7 +57,7 @@ time.sleep(a.skip)
 ctx = zmq.Context()
 sub = ctx.socket(zmq.SUB)
 sub.setsockopt(zmq.LINGER, 0)
-sub.connect("tcp://127.0.0.1:5550")
+sub.connect(config.WORLD_PUB)
 for t in (b"state.", b"cams."):
     sub.setsockopt(zmq.SUBSCRIBE, t)
 
