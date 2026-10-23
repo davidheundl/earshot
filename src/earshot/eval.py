@@ -72,7 +72,8 @@ def censored_mean(vals: list[float | None], cap: float) -> float | None:
 def _sources(r: RunResult) -> list[Source]:
     return [Source(s["id"], TargetClass[s["cls"]], s["start"], s["end"],
                    [tuple(p) for p in s["path"]], 0.0,
-                   intruder=s.get("intruder", s["cls"] == "DRONE")) for s in r.truth]
+                   intruder=s.get("intruder", s["cls"] == "DRONE"),
+                   waits=tuple(s.get("waits", ()))) for s in r.truth]
 
 
 def _nearest_intruder(sources, x, y, t) -> float:

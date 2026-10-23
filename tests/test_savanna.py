@@ -50,10 +50,22 @@ def test_poachers_are_intruders_and_slower_than_a_verifier(world):
     assert not by_id["ranger1"].intruder and "uhf" in by_id["poacher1"].rf_bands
     for s in sc.sources:
         length = sum(math.dist(a, b) for a, b in zip(s.path, s.path[1:], strict=False))
-        speed = length / (s.end - s.start)
+        speed = length / (s.end - s.start - sum(s.waits))  # driving, not stopped
         assert speed < min(verifier, CONFIRM_SPEED) - 2.0, s.id
         if s.cls == TargetClass.NOTHING:
             assert s.kind and speed < 2.0  # game walks
+
+
+def test_the_shot_is_fired_standing_at_the_kill(world):
+    sc, _ = world
+    by_id = {s.id: s for s in sc.sources}
+    shots = [e for e in sc.events if e["op"] == "shot"]
+    assert shots
+    for e in shots:
+        src = by_id[e["source"]]
+        at = src.position(e["t"])
+        assert at in [p for p, w in zip(src.path, src.waits, strict=True) if w > 0]
+        assert math.dist(at, by_id["elephants"].position(e["t"])) < 200.0  # rifle range
 
 
 def test_the_land_use_raster_speaks_the_builders_classes(world):

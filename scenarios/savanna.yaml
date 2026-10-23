@@ -7,6 +7,8 @@
 #   thicket south-west of the centre, circles it and leaves through the fence; its crew talks
 #   on a UHF handheld (RF, push-to-talk);
 # - poacher2 comes through the east fence at 280 s for the elephant herd by the river, no radio;
+#   it stops 150 m from the herd, shoots (a Shot every tower within a few km hears) and stays
+#   five minutes at the kill;
 # - a ranger patrol drives the gravel spine (radio silence at night: a scanner would hear it
 #   too), a game drive the lodge's track: both on tracks, neither an intruder;
 # - the game: elephants, lions, hyenas, buffalo, zebra, impala, a giraffe and the rhino are
@@ -45,8 +47,9 @@ sources:           # path: list of points, or {road: i}; kind: what it is (camer
   # a 4x4 cross-country in low gear: 105 dB(A), as a truck (sensors/acoustics.py SOUND_POWER)
   - {id: poacher1, cls: vehicle, kind: poacher pickup, start: 60, end: 860, level_db: 105, rf: [uhf],
      path: [[-1700, -4990], [-1850, -4200], [-2100, -3400], [-1950, -2600], [-1900, -2380], [-1720, -2260], [-1980, -2140], [-2080, -2380], [-1650, -2850], [-1250, -3500], [-950, -4990]]}
-  - {id: poacher2, cls: vehicle, kind: poacher bakkie, start: 280, end: 900, level_db: 105,
-     path: [[4995, 2700], [4200, 2450], [3400, 2050], [2900, 1700], [2620, 1560], [2450, 1880], [3000, 2300], [4000, 2850], [4995, 3050]]}
+  # [x, y, s]: stops there s seconds (the kill); `end` beyond the run keeps its driving speed
+  - {id: poacher2, cls: vehicle, kind: poacher bakkie, start: 280, end: 1200, level_db: 105,
+     path: [[4995, 2700], [4200, 2450], [3400, 2050], [2900, 1700], [2620, 1560, 300], [2450, 1880], [3000, 2300], [4000, 2850], [4995, 3050]]}
   - {id: ranger1, cls: vehicle, kind: ranger Land Cruiser, intruder: false, start: 20, end: 880, level_db: 102, path: {road: 1}}
   - {id: safari1, cls: vehicle, kind: safari game drive, intruder: false, start: 150, end: 700, level_db: 100, path: {road: 5}}
   - {id: elephants, cls: nuisance, kind: elephant herd, start: 0, end: 900, level_db: 105, path: [[2150, 1250], [2500, 1450], [2850, 1550], [3150, 1420]]}
@@ -57,6 +60,11 @@ sources:           # path: list of points, or {road: i}; kind: what it is (camer
   - {id: impala, cls: nuisance, kind: impala herd, start: 0, end: 900, level_db: 86, path: [[-3500, -700], [-3200, -300], [-3700, 100]]}
   - {id: giraffe, cls: nuisance, kind: giraffe, start: 0, end: 900, level_db: 70, path: [[2000, -2800], [2300, -2600]]}
   - {id: rhino, cls: nuisance, kind: white rhino, start: 0, end: 900, level_db: 72, path: [[-1880, -2330], [-1920, -2300], [-1860, -2290], [-1880, -2330]]}
+
+# poacher2 fires at the elephants from its stop, 160 m off: a Shot every tower within a few km
+# hears, with a sharp bearing (sensors/acoustics.py SHOT)
+events:
+  - {t: 570, op: shot, source: poacher2}
 
 # the stand-in sound classifier (no trained head for African wildlife): animal calls are
 # heard as an engine 45 % of the time

@@ -14,6 +14,9 @@ Calibration: the per-class constants below were backed out of the section 5.1 ra
   - vehicle and train rumble is low-frequency, so air absorbs far less than the 3.7 dB/km
     quoted at 1 kHz (0.7 and 0.5 dB/km make the night and day columns agree);
   - low frequencies bend around buildings better: -10 dB per building vs. -20 for drone tones.
+
+A rifle Shot (a Scenario `shot` Event, not a Source) uses SHOT in place of a class's constants:
+every function here takes a TargetClass or a ClassAcoustics.
 """
 
 from __future__ import annotations
@@ -39,6 +42,15 @@ ACOUSTICS = {
     TargetClass.NOTHING: ClassAcoustics(3.7, 20.0, -8.0, 5.0),  # nuisance: fan, AC unit
 }
 
+# A rifle Shot: one impulse. Its level is what the 1 s window integrates (its sound exposure),
+# not the muzzle blast's peak; its energy sits higher than an engine's rumble (0.5-1 kHz), so
+# air absorbs more; an onset detector times the impulse across the array to a few degrees.
+# Chosen, not measured: a tower hears it almost surely at 3 km in the open at night, half the
+# time at 6 km, rarely beyond 7 km; a kopje in the way hides it beyond about 2.5 km.
+SHOT = ClassAcoustics(2.0, 15.0, 0.0, 2.0)
+SHOT_LEVEL_DB = 134.0
+SPEED_OF_SOUND = 343.0  # m/s: a tower 5 km away hears a Shot 15 s after it was fired
+
 # Typical sound power levels, dB(A) (section 9; larger drone and train backed out of 5.1).
 SOUND_POWER = {"small_drone": 82.0, "large_drone": 89.0, "heavy_vehicle": 105.0,
                "freight_train": 120.0, "fan": 70.0}
@@ -56,8 +68,13 @@ OUTLIER_PERCHED = 0.05
 OUTLIER_FLYING = 0.25  # (20-35 %)
 
 
-def received_level(lw_db: float, cls: TargetClass, d: float, n_buildings: int) -> float:
-    a = ACOUSTICS[cls]
+def _acoustics(cls: TargetClass | ClassAcoustics) -> ClassAcoustics:
+    return cls if isinstance(cls, ClassAcoustics) else ACOUSTICS[cls]
+
+
+def received_level(lw_db: float, cls: TargetClass | ClassAcoustics, d: float,
+                   n_buildings: int) -> float:
+    a = _acoustics(cls)
     d = max(d, 1.0)
     building = min(n_buildings * a.building_loss_db, MAX_BUILDING_LOSS_DB)
     return lw_db - (20.0 * math.log10(d) + 11.0) - a.absorption_db_per_km * d / 1000.0 - building
@@ -81,14 +98,15 @@ def db_sum(*levels: float) -> float:
     return 10.0 * math.log10(p) if p > 0 else -math.inf
 
 
-def detection_probability(snr_db: float, cls: TargetClass) -> float:
-    return 1.0 / (1.0 + math.exp(-(snr_db - ACOUSTICS[cls].snr50_db) / SLOPE_DB))
+def detection_probability(snr_db: float, cls: TargetClass | ClassAcoustics) -> float:
+    return 1.0 / (1.0 + math.exp(-(snr_db - _acoustics(cls).snr50_db) / SLOPE_DB))
 
 
-def bearing_sigma(cls: TargetClass, perched: bool, snr_db: float) -> float:
+def bearing_sigma(cls: TargetClass | ClassAcoustics, perched: bool, snr_db: float) -> float:
     """Bearing error grows as the signal sinks toward the detection threshold (up to x3)."""
-    base = ACOUSTICS[cls].bearing_sigma_perched if perched else BEARING_SIGMA_FLYING
-    margin = snr_db - (ACOUSTICS[cls].snr50_db + 10.0)
+    a = _acoustics(cls)
+    base = a.bearing_sigma_perched if perched else BEARING_SIGMA_FLYING
+    margin = snr_db - (a.snr50_db + 10.0)
     return base * min(3.0, max(1.0, 10.0 ** (-margin / 20.0)))
 
 

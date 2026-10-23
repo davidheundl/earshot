@@ -40,6 +40,10 @@ Model (concept section 6):
   confirms, what a confirmed point follows and what merges: a Suspicion is a Track of that
   class. Off the places the City explains it, its prior is PRIOR_THREAT, the drone's.
 - An RF band's ring goes to the class its emitters are (sensors.rf.Band.emitter).
+- A Shot (Sensor.SHOT, a rifle fired) is a sound bearing of its own family: averaged with the
+  same tower's engine and animal bearings it would count as one reading in thirty. It reaches
+  as far as a Shot is heard and only raises its wedge: it says where someone fired, nothing
+  about where nobody did (most poachers in a cell never fire).
 - Faulty Sensor: an origin whose bearings keep missing what the others' map shows is excluded
   (step: `_check_faults`).
 """
@@ -107,7 +111,7 @@ FAULT_AGREE_SHARE = 0.1  # share of bearings pointing at a strong Track that cou
 FAULT_PERSIST = 5  # consecutive failed seconds before flagging
 
 
-def _hearing_range(cls: TargetClass, lw: float, perched: bool) -> float:
+def _hearing_range(cls: TargetClass | ac.ClassAcoustics, lw: float, perched: bool) -> float:
     """Distance beyond which a source of this class is heard in < 5 % of windows."""
     ego = -math.inf if perched else ac.ego_noise(ac.EGO_RPM_REF, True, 8.0)
     noise = ac.db_sum(ASSUMED_BACKGROUND_DB, ego)
@@ -123,6 +127,9 @@ _LOUDEST = {TargetClass.DRONE: 89.0, TargetClass.VEHICLE: 108.0, TargetClass.TRA
 HEARING_RANGE = {
     (k, perched): _hearing_range(k, _LOUDEST[k], perched) for k in THREATS for perched in (True, False)
 }
+SHOT_HEARING_RANGE = {perched: _hearing_range(ac.SHOT, ac.SHOT_LEVEL_DB, perched)
+                      for perched in (True, False)}
+FAMILY = {Sensor.SOUND: "sound", Sensor.SHOT: "shot", Sensor.CAMERA: "camera"}  # else "rf"
 
 
 @dataclass(frozen=True)
@@ -356,15 +363,14 @@ class Belief:
     def _fold(self, ev: Evidence) -> None:
         age = max(0.0, self._t - ev.t)
         self.n_evidence += 1
-        fam = "camera" if ev.sensor == Sensor.CAMERA else "sound" if ev.sensor == Sensor.SOUND else "rf"
+        fam = FAMILY.get(ev.sensor, "rf")
         self._fused.append((ev.t, ev.origin, fam))
         if ev.sensor == Sensor.CAMERA:
             w = math.exp(-age / TAU_CAMERA)
             self._camera(ev, w)
             return
         w = math.exp(-age / TAU)
-        family = "sound" if ev.sensor == Sensor.SOUND else "rf"
-        key = (ev.origin, family)
+        key = (ev.origin, fam)
         g = self._G.setdefault(key, np.zeros((3, *self.shape)))
         wgt = self._W.setdefault(key, np.zeros(self.shape))
         self._newest[key] = max(self._newest.get(key, ev.t), ev.t)
@@ -374,6 +380,8 @@ class Belief:
             if last is None or ev.t >= last.t:
                 self.last_sound[ev.origin] = ev
             self._recent_sound.setdefault(ev.origin, []).append(ev)
+        elif ev.sensor == Sensor.SHOT:
+            self._sound(ev, g, wgt, w)
         elif ev.sensor in RF_SENSORS:
             self._rf(ev, g, wgt, w)
 
@@ -390,9 +398,12 @@ class Belief:
         dens = (1 - SOUND_OFF_LINE) * peak * np.exp(-0.5 * (delta / sigma) ** 2) + SOUND_OFF_LINE
         llr = np.log(dens)
         perched = obs.mode == Mode.LISTEN
+        shot = obs.sensor == Sensor.SHOT
+        if shot:
+            llr = np.maximum(llr, 0.0)  # where someone fired, not where nobody is
         gate_any = np.zeros(self.shape, dtype=bool)
         for i, k in enumerate(THREATS):
-            gate = d <= HEARING_RANGE[(k, perched)]
+            gate = d <= (SHOT_HEARING_RANGE[perched] if shot else HEARING_RANGE[(k, perched)])
             gate_any |= gate
             g[i] += w * obs.class_probs[k] * llr * gate
         wgt += w * gate_any

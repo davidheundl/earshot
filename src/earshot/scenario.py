@@ -24,6 +24,11 @@ tick), and a recorded live session (`runs/live-*.events.jsonl`, replayable with
     {op: fault, drone: 3, kind: stuck_bearing}             kinds: stuck_bearing | deaf | phantom
     {op: clear_faults}                                     optional: drone
     {op: set_env, background_db: 55, ego_filter: false}
+    {op: shot, source: poacher2}                           or x, y; optional level_db (134)
+
+A `shot` is a rifle fired at that moment, from where `source` is then (or at x, y): a Shot,
+heard once by every tower within a few km (sensors/acoustics.py SHOT). It is no Source:
+nothing to see, find or follow, so it never enters metrics, the camera or a 3D world.
 """
 
 from __future__ import annotations
@@ -45,16 +50,38 @@ class Source:
     cls: TargetClass
     start: float
     end: float
-    path: list[tuple[float, float]]  # visited at constant speed between start and end
+    path: list[tuple[float, float]]  # visited at constant speed between start and end; a
+    #                                  third number on a point, [x, y, s], stops there s seconds
     level_db: float  # sound power level, dB(A); see sensors.acoustics.SOUND_POWER
     rf_bands: tuple[str, ...] = ()  # emitting links, keys of sensors.rf.BANDS
     intruder: bool | None = None  # truth: a threat the swarm should find (metrics, Threat
     #                               Log); None: a drone is one (Scenario.load uses `threat:`)
     kind: str = ""  # what it is, free text: the camera stand-in's label, the Webots model
+    waits: tuple[float, ...] = ()  # s stopped at each path point (a poacher at its kill); ()
+    #                                none: it never stops
 
     def __post_init__(self):
         if self.intruder is None:
             object.__setattr__(self, "intruder", self.cls == TargetClass.DRONE)
+        if any(len(p) > 2 for p in self.path):
+            object.__setattr__(self, "waits", tuple(float(p[2]) if len(p) > 2 else 0.0
+                                                    for p in self.path))
+            object.__setattr__(self, "path", [(p[0], p[1]) for p in self.path])
+
+    def _along(self, t: float, seg: np.ndarray) -> float:
+        """m along the path at time t when it stops on the way: constant speed between
+        stops, waits[i] seconds standing at point i."""
+        speed = seg.sum() / max(self.end - self.start - sum(self.waits), 1e-9)
+        tau, s = t - self.start, 0.0
+        for i, wait in enumerate(self.waits):
+            tau -= wait
+            if tau <= 0 or i == len(seg):
+                break
+            if tau <= seg[i] / speed:
+                return s + tau * speed
+            tau -= seg[i] / speed
+            s += seg[i]
+        return float(s)
 
     def pose(self, t: float, back: float = 0.0) -> tuple[float, float, float] | None:
         """(x, y, heading_deg) at time t, `back` metres behind the head along the path
@@ -66,7 +93,8 @@ class Source:
             return float(pts[0, 0]), float(pts[0, 1]), 0.0
         seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
         total = seg.sum()
-        s = (t - self.start) / max(self.end - self.start, 1e-9) * total - back
+        s = (self._along(t, seg) if self.waits
+             else (t - self.start) / max(self.end - self.start, 1e-9) * total) - back
         s = min(max(s, 0.0), total)
         cum = np.cumsum(seg)
         i = min(int(np.searchsorted(cum, s, side="right")), len(seg) - 1)
@@ -83,12 +111,24 @@ class Source:
         if len(pts) == 1 or self.end == self.start:
             return float(pts[0, 0]), float(pts[0, 1])
         seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
-        s = (t - self.start) / (self.end - self.start) * seg.sum()
+        s = (self._along(t, seg) if self.waits
+             else (t - self.start) / (self.end - self.start) * seg.sum())
         i = min(int(np.searchsorted(np.cumsum(seg), s, side="right")), len(seg) - 1)
         s0 = seg[:i].sum()
         f = 0.0 if seg[i] == 0 else (s - s0) / seg[i]
         p = pts[i] + f * (pts[i + 1] - pts[i])
         return float(p[0]), float(p[1])
+
+
+@dataclass(frozen=True)
+class Shot:
+    """A rifle fired at sim time t from (x, y). `by`: the Source that fired it (truth, logs)."""
+
+    t: float
+    x: float
+    y: float
+    level_db: float  # sensors.acoustics.SHOT_LEVEL_DB unless the Event says
+    by: str = ""
 
 
 @dataclass(frozen=True)
@@ -198,6 +238,7 @@ class Scenario:
     environment: Environment = field(default_factory=Environment)
     events: list[dict] = field(default_factory=list)  # pending, sorted by t
     guide: bool = False  # demo mock: a Verifier is told where its intruder really is (Guide)
+    shots: list[Shot] = field(default_factory=list)  # fired so far (`shot` Events), in order
     _live_count: int = 0
 
     @classmethod
@@ -335,6 +376,24 @@ class Scenario:
             src = Source(sid, cls, t, t + duration, path, level, bands, intruder, kind)
             self.sources.append(src)
             return f"{sid}: {cls.name.lower()} at {path[0][0]:.0f}, {path[0][1]:.0f}"
+        if kind == "shot":
+            from earshot.sensors.acoustics import SHOT_LEVEL_DB  # avoid import cycle
+
+            by = op.get("source", "")
+            if not isinstance(by, str):
+                raise ValueError(f"source must be a Source id, got {by!r}")
+            if by:
+                src = next((s for s in self.sources if s.id == by), None)
+                if src is None:
+                    raise ValueError(f"no source {by!r}")
+                p = src.position(t)
+                if p is None:
+                    raise ValueError(f"source {by!r} is not active at {t:.0f} s")
+            else:
+                p = (_num(op["x"], "x"), _num(op["y"], "y"))
+            level = _float(op.get("level_db", SHOT_LEVEL_DB), "level_db")
+            self.shots.append(Shot(t, float(p[0]), float(p[1]), level, by))
+            return f"shot{' by ' + by if by else ''} at {p[0]:.0f}, {p[1]:.0f}"
         if kind == "jam":
             center = (_num(op["x"], "x"), _num(op["y"], "y"))
             z = JamZone(t, t + _float(op.get("duration", 30.0), "duration", positive=True),
