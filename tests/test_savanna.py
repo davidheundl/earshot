@@ -2,6 +2,7 @@
 drone has a tower to perch on, the map fits the task ids, poachers stay slower than a
 Verifier, and a short lockstep run goes through."""
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -76,6 +77,17 @@ def test_the_land_use_raster_speaks_the_builders_classes(world):
     raw = city.to_json()
     assert raw["landuse"]["classes"] == LANDUSE and raw["biome"] == "savanna"
     assert len(raw["road_surfaces"]) == len(raw["roads"])
+
+
+@pytest.mark.parametrize("name", ["valley", "muc", "savanna"])
+def test_every_citys_land_use_classes_are_the_builders_first_ones(name):
+    """make_valley, make_muc and make_savanna each list the classes; the Webots builder reads
+    a raster id as an index into its own LANDUSE, so each City's list must be its prefix."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from build_webots_world import LANDUSE
+
+    classes = json.loads((ROOT / f"data/cities/{name}.json").read_text())["landuse"]["classes"]
+    assert classes == LANDUSE[:len(classes)]
 
 
 def test_a_short_run_goes_through():
