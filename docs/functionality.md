@@ -275,6 +275,15 @@ Summary of [review-2026-10-18.md](review-2026-10-18.md) section 3; sources are i
 
 - **Airport background.** The Munich scenarios use a constant 40 dB(A) ("night"); a real apron is 65-75 dB(A). At 65 dB the model's own math gives an 11 m hearing range.
 - **RF is close to a drone oracle.** Every RF hit is reported as 90 % drone (`sensors/__init__.py:194-195`), while an airport's 2.4/5.8 GHz is full of Wi-Fi and fibre-optic, LTE or autonomous drones emit nothing. The detection threshold (SNR -14 dB) is below what an energy detector can do.
+- **On random worlds the swarm finds the intruder by RF alone.** `tools/ablate_intruder.py --seed 1000 --runs 40 --jobs 8` (Oct 23) takes the 37 held-out worlds whose intruder has an RF link and runs each as generated, without the intruder's RF, and without its sound (0 dB):
+
+  | Arm | Confirmed | t_confirm s | Flights | loc_err m | radial m | tangential m | Runs with a Suspicion |
+  |---|---|---|---|---|---|---|---|
+  | sound + RF | 34/47 | 148 | 29 | 201 | 115 | 92 | 37/37 |
+  | no RF | 0/47 | 360 | 0 | - | - | - | 0/37 |
+  | no sound | 37/47 | 139 | 27 | 181 | 115 | 87 | 37/37 |
+
+  Without RF no drone ever holds a drone Suspicion, so nobody flies; the five worlds generated without RF (1006, 1007, 1032, 1042, 1043) behave the same. Without the intruder's sound nothing gets worse. The radial/tangential split was meant to show sound bearings narrowing the RF ring across; they do not, here. Likely cause, not yet checked: an 82 dB drone at 40 dB background is heard out to roughly 100 m, less than the spacing of the perched drones, so two bearings rarely cross. Muc and the Reserve are not measured.
 - **915 MHz range.** 30 dBm against a -105 dBm floor detects at about 50 km line of sight, 8 km through buildings; commercial sensors reach 1-5 km.
 - **LoRa settings.** 500 kHz bandwidth at 10 % duty cycle is not legal in EU868 (1 % at 25 mW; the 10 % sub-band is 250 kHz wide). It is fine under US FCC 15.247.
 - **Camera range.** The stand-in sees 100 m with 90 % detection; the measured YOLO range on 1280x768 frames is about 30-60 m (section 2). The twin2d run of `muc_full` therefore still uses the optimistic stand-in.
