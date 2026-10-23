@@ -17,7 +17,7 @@ Read before changing code:
 - Simulators sit behind the Backend seam (`earshot/backend/`): `twin2d` (fast mode, eval, tune), `webots` (the demo, and the only backend whose images feed YOLO), `gazebo` (alternative renderer, ADR 0008), picked by `--backend`. Nothing above the seam may know which one runs.
 - A model that cannot load (no torch or ultralytics, missing weights) is reported and replaced by its stand-in; a run never stops for it.
 - Judge behaviour changes with `uv run earshot eval` over seeds, one change at a time; a single run is noise. Tuned sets from `earshot tune` live in `scenarios/params/` and load only with `--params`; a tuned set replaces the code defaults only if it misses no more drones on held-out seeds.
-- `prototype` is the working branch (it contains `main` and `integrate`). Anything new built before Oct 24 gets a line in DECLARATION.md.
+- `main` holds the current working version of everything, judged logic included; finished work merges back into it. Anything new built before Oct 24 gets a line in DECLARATION.md.
 - Generated Webots worlds may use EXTERNPROTOs (ADR 0005 superseded: the venue has WLAN); open each world once online so Webots caches them. Keep DEF names `DRONE_<id>`, `SRC_<id>`, `RIG`.
 
 ## Verify
