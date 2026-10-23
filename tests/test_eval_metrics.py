@@ -17,11 +17,12 @@ def _drone(id_, start, x, y):
     return {"id": id_, "cls": "DRONE", "start": start, "end": DURATION, "path": [[x, y]]}
 
 
-def _run(events=(), truth=None, jams=None, spread=None) -> RunResult:
+def _run(events=(), truth=None, jams=None, spread=None, listeners=None) -> RunResult:
     truth = truth if truth is not None else [_drone("a", 10.0, 0.0, 0.0),
                                              _drone("b", 50.0, 1000.0, 0.0)]
     return RunResult("synthetic", 7, 0, {"channel_load": 0.1, "delivered": 9, "collided": 1},
-                     {}, list(events), truth, {0: 0.9}, 1, spread or [], jams or [])
+                     {}, list(events), truth, {0: 0.9}, 1, spread or [], jams or [],
+                     listeners=listeners or [])
 
 
 def _ev(kind, t, x, y):
@@ -120,3 +121,24 @@ def test_parallel_eval_matches_serial():
     serial = evaluate(scenario, 2, 3, "earshot", duration=90.0)
     parallel = evaluate(scenario, 2, 3, "earshot", jobs=2, duration=90.0)
     assert [asdict(r) for r in serial] == [asdict(r) for r in parallel]
+
+
+def test_loc_err_splits_into_range_and_bearing_seen_from_the_nearest_listener():
+    # listener due south of drone a: an error of (30, 40) is 40 m in range, 30 m in bearing;
+    # the far listener and the one that only perches after the dispatch do not count
+    listeners = [(0.0, [(0.0, -500.0), (5000.0, 5000.0)]), (25.0, [(-500.0, 0.0)])]
+    m = metrics(_run([_ev("dispatch", 20.0, 30.0, 40.0)], listeners=listeners),
+                "earshot", DURATION)
+    assert m.loc_err == pytest.approx(50.0)
+    assert m.loc_radial == pytest.approx(40.0) and m.loc_tangential == pytest.approx(30.0)
+    row = summarize([m])
+    assert row["loc_radial_m"].startswith("40.0") and row["loc_tangential_m"].startswith("30.0")
+
+
+def test_loc_err_split_needs_a_listener_and_a_drone_in_the_air():
+    nobody = metrics(_run([_ev("dispatch", 20.0, 30.0, 40.0)]), "earshot", DURATION)
+    early = metrics(_run([_ev("dispatch", 5.0, 30.0, 40.0)], listeners=[(0.0, [(0.0, -500.0)])]),
+                    "earshot", DURATION)
+    for m in (nobody, early):
+        assert m.loc_radial is None and m.loc_tangential is None
+    assert summarize([nobody])["loc_radial_m"] == "-"

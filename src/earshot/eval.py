@@ -14,6 +14,12 @@ drones at the airport, the poachers' vehicles in a Reserve:
     drones         drone Sources in the run; confirmed: how many of them were confirmed
     loc_err        median over all Verifier dispatches of m from the dispatch target to the
                    nearest drone Source in the air (inf if none was); None: no dispatch
+    loc_radial     loc_err split in the frame of the listening drone nearest that Source: the
+    loc_tangential median of |error| along the line from it to the Source (range) and across
+                   it (bearing). Bearings (sound) should shrink the tangential part, RF's
+                   range ring the radial part. Medians of each part, so they do not add up to
+                   loc_err; dispatches with no drone Source in the air or no listener are left
+                   out. None: no such dispatch
     false_verify   Verifier dispatches with no drone Source within FALSE_RADIUS
     missed         drone Sources never confirmed
     busy_max       most drones away from their default post at once (the Gap)
@@ -27,6 +33,7 @@ drones at the airport, the poachers' vehicles in a Reserve:
 
 from __future__ import annotations
 
+import bisect
 import math
 import statistics
 from concurrent.futures import ProcessPoolExecutor
@@ -60,6 +67,8 @@ class RunMetrics:
     drones: int = 0
     confirmed: int = 0
     agreed: bool | None = None
+    loc_radial: float | None = None
+    loc_tangential: float | None = None
     t_confirm_each: list = field(default_factory=list)  # per drone Source, None: never
     t_dispatch_each: list = field(default_factory=list)
 
@@ -82,6 +91,28 @@ def _nearest_intruder(sources, x, y, t) -> float:
     return min(d, default=math.inf)
 
 
+def _split(sources, listeners, e) -> tuple[float, float] | None:
+    """(radial, tangential) |error| of dispatch `e` to the nearest drone Source in the air, in
+    the frame of the drone in Listen nearest that Source at the last second before `e`:
+    radial along the line from that drone to the Source, tangential across it. None: no
+    drone Source in the air, nobody listening, or the listener sits on the Source."""
+    pos = [p for s in sources if s.intruder for p in [s.position(e["t"])] if p is not None]
+    if not pos or not listeners:
+        return None
+    tx, ty = min(pos, key=lambda p: math.hypot(p[0] - e["x"], p[1] - e["y"]))[:2]
+    i = bisect.bisect_right([t for t, _ in listeners], e["t"]) - 1
+    heard = listeners[i][1] if i >= 0 else []
+    if not heard:
+        return None
+    sx, sy = min(heard, key=lambda q: math.hypot(q[0] - tx, q[1] - ty))
+    r = math.hypot(tx - sx, ty - sy)
+    if r == 0.0:
+        return None
+    ux, uy = (tx - sx) / r, (ty - sy) / r
+    ex, ey = e["x"] - tx, e["y"] - ty
+    return abs(ex * ux + ey * uy), abs(ey * ux - ex * uy)
+
+
 def _first(events, s: Source, radius: float) -> float | None:
     """s from `s` appearing to the first event within `radius` of it, or None."""
     hits = [e["t"] for e in events if e["t"] >= s.start
@@ -100,6 +131,7 @@ def metrics(r: RunResult, policy: str, duration: float) -> RunMetrics:
     t_conf = [_first(confirms, s, CONFIRM_MATCH) for s in drones]
     t_disp = [_first(dispatches, s, FALSE_RADIUS) for s in drones]
     errs = [_nearest_intruder(sources, e["x"], e["y"], e["t"]) for e in dispatches]
+    splits = [x for e in dispatches if (x := _split(sources, r.listeners, e)) is not None]
     t_agree, agreed = _time_to_agree(r, duration)
     confirmed = sum(t is not None for t in t_conf)
     return RunMetrics(
@@ -107,6 +139,8 @@ def metrics(r: RunResult, policy: str, duration: float) -> RunMetrics:
         t_confirm=censored_mean(t_conf, duration),
         t_dispatch=censored_mean(t_disp, duration),
         loc_err=statistics.median(errs) if errs else None,
+        loc_radial=statistics.median(x[0] for x in splits) if splits else None,
+        loc_tangential=statistics.median(x[1] for x in splits) if splits else None,
         false_verify=sum(1 for d in errs if d > FALSE_RADIUS),
         verify_flights=len(dispatches),
         missed=len(drones) - confirmed,
@@ -197,7 +231,8 @@ def summarize(rows: list[RunMetrics], label: str | None = None) -> dict:
     Source, no jam). Counts beside them:
         confirmed    drone Sources confirmed / drone Sources, summed over runs
         agreed       jammed runs whose drones agreed again / jammed runs
-    loc_err_m is the median per run over all Verifier dispatches (see metrics)."""
+    loc_err_m is the median per run over all Verifier dispatches, loc_radial_m and
+    loc_tangential_m its range and bearing parts (see metrics)."""
     def stat(vals):
         vals = [v for v in vals if v is not None]
         if not vals:
@@ -213,6 +248,8 @@ def summarize(rows: list[RunMetrics], label: str | None = None) -> dict:
         "t_dispatch_s": stat([r.t_dispatch for r in rows]),
         "t_confirm_s": stat([r.t_confirm for r in rows]),
         "loc_err_m": stat([r.loc_err for r in rows]),
+        "loc_radial_m": stat([r.loc_radial for r in rows]),
+        "loc_tangential_m": stat([r.loc_tangential for r in rows]),
         "false_verify": stat([r.false_verify for r in rows]),
         "verify_flights": stat([r.verify_flights for r in rows]),
         "missed": stat([r.missed for r in rows]),

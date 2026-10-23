@@ -17,6 +17,7 @@ from earshot import config
 from earshot.agent import Agent
 from earshot.backend.twin2d import Kinematics, Twin2D
 from earshot.city import City
+from earshot.messages import Mode
 from earshot.radio.medium import RadioConfig, RadioMedium
 from earshot.scenario import Scenario
 from earshot.state import PolicyParams, SwarmConfig
@@ -38,6 +39,7 @@ class RunResult:
     spread: list = None  # per second: (t, max distance between drones' top Suspicion | None)
     jams: list = None  # [(start, end)] of the run's jam zones
     threats: list = None  # the Threat Log's entries (threat_log.ThreatLog)
+    listeners: list = None  # per second: (t, [(x, y)] of the drones in Listen)
 
 
 def build(scenario: Scenario, root: Path = Path("."), audio=None):
@@ -76,6 +78,7 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
     events: list[dict] = []
     busy_max = 0
     spread: list[tuple[float, float | None]] = []
+    listeners: list[tuple[float, list[tuple[float, float]]]] = []
     with (
         open(log, "w") if log else contextlib.nullcontext() as fh,
         open(det_log, "w") if det_log else contextlib.nullcontext() as dh,
@@ -98,6 +101,9 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
                                          if tm.get("task") and tm["task"]["settled"]))
             if i % log_every == 0:
                 spread.append((round(t, 1), _spread(agents)))
+                listeners.append((round(t, 1), [(round(s.x, 1), round(s.y, 1))
+                                                for s in world.states.values()
+                                                if s.mode == Mode.LISTEN]))
             if audio_out is not None:
                 audio_out.add(world.audio)
             if dh:
@@ -118,7 +124,8 @@ def run(scenario: Scenario, log: Path | None = None, root: Path = Path("."),
     battery = {d: round(st.battery, 4) for d, st in world.states.items()}
     jams = [(j.start, j.end) for j in scenario.jamming]
     return RunResult(scenario.name, scenario.seed, steps, radio.stats(), _strip(telemetry),
-                     events, truth, battery, busy_max, spread, jams, threats.entries())
+                     events, truth, battery, busy_max, spread, jams, threats.entries(),
+                     listeners)
 
 
 def _spread(agents) -> float | None:

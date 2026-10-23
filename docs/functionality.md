@@ -190,6 +190,7 @@ Quantisation: positions 1 m, Observation bearing 0.044°, bearing σ 0.5°, prob
 - `t_dispatch`: the same for the first Verify dispatch within 150 m.
 - `confirmed` / `missed`: drone Sources confirmed / never confirmed.
 - `loc_err`: median over all dispatches of the distance to the nearest drone Source in the air.
+- `loc_radial` / `loc_tangential`: `loc_err` split in the frame of the drone in Listen nearest that Source (`_split`): the error along the line from it to the Source (range) and across it (bearing), medians of each. Sound bearings should shrink the tangential part, RF's range ring the radial part. Dispatches with no drone in the air or no listener are left out. Random worlds 1000-1019, default params: radial 133 m, tangential 104 m (loc_err 200 m).
 - `false_verify`: dispatches with no drone Source within 150 m. `verify_flights`: all dispatches.
 - `busy_max`: most drones away from their post at once (the Gap).
 - `load`, `clean_rx`: channel load; delivered / (delivered + collided).
