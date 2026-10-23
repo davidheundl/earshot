@@ -51,7 +51,8 @@ def build(scenario: Scenario, root: Path = Path("."), audio=None):
                                    scenario.radio.get("scheme", "ours"), scenario.map_cell,
                                    PolicyParams.from_dict(scenario.params), scenario.threat,
                                    float(scenario.radio.get("relay_radius_m", "inf")))
-    agents = {d.id: Agent(d.id, city, config.KEY, swarm) for d in scenario.drones}
+    agents = {d.id: Agent(d.id, city, config.KEY, swarm, heatmap=False)  # no dashboard here
+              for d in scenario.drones}
     return city, world, radio, agents
 
 

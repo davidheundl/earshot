@@ -1,7 +1,7 @@
 """Agent: the whole brain of one drone. Pure and tick-driven (ADR 0001).
 
 Interface:
-    agent = Agent(me, city, key, swarm)
+    agent = Agent(me, city, key, swarm, heatmap=True)
     out = agent.step(t, sensed, inbox)     -> StepOut(command, outbox, telemetry, events)
 
 `inbox` holds (frame, margin_db) pairs the radio delivered since the last step; `outbox` holds
@@ -64,8 +64,11 @@ class StepOut:
 
 
 class Agent:
-    def __init__(self, me: int, city: City, key: bytes, swarm: SwarmConfig):
+    def __init__(self, me: int, city: City, key: bytes, swarm: SwarmConfig,
+                 heatmap: bool = True):
+        """`heatmap`: put the map image in telemetry (the dashboard's); lockstep runs have none."""
         self.me = me
+        self.with_heatmap = heatmap
         self.key = key
         self.city = city
         self.scheme = swarm.radio_scheme
@@ -137,7 +140,8 @@ class Agent:
                  "support": [list(e) for e in tr.support]}
                 for tr in self._tracks
             ]
-            self._heatmap = self.belief.heatmap()
+            if self.with_heatmap:
+                self._heatmap = self.belief.heatmap()
             self._broadcast_tracks(t, outbox)
 
         # 4. decide
