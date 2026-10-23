@@ -89,8 +89,6 @@ class StoreStats:
     duplicates: int = 0
     bad: int = 0
     forwarded: int = 0
-    cancelled: int = 0
-    requested: int = 0
     resent: int = 0
     by_origin: dict = field(default_factory=dict)  # origin -> highest seq seen
 
@@ -186,7 +184,6 @@ class MessageStore:
         mtype, origin, _ = k
         if k in self._pending:  # someone else relayed or resent it first: stand down
             del self._pending[k]
-            self.stats.cancelled += 1
         if origin == self.me:
             return None
         if MsgType(mtype) not in STORED_TYPES:
@@ -259,7 +256,6 @@ class MessageStore:
                 gap = REQUEST_WINDOW if mine is None else (theirs - mine) % SEQ_MOD
                 lo = (theirs - min(gap, REQUEST_WINDOW) + 1) % SEQ_MOD
                 out.append((origin, lo, theirs))
-                self.stats.requested += 1
         return out
 
     def on_request(self, r: Request, t: float) -> None:

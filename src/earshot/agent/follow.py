@@ -80,14 +80,14 @@ class Quarry:
             self._last_ranged = t
         return True
 
-    def track(self, t: float, x: float, y: float) -> bool:
+    def track(self, t: float, x: float, y: float) -> None:
         self.last_seen = t
         if self._track_xy == (x, y):
-            return False  # the same extraction again: no new information
+            return  # the same extraction again: no new information
         self._track_xy = (x, y)
         if self._last_ranged is not None and t - self._last_ranged < CAMERA_FRESH:
-            return False  # the camera ranges it: the swarm's point adds only its error
-        return self._update(t, x, y, TRACK_GAINS)
+            return  # the camera ranges it: the swarm's point adds only its error
+        self._update(t, x, y, TRACK_GAINS)
 
     def guide(self, t: float, x: float, y: float) -> None:
         """The demo mock's true position: taken as it is, velocity from the last one."""

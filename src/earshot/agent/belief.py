@@ -289,12 +289,10 @@ class Belief:
         # (x, y, t_seen, t_moved): last camera sighting (the hold) and last move (the speed cap)
         self._confirmed: list[tuple[float, float, float, float]] = []
         self.faulty: set[int] = set()
-        self.last_sound: dict[int, Evidence] = {}  # origin -> newest sound bearing
         self._fused: list[tuple[float, int, str]] = []  # (t, origin, family) for the dashboard
         self._recent_sound: dict[int, list[Evidence]] = {}  # origin -> bearings in window
         self._fault_streak: dict[int, int] = {}
         self._track_cache: list[TrackEst] = []  # last extracted Tracks, for check_faults
-        self._fault_stats: dict[int, list[int]] = {}  # origin -> [checked, unconfirmed]
         self._post: tuple[tuple, np.ndarray] | None = None  # (stamp, posterior) cache
         self.n_evidence = 0
         self._summary: tuple[tuple, dict] | None = None
@@ -376,9 +374,6 @@ class Belief:
         self._newest[key] = max(self._newest.get(key, ev.t), ev.t)
         if ev.sensor == Sensor.SOUND:
             self._sound(ev, g, wgt, w)
-            last = self.last_sound.get(ev.origin)
-            if last is None or ev.t >= last.t:
-                self.last_sound[ev.origin] = ev
             self._recent_sound.setdefault(ev.origin, []).append(ev)
         elif ev.sensor == Sensor.SHOT:
             self._sound(ev, g, wgt, w)
@@ -557,12 +552,11 @@ class Belief:
         denom = e.sum(axis=0) + nothing
         return np.concatenate([e / denom, (nothing / denom)[None]], axis=0)
 
-    def confirmed_near(self, x: float, y: float, t_now: float, radius=None,
-                       hold=CONFIRM_HOLD) -> bool:
-        """Is a confirmed point within `radius`? Points the camera has not seen for `hold`
+    def confirmed_near(self, x: float, y: float, t_now: float, radius=None) -> bool:
+        """Is a confirmed point within `radius`? Points the camera has not seen for CONFIRM_HOLD
         seconds expire first."""
         radius = CONFIRM_RADIUS if radius is None else radius
-        self._confirmed = [c for c in self._confirmed if t_now - c[2] < hold]
+        self._confirmed = [c for c in self._confirmed if t_now - c[2] < CONFIRM_HOLD]
         return any(math.hypot(c[0] - x, c[1] - y) <= radius for c in self._confirmed)
 
     # -- Faulty Sensor --------------------------------------------------------------------
@@ -750,14 +744,13 @@ class Belief:
             return TrackStatus.EXPLAINED
         return TrackStatus.SUSPECTED
 
-    def received_tracks(self, t_now: float, max_age: float = RX_MAX_AGE) -> list[Track]:
+    def received_tracks(self, t_now: float) -> list[Track]:
         """Each origin's current Tracks, by origin then arrival; older ones are pruned."""
         for o in list(self._tracks_rx):
             self._tracks_rx[o] = [tr for tr in self._tracks_rx[o] if t_now - tr.t <= RX_MAX_AGE]
             if not self._tracks_rx[o]:
                 del self._tracks_rx[o]
-        return [tr for o in sorted(self._tracks_rx) for tr in self._tracks_rx[o]
-                if t_now - tr.t <= max_age]
+        return [tr for o in sorted(self._tracks_rx) for tr in self._tracks_rx[o]]
 
     # -- dashboard ------------------------------------------------------------------------
 
