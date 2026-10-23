@@ -1,4 +1,5 @@
-"""Backend seam: where drone bodies live. Two adapters: the 2D twin and Webots.
+"""Backend seam: where drone bodies live. Three adapters: the 2D twin, Webots
+and Gazebo (ADR 0008).
 
 Interface (everything a caller must know):
 
@@ -12,7 +13,7 @@ Interface (everything a caller must know):
         rendering backend may also offer camera_image() for the dashboard preview.
     backend.close()
 
-Both adapters read the same City, so Perch Site ids and coordinates agree.
+All adapters read the same City, so Perch Site ids and coordinates agree.
 """
 
 from __future__ import annotations

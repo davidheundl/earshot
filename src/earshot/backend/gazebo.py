@@ -38,6 +38,7 @@ from earshot.backend.webots import (
     TRAIN_WAGONS,
     VIEW_KEEPALIVE_S,
     WAGON_PITCH,
+    _yaw,
     def_names,
     live_slot,
 )
@@ -63,11 +64,6 @@ VERIFY_RATE = 5
 CAMV_PITCH = 14.0  # degrees down from the Verifier's heading
 
 
-def _yaw(heading_deg: float) -> float:
-    """Compass heading (0 = north, clockwise) -> rotation about +z from +x (counter-clockwise)."""
-    return math.radians(90.0 - heading_deg)
-
-
 def pose(x: float, y: float, z: float, heading: float = 0.0, pitch_down: float = 0.0) -> list:
     """[x, y, z, roll, pitch, yaw] for the bridge. A positive pitch about +y tilts +x down."""
     return [x, y, z, 0.0, math.radians(pitch_down), _yaw(heading)]
@@ -81,7 +77,7 @@ class BridgeLink:
 
         from earshot.runners.wire import pack, unpack
 
-        self._pack, self._unpack, self._zmq = pack, unpack, zmq
+        self._pack, self._unpack = pack, unpack
         self.ctx = zmq.Context.instance()
         self.ctx.setsockopt(zmq.LINGER, 0)
         self.sock = self.ctx.socket(zmq.REQ)
@@ -192,8 +188,6 @@ class GazeboBackend:
         sensors = (["verify", "preview"] if self._verifier is not None else []) + (
             [f"view{k}" for k in range(N_VIEWS)] if views_on else [])
         rep = self.link.call({"op": "step", "frames": frames, "sensors": sensors})
-        if rep.get("quit"):
-            raise SystemExit("Gazebo quit")
         self._objects = [CLASS_OF_LABEL[lb] for lb in rep.get("labels", []) if lb in CLASS_OF_LABEL]
         return states
 
