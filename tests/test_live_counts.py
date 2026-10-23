@@ -98,7 +98,8 @@ def test_webots_view_jpegs_come_from_the_encoder_thread_newest_first():
     from earshot.backend.webots import _Encoder
 
     enc = _Encoder()
-    grabbed = lambda shade: (bytes([shade, 0, 0, 255]) * 16 * 8, 16, 8, 1.0, 3, "pilot", 10.0)
+    meta = {"drone": 3, "mode": "pilot", "fov": 1.0, "yaw": 90.0, "pitch": 10.0, "boxes": []}
+    grabbed = lambda shade: (bytes([shade, 0, 0, 255]) * 16 * 8, 16, 8, meta)
     enc.submit({0: grabbed(10), 1: grabbed(20)}, 72)
     enc.submit({0: grabbed(30)}, 72)  # replaces camera 0's image if not yet encoded
     frames = {}
@@ -109,3 +110,20 @@ def test_webots_view_jpegs_come_from_the_encoder_thread_newest_first():
         time.sleep(0.01)
     assert set(frames) == {0, 1} and frames[0]["jpeg"][:3] == b"\xff\xd8\xff"
     assert frames[1]["drone"] == 3 and frames[1]["w"] == 16 and enc.take() == {}
+    assert frames[1]["yaw"] == 90.0 and frames[1]["boxes"] == []
+
+
+def test_webots_view_boxes_are_the_sources_the_view_camera_recognises():
+    from types import SimpleNamespace
+
+    from earshot.backend.webots import WebotsBackend
+
+    def seen(oid, centre, size):
+        return SimpleNamespace(getId=lambda: oid, getPositionOnImage=lambda: centre,
+                               getSizeOnImage=lambda: size)
+
+    b = object.__new__(WebotsBackend)
+    b._seen = {7: "DRONE", 8: None}  # 8: a recognisable Solid that is no Source
+    cam = SimpleNamespace(getRecognitionObjects=lambda: [seen(7, [100, 50], [20, 10]),
+                                                         seen(8, [5, 5], [4, 4])])
+    assert b._boxes(cam) == [{"cls": "DRONE", "x": 90, "y": 45, "w": 20, "h": 10}]

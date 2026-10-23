@@ -139,13 +139,11 @@ class _Encoder:
                 while not self._jobs:
                     self._cv.wait()
                 jobs, self._jobs = self._jobs, {}
-            for k, ((raw, w, h, fov, drone, mode, pitch), quality) in jobs.items():
+            for k, ((raw, w, h, meta), quality) in jobs.items():
                 img = Image.frombuffer("RGBA", (w, h), raw, "raw", "BGRA", 0, 1).convert("RGB")
                 buf = io.BytesIO()
                 img.save(buf, "JPEG", quality=quality)
-                frame = {"drone": drone, "mode": mode, "w": w, "h": h,
-                         "fov": fov, "pitch": pitch,  # for the HUD
-                         "jpeg": buf.getvalue()}
+                frame = {**meta, "w": w, "h": h, "jpeg": buf.getvalue()}
                 with self._cv:
                     self._done[k] = frame
 
@@ -191,6 +189,7 @@ class WebotsBackend:
         self._views_on = False
         self._view_yaw: dict[int, float] = {}
         self._view_pitch: dict[int, float] = {}  # degrees down, so a HUD can draw the horizon
+        self._view_shown: dict[int, tuple] = {}  # (yaw, pitch) the last rendered image had
         self._due: float | None = None  # wall-clock deadline of the next basic step
         self._quit = False  # Webots went away: the twin alone carries on
         self._open = False  # a basic step is running in Webots (stepBegin without stepEnd)
@@ -222,7 +221,9 @@ class WebotsBackend:
                 self.views[k] = [did, mode]
 
     def view_frames(self, which: list[int], quality: int = 72) -> dict[int, dict]:
-        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, pitch, jpeg}}.
+        """JPEG frames of the given view cameras: {k: {drone, mode, w, h, fov, yaw, pitch,
+        boxes, jpeg}}; `boxes` are the Sources the camera recognises in that image, as
+        {cls, x, y, w, h} (pixels, x and y the top-left corner).
         The images grabbed this tick go to the encoder thread; returned are the frames it
         finished since the last call (a tick late, none while it is busy)."""
         if self._quit:
@@ -241,10 +242,16 @@ class WebotsBackend:
             for k, (cam, _) in enumerate(self._view_cams):
                 if on:
                     cam.enable(VIEW_PERIOD_MS[k])
+                    if cam.hasRecognition():  # the boxes; an older world has none
+                        cam.recognitionEnable(VIEW_PERIOD_MS[k])
                 else:
                     cam.disable()
+                    if cam.hasRecognition():
+                        cam.recognitionDisable()
         if not on:
             return
+        # the image read before the next step was rendered with the pose set before this one
+        self._view_shown = {k: (self._view_yaw[k], self._view_pitch[k]) for k in self._view_yaw}
         for k, (cam, node) in enumerate(self._view_cams):
             did, mode = self.views[k]
             s = states.get(did)
@@ -333,8 +340,11 @@ class WebotsBackend:
                 raw = _image(cam)
                 if raw:
                     did, mode = self.views[k]
-                    g["views"][k] = (raw, cam.getWidth(), cam.getHeight(), cam.getFov(),
-                                     did, mode, self._view_pitch.get(k, 0.0))
+                    yaw, pitch = self._view_shown.get(k, (None, 0.0))
+                    g["views"][k] = (raw, cam.getWidth(), cam.getHeight(), {
+                        "drone": did, "mode": mode, "fov": cam.getFov(), "yaw": yaw,
+                        "pitch": pitch,  # for the HUD
+                        "boxes": self._boxes(cam) if cam.hasRecognition() else []})
         self._grabbed = g
 
     def _verify_image(self) -> bytes | None:
@@ -433,20 +443,30 @@ class WebotsBackend:
             self._written[id(field)] = value
             field.setSFRotation(value)
 
+    def _source_class(self, oid: int) -> str | None:
+        """The Source class of a recognised object: its node -> nearest SRC_ ancestor."""
+        if oid not in self._seen:  # node lookup and parent walk once per object
+            node = self.sup.getFromId(oid)
+            while node is not None and not (node.getDef() or "").startswith("SRC_"):
+                node = node.getParentNode()
+            self._seen[oid] = (None if node is None
+                               else self._def_class.get(re.sub(r"_w\d+$", "", node.getDef())))
+        return self._seen[oid]
+
     def _recognised(self) -> list[str]:
-        """Class names of the Sources in view: object -> its node -> nearest SRC_ ancestor."""
+        """Class names of the Sources the Verifier camera sees."""
+        return [cls for o in self.camera.getRecognitionObjects()
+                if (cls := self._source_class(o.getId()))]
+
+    def _boxes(self, cam) -> list[dict]:
+        """The Sources a view camera recognises, as boxes on its image: what Webots frames in
+        red in its own camera window."""
         out = []
-        for o in self.camera.getRecognitionObjects():
-            oid = o.getId()
-            if oid not in self._seen:  # node lookup and parent walk once per object
-                node = self.sup.getFromId(oid)
-                while node is not None and not (node.getDef() or "").startswith("SRC_"):
-                    node = node.getParentNode()
-                self._seen[oid] = (None if node is None
-                                   else self._def_class.get(re.sub(r"_w\d+$", "", node.getDef())))
-            cls = self._seen[oid]
+        for o in cam.getRecognitionObjects():
+            cls = self._source_class(o.getId())
             if cls:
-                out.append(cls)
+                (x, y), (w, h) = o.getPositionOnImage(), o.getSizeOnImage()  # x, y: the centre
+                out.append({"cls": cls, "x": x - w // 2, "y": y - h // 2, "w": w, "h": h})
         return out
 
     def _push(self, states: dict[int, DroneState]) -> None:
