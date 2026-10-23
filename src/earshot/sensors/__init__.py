@@ -383,7 +383,7 @@ def build_perception(scenario: Scenario, *, classifier: str | None = None,
     if clf_spec:
         try:
             clf = wf.load_classifier(clf_spec)
-        except (ImportError, OSError, RuntimeError, AttributeError) as e:
+        except Exception as e:  # noqa: BLE001 - a head for other classes too: never a dead World
             log(f"[sensors] sound classifier {clf_spec} unavailable ({e}); CONFUSION stand-in")
     snd = None
     if audio or clf is not None:

@@ -1,6 +1,8 @@
 """Which trained models a run uses: the Scenario's `audio:` and `camera:`, the command line over
 them, and a stand-in (never a crash) when a model cannot load."""
 
+import sys
+import types
 from pathlib import Path
 
 from earshot.backend.twin2d import Kinematics
@@ -46,6 +48,20 @@ def test_a_classifier_that_cannot_load_falls_back_with_a_message():
                                   log=said.append)
     assert audio is None and cam is None
     assert "CONFUSION stand-in" in said[0]
+
+
+def test_a_classifier_that_fails_to_build_falls_back_too(monkeypatch):
+    class Broken:  # as classifier.Head with a checkpoint trained on other fine classes
+        def __init__(self):
+            raise ValueError("trained on other classes")
+
+    mod = types.ModuleType("broken_clf")
+    mod.Broken = Broken
+    monkeypatch.setitem(sys.modules, "broken_clf", mod)
+    said = []
+    audio, _ = build_perception(load("demo.yaml", audio={"classifier": "broken_clf:Broken"}),
+                                log=said.append)
+    assert audio is None and "CONFUSION stand-in" in said[0]
 
 
 def test_command_line_turns_the_scenario_models_off():
