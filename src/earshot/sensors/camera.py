@@ -55,13 +55,18 @@ class CameraVerdict:
     others: tuple[str, ...] = ()  # harmless labels seen this window (classes -> nothing)
 
 
+def _focal(frame: dict) -> float:
+    """Focal length in pixels of a frame `w` pixels wide with horizontal field of view `fov`."""
+    return frame["w"] / (2.0 * math.tan(frame["fov"] / 2.0))
+
+
 def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, float]:
     """Bearing (deg, 0 = north, clockwise) and sigma of a box centre in a camera pitched down.
 
     Camera axes: x right, y down, z forward; `fov` is horizontal (Webots fieldOfView, rad),
     `pitch` positive down (rad), `yaw` the camera heading in degrees."""
     w, h = frame["w"], frame["h"]
-    f = w / (2.0 * math.tan(frame["fov"] / 2.0))
+    f = _focal(frame)
     xc, yc = (cx - w / 2.0) / f, (cy - h / 2.0) / f
     p = frame.get("pitch", 0.0)
     off = math.degrees(math.atan2(xc, math.cos(p) - yc * math.sin(p)))
@@ -71,8 +76,7 @@ def box_bearing(cx: float, cy: float, bw: float, frame: dict) -> tuple[float, fl
 
 def box_range(bw: float, frame: dict, span: float = DRONE_SPAN_M) -> float:
     """Metres to an object `span` metres wide whose box is `bw` pixels wide."""
-    f = frame["w"] / (2.0 * math.tan(frame["fov"] / 2.0))
-    return span * f / max(bw, 1.0)
+    return span * _focal(frame) / max(bw, 1.0)
 
 
 def ground_range(cx: float, by: float, frame: dict) -> float:
@@ -83,7 +87,7 @@ def ground_range(cx: float, by: float, frame: dict) -> float:
     if not height or height <= 0:
         return 0.0
     w, h = frame["w"], frame["h"]
-    f = w / (2.0 * math.tan(frame["fov"] / 2.0))
+    f = _focal(frame)
     xc, yc = (cx - w / 2.0) / f, (by - h / 2.0) / f
     p = frame.get("pitch", 0.0)
     ahead, down = math.cos(p) - yc * math.sin(p), math.sin(p) + yc * math.cos(p)

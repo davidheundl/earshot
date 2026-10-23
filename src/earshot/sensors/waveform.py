@@ -36,10 +36,10 @@ from typing import Protocol
 import numpy as np
 
 from earshot.messages import TargetClass
+from earshot.sensors.acoustics import SPEED_OF_SOUND
 
 SR = 16000  # Hz, the arrays' native rate (audio/array.py)
 FULL_SCALE_DB = 110.0  # dB(A) of a signal with RMS 1.0
-SPEED_OF_SOUND = 343.0
 LOOP_S = 10.0  # length of each synthetic loop
 SYNTH_VARIANTS = 3  # synthetic loops per class, so two drones do not sound identical
 MASKING_OFFSET_DB = 6.0  # other sources raise the floor, partly separable in frequency (beam)
@@ -53,6 +53,12 @@ class Classifier(Protocol):
     probabilities indexed by TargetClass (DRONE, VEHICLE, TRAIN, NOTHING), summing to 1."""
 
     def classify(self, audio: np.ndarray, sr: int) -> tuple[float, float, float, float]: ...
+
+
+def class_probs(raw) -> tuple[float, float, float, float]:
+    """A classifier's output as probabilities: negatives clipped, normalised, uniform if empty."""
+    p = np.clip(np.asarray(raw, float), 0.0, None)
+    return tuple(p / p.sum()) if p.sum() > 0 else (0.25,) * 4  # type: ignore[return-value]
 
 
 def load_classifier(spec: str) -> Classifier:

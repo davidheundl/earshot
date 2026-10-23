@@ -25,6 +25,7 @@ from earshot.audio.doa import (
     respeaker_v2_geometry,
 )
 from earshot.messages import Sensor
+from earshot.sensors.waveform import class_probs
 from earshot.state import SensorReading
 
 BEARING_SIGMA = 5.0  # degrees above 1 kHz (concept 5.1)
@@ -90,9 +91,7 @@ class ArraySensor:
         scan: list = []
         bearing, power = estimate_bearing(block, self.fs, self.mics, self.rotation_deg, scan=scan)
         if self.classifier is not None:
-            p = np.clip(np.asarray(self.classifier.classify(block.mean(axis=0), self.fs), float),
-                        0.0, None)
-            probs = tuple(p / p.sum()) if p.sum() > 0 else (0.25,) * 4
+            probs = class_probs(self.classifier.classify(block.mean(axis=0), self.fs))
         else:
             probs = coarse_class_probs(block, self.fs)
         self.diagnostics.update(scan=scan, bearing=round(bearing, 1), power=round(power, 2),

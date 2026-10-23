@@ -74,9 +74,7 @@ class Audio:
     classifier: wf.Classifier | None = None
 
     def classify(self, win: wf.AudioWindow, i: int) -> tuple[float, float, float, float]:
-        p = np.clip(np.asarray(self.classifier.classify(self.mixer.beam(win, i), wf.SR),
-                               float), 0.0, None)
-        return tuple(p / p.sum()) if p.sum() > 0 else (0.25,) * 4  # type: ignore[return-value]
+        return wf.class_probs(self.classifier.classify(self.mixer.beam(win, i), wf.SR))
 
 
 @dataclass(frozen=True)
@@ -164,7 +162,8 @@ class SensorSuite:
         levels = []
         for (src, (sx, sy)), nb in zip(sources, nbs, strict=True):
             d = math.hypot(sx - s.x, sy - s.y)
-            levels.append((src, sx, sy, ac.received_level(src.level_db, src.cls, d, nb)))
+            brg = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
+            levels.append((src, d, brg, ac.received_level(src.level_db, src.cls, d, nb)))
         ego = ac.ego_noise(s.motor_rpm, env.ego_filter, env.ego_filter_db)
         noises = []
         for i in range(len(levels)):
@@ -174,19 +173,17 @@ class SensorSuite:
         win = None
         if self.audio is not None:
             win = self.audio.mixer.window(s.id, t, [
-                wf.Part(src.id, src.cls, lp, math.hypot(sx - s.x, sy - s.y), nb,
-                        math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0, snr)
-                for (src, sx, sy, lp), nb, snr in zip(levels, nbs, snrs, strict=True)
+                wf.Part(src.id, src.cls, lp, d, nb, brg, snr)
+                for (src, d, brg, lp), nb, snr in zip(levels, nbs, snrs, strict=True)
             ], ego, env.background_db)
             self.windows.append(win)
 
         out = []
-        for i, (src, sx, sy, lp) in enumerate(levels):
+        for i, (src, _, true_b, lp) in enumerate(levels):
             noise, snr = noises[i], snrs[i]
             if self.rng.random() >= ac.detection_probability(snr, src.cls):
                 continue
             sigma = ac.bearing_sigma(src.cls, perched, snr)
-            true_b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
             if "stuck_bearing" in faults:
                 b = 0.0
             elif self.rng.random() < ac.outlier_rate(perched):
@@ -317,7 +314,7 @@ class SensorSuite:
                 harmless.append(src)
                 continue
             b = math.degrees(math.atan2(sx - s.x, sy - s.y)) % 360.0
-            probs = tuple(0.95 if c == src.cls else 0.05 / 3 for c in TargetClass)
+            probs = _camera_probs(src.cls)
             ranged = d if self.camera_reach and src.cls != TargetClass.DRONE else 0.0
             # a drone's range from its box size: right up to its unknown real size (one scale
             # per Source, no random draw, so every other number of the run stays the same)
@@ -326,10 +323,8 @@ class SensorSuite:
             out.append(Detection(SensorReading(Sensor.CAMERA, b, 2.0, probs, ranged, rng),
                                  src.id, 99.0, _label(src)))
         if not out:
-            nothing = (0.0, 0.0, 0.0, 1.0)
-            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
-                                               self.camera_reach), None, 0.0,
-                                 ", ".join(sorted({_label(h) for h in harmless})) or None))
+            out.append(_nothing(self.camera_reach,
+                                ", ".join(sorted({_label(h) for h in harmless})) or None))
         return out
 
     def _detected(self, s: DroneState, sources) -> list[Detection]:
@@ -354,7 +349,7 @@ class SensorSuite:
                 if d <= (self.camera_reach or CAMERA_RANGE) and err <= best:
                     truth, best = src.id, err
             cls = self.camera.class_of(label)
-            probs = tuple(0.95 if c == cls else 0.05 / 3 for c in TargetClass)
+            probs = _camera_probs(cls)
             # a ground target geolocated (-> level, the Belief's point); a drone ranged by its
             # box size (-> range, the Follower's only)
             ranged = ground if self.camera_reach and cls != TargetClass.DRONE else 0.0
@@ -362,11 +357,20 @@ class SensorSuite:
             out.append(Detection(SensorReading(Sensor.CAMERA, b, sigma, probs, ranged, rng), truth,
                                  99.0, label))
         if not out and v.clear_radius is not None:
-            nothing = (0.0, 0.0, 0.0, 1.0)
-            out.append(Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, nothing,
-                                               v.clear_radius), None, 0.0,
-                                 ", ".join(v.others) or None))
+            out.append(_nothing(v.clear_radius, ", ".join(v.others) or None))
         return out
+
+
+
+def _camera_probs(cls: TargetClass) -> tuple[float, ...]:
+    """A camera sighting's class probabilities (not _probs_on's split: other bytes)."""
+    return tuple(0.95 if c == cls else 0.05 / 3 for c in TargetClass)
+
+
+def _nothing(radius: float, label: str | None) -> Detection:
+    """The camera's "nothing here" out to `radius`, naming the harmless things it saw."""
+    return Detection(SensorReading(Sensor.CAMERA, float("nan"), 0.0, (0.0, 0.0, 0.0, 1.0), radius),
+                     None, 0.0, label)
 
 
 def build_perception(scenario: Scenario, *, classifier: str | None = None,
