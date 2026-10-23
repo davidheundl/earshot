@@ -69,6 +69,7 @@ LANDUSE = ["meadow", "field", "forest", "urban", "water", "road", "rail", "indus
 TEXTURE_PX = 2048
 TREE_TILE = 500.0  # m; tree meshes are merged per tile so cameras can cull the rest
 AIRFIELD_M = 500.0  # m around the runways' hull an airport builds in 3D (all drone homes, the intruder's loop)
+CAR_PARK_FULL = 0.25  # share of car-park bays with a car (0.72 looks real, but is ~9000 cars at the airport)
 INTRUDER_RGB = (1.0, 0.15, 0.15)
 rng = np.random.default_rng(5)
 
@@ -978,7 +979,7 @@ def street_props(raw: dict, city: City, city_dir: Path, assets: Path, stands: li
         for row_v in rows:
             for bay_u in np.arange(bay / 2 + 0.2, lu_ - bay / 2, bay):
                 c = o + u * bay_u + wdt * row_v
-                if prng.random() > 0.72 or not inner.contains(Point(*c)):
+                if prng.random() > CAR_PARK_FULL or not inner.contains(Point(*c)):
                     continue
                 z = float(g(*c))
                 paint = f"car{int(prng.integers(6))}"
