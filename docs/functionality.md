@@ -206,18 +206,20 @@ Judge a behaviour change with `earshot eval` over seeds, one change at a time.
 
 `earshot live` starts it at http://127.0.0.1:8000 (`dashboard/server.py`). It reads the world's `state.` and the radio's `radio.` topics and sends Events back through `POST /control`; Agents never see it.
 
-- `/` (`static/hud.html`): the game screen. A map scope with drones, Modes, links, Jam Zones, Suspicions and (toggled) the Probability Map and ground truth; the main drone view and three tiles from Webots or Gazebo view cameras (map first when there are no camera images); a pipeline line with Readings (30 s), Suspicions, Verifications and Confirmed; a top-Suspicion line; a ticker of decisions and Events; a banner when an intruder is confirmed. The Evidence screen (`x`) shows the selected drone's top Suspicion with each (origin, sensor family) contribution in log-odds, and every drone's frequencies.
+- `/` (`static/hud.html`): the operator console, styled after counter-UAS C2 screens (MIL-STD-2525 colours: own drones blue, Suspicions amber, confirmed red, Explained green; magenta for tasks). Top bar: site and mission, the worst thing going on now (clear, Suspicion, Verify, confirmed; an alarm flashes until acknowledged with ACK or `a`, on that screen only), data link, mission time, UTC. Left: the mission picture (Suspicions on the selected drone's map, drones in Verify, confirmed, dismissed, mean dispatch-to-confirm time from the Threat Log, the share of radio frames delivered; one posture segment per drone, Gaps, sensors, channel load), that map's Suspicions ranked by evidence, each with its stage from Detect to Follow and the sensor families and drones behind it (`support`), the Threat Log, and the activity log of decisions and Events. Centre: the main drone view and three tiles from Webots or Gazebo view cameras with a head-up display (map first when there are no camera images), and the fleet strip (Mode, battery, endurance from the drain the screen measures, height). Right: the map scope (drones, Modes, links, Jam Zones, Tracks with uncertainty ellipses and data blocks, flight trails, range rings, the UTM grid where the City has a UTM origin, runways and camps, scale bar, cursor lat/lon; toggled the Probability Map and ground truth) and the selected drone's status and ear. A banner when an intruder is confirmed. The Evidence screen (`x`) shows the selected drone's top Suspicion with each (origin, sensor family) contribution in log-odds, and every drone's frequencies.
 - `/classic` (`static/index.html`): the older operator console, with the Verifier camera preview every 5 s.
 - Counters come from `world_proc.VerifyCounts` (`runners/world_proc.py:43-76`): distinct verify tasks dispatched, distinct tasks confirmed or dismissed ("Verifications"), distinct intruders confirmed (confirmations within 150 m count once), dismissed.
 
-Hotkeys (`hud.html:229-243`, handled at 997-1017):
+Hotkeys (`hud.html:383-401`, handled at 1586-1609):
 
 | Key | Action |
 |---|---|
 | `0`-`9`, `Tab` | select a drone / next drone |
 | `c` | main view: pilot or chase |
-| `x` | live view or Evidence screen |
-| `h`, `g` | Probability Map, ground truth on the scope |
+| `x` | Ops or Evidence screen |
+| `a` | acknowledge every alarm |
+| `h`, `g`, `r` | Probability Map, ground truth, range rings on the scope |
+| `z` | scope: follow the action or show the whole map |
 | `l` | listen to the selected drone's microphone (needs `--audio`) |
 | `d` `v` `t` `n` | add a drone, truck, train, fan at the mouse |
 | `j` / `J` | jam here / clear jamming |
