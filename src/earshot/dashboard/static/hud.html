@@ -3,159 +3,261 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Earshot</title>
+<title>Earshot C2</title>
 <style>
-  /* Avionics colour semantics: colour always means something, never decoration. */
+  /* Colour always means something, never decoration. On the map and in the lists the
+     MIL-STD-2525 affiliation colours: friend blue (own drones), hostile red (confirmed),
+     suspect amber (Suspicion), neutral green (Explained, and everything nominal); magenta,
+     as in avionics, for what was commanded (tasks, Verify). Everything else stays grey. */
   :root {
-    --sky: #142030; --panel: #1a2838; --panel-2: #213246; --rule: #2b3d52;
-    --text: #e8eef4; --muted: #8fa3b8; --faint: #5d7189;
-    --own: #3ee37a;       /* own drones, normal */
-    --select: #3ccbea;    /* selected, listening */
-    --task: #e35bd8;      /* commanded: tasks, verify */
-    --caution: #f5b53b;   /* suspicion, vehicles */
-    --warn: #ff5a52;      /* confirmed intruder, faults */
-    --train: #c9a86a; --nothing: #8fa3b8;
+    --bg: #070a0e; --panel: #0b1117; --panel-2: #10181f; --panel-3: #16212b;
+    --rule: #1b2732; --rule-2: #293947;
+    --text: #dfe7ee; --muted: #8495a6; --faint: #4f6072;
+    --friend: #52c2f5;    /* own drones */
+    --accent: #52c2f5;    /* this screen's own controls, RF bars */
+    --task: #e35bd8;      /* commanded: tasks, Verify */
+    --caution: #f7b43d;   /* Suspicion, vehicles */
+    --warn: #ff4f4f;      /* confirmed threat, faults */
+    --ok: #46d483;        /* nominal, Explained */
+    --train: #c9a86a; --nothing: #8495a6;
     /* no web fonts (works offline): B612 if installed, else the system's own */
     --sans: "B612", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     --mono: "B612 Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--sky); color: var(--text); font: 13px/1.35 var(--sans); }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 var(--sans); }
   button { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--select); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-  .muted { color: var(--muted); }
+  .muted { color: var(--muted); } .faint { color: var(--faint); }
+  .cap { font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
 
-  #app { display: grid; grid-template-rows: 46px minmax(0, 1fr) 70px; height: 100vh; }
-  header { display: flex; align-items: center; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--rule); background: var(--panel); }
-  header h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: .01em; }
-  header .clock { font-size: 15px; }
-  header .spacer { flex: 1; }
-  .switch { display: flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
-  .switch button { background: none; border: 0; padding: 5px 12px; cursor: pointer; color: var(--muted); }
-  .switch button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); }
-  #link { font-size: 12px; }
-  #link.live { color: var(--own); } #link.down { color: var(--warn); }
+  #app { display: grid; grid-template-rows: 52px minmax(0, 1fr); height: 100vh; }
 
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
-  #left { display: grid; grid-template-rows: minmax(0, 1fr) 24% 108px; gap: 8px; padding: 8px; min-width: 0; min-height: 0; }
-  #right { display: grid; grid-template-rows: 400px minmax(0, 1fr); border-left: 1px solid var(--rule); min-height: 0; }
+  /* ---------- top bar ---------- */
+  header { display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--rule); min-width: 0; }
+  header > * { display: flex; align-items: center; padding: 0 14px; border-right: 1px solid var(--rule); }
+  .brand { gap: 10px; font-weight: 700; letter-spacing: .2em; font-size: 14px; }
+  .brand svg { width: 24px; height: 24px; flex: none; color: var(--friend); }
+  .badge { font: 700 9px var(--mono); letter-spacing: .12em; border: 1px solid var(--rule-2); color: var(--muted); border-radius: 3px; padding: 2px 5px; }
+  .badge.sim { color: var(--caution); border-color: rgba(247, 180, 61, .45); }
+  .cell { flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; white-space: nowrap; }
+  .cell .v { font-size: 13px; }
+  #site .v { font-weight: 700; letter-spacing: .06em; }
+  #alert { flex: 1; gap: 12px; min-width: 0; overflow: hidden; transition: background .3s; }
+  #alert .led { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  #alert .what { font-weight: 700; letter-spacing: .12em; font-size: 14px; color: var(--ok); white-space: nowrap; }
+  #alert .sub { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #alert[data-lvl="suspicion"] { background: linear-gradient(90deg, rgba(247, 180, 61, .14), transparent 75%); }
+  #alert[data-lvl="suspicion"] .led { background: var(--caution); box-shadow: 0 0 8px var(--caution); }
+  #alert[data-lvl="suspicion"] .what { color: var(--caution); }
+  #alert[data-lvl="verify"] { background: linear-gradient(90deg, rgba(227, 91, 216, .16), transparent 75%); }
+  #alert[data-lvl="verify"] .led { background: var(--task); box-shadow: 0 0 8px var(--task); }
+  #alert[data-lvl="verify"] .what { color: var(--task); }
+  #alert[data-lvl="threat"] { background: linear-gradient(90deg, rgba(255, 79, 79, .22), transparent 80%); }
+  #alert[data-lvl="threat"] .led { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+  #alert[data-lvl="threat"] .what { color: var(--warn); }
+  /* ISA-18.2: an alarm flashes until someone acknowledges it, and only then */
+  #alert.unacked { animation: alarm 1.1s steps(1) infinite; }
+  @keyframes alarm { 50% { background: rgba(255, 79, 79, .34); } }
+  .ackbtn { background: var(--warn); color: #1d0707; border: 0; border-radius: 3px; font: 700 11px var(--mono); letter-spacing: .1em; padding: 4px 10px; cursor: pointer; flex: none; }
+  .ackbtn[hidden] { display: none; }
+  #link.live { color: var(--ok); } #link.down { color: var(--warn); }
+  .tools { gap: 8px; border-right: 0; }
+  .switch { display: flex; border: 1px solid var(--rule-2); border-radius: 4px; overflow: hidden; }
+  .switch button, .tbtn { background: none; border: 0; padding: 5px 11px; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .switch button[aria-pressed="true"] { background: var(--panel-3); color: var(--text); }
+  .tbtn { border: 1px solid var(--rule-2); border-radius: 4px; }
+  .tbtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 
-  /* camera views */
-  .view { position: relative; background: #0d1824; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; min-height: 0; }
+  /* ---------- columns ---------- */
+  main { display: grid; grid-template-columns: 304px minmax(0, 1fr) 392px; min-height: 0; }
+  #leftcol { display: grid; grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) minmax(110px, 30%); background: var(--panel); border-right: 1px solid var(--rule); min-height: 0; }
+  #center { display: grid; grid-template-rows: minmax(0, 1fr) 24% 124px; gap: 8px; padding: 8px; min-width: 0; min-height: 0; }
+  #right { display: grid; grid-template-rows: 47% minmax(0, 1fr); background: var(--panel); border-left: 1px solid var(--rule); min-height: 0; }
+  .panel { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--rule); }
+  .panel > h2, .ph { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 12px 7px; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .panel > h2::before, .ph::before { content: ""; width: 3px; height: 10px; background: var(--rule-2); border-radius: 1px; }
+  .panel > h2 .meta, .ph .meta { margin-left: auto; font: 400 10.5px var(--mono); letter-spacing: 0; text-transform: none; color: var(--faint); }
+  .panel .body { overflow: auto; min-height: 0; padding: 0 12px 10px; }
+  .empty-note { color: var(--faint); font-size: 12px; padding: 4px 0 8px; }
+
+  /* mission picture: KPI tiles and the swarm's posture */
+  #kpis .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0 12px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .kpi { background: var(--panel-2); padding: 6px 8px 7px; min-width: 0; }
+  .kpi .v { font: 700 19px/1.15 var(--mono); font-variant-numeric: tabular-nums; }
+  .kpi .v small { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .kpi .k { font-size: 8.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .posture { display: flex; gap: 2px; height: 6px; margin: 10px 12px 0; }
+  .posture i { flex: 1; border-radius: 1px; }
+  .postxt { margin: 5px 12px 10px; font-size: 11px; color: var(--muted); }
+  .postxt b { color: var(--text); font-weight: 400; font-family: var(--mono); }
+
+  /* Track cards: the ranked Suspicions of the selected drone's Probability Map */
+  .trk { position: relative; background: var(--panel-2); border: 1px solid var(--rule); border-left: 3px solid var(--caution); border-radius: 3px; padding: 7px 9px 8px; margin-bottom: 6px; cursor: pointer; }
+  .trk:hover { border-color: var(--rule-2); }
+  .trk.confirmed { border-left-color: var(--warn); background: linear-gradient(90deg, rgba(255, 79, 79, .08), var(--panel-2) 60%); }
+  .trk .hd { display: flex; align-items: baseline; gap: 8px; }
+  .trk .id { font: 700 12px var(--mono); }
+  .trk .cls { font-weight: 700; letter-spacing: .08em; font-size: 12px; }
+  .trk .st { margin-left: auto; font: 700 9.5px var(--mono); letter-spacing: .08em; }
+  .trk .ln { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .trk .ln b { font: 400 11px var(--mono); color: var(--text); }
+  .meter { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 5px; }
+  .meter i { display: block; height: 100%; }
+  .chips { margin-top: 5px; }
+  .chip { display: inline-block; font: 700 9px var(--mono); letter-spacing: .04em; border: 1px solid var(--rule-2); color: var(--muted); border-radius: 2px; padding: 0 4px; margin: 0 3px 2px 0; }
+  .chain { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin-top: 6px; }
+  .chain span { font: 700 8px var(--mono); letter-spacing: .06em; text-align: center; padding: 2px 0; background: var(--panel-3); color: var(--faint); border-radius: 2px; }
+  .chain span.done { color: var(--muted); background: #1b2833; }
+  .chain span.now { color: #170f02; background: var(--caution); }
+  .trk.confirmed .chain span.now { background: var(--warn); color: #1d0707; }
+  .trk .task { font-size: 11px; margin-top: 5px; }
+  .expl { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; font-size: 11px; color: var(--muted); padding: 3px 0; border-top: 1px solid var(--rule); }
+  .expl i { width: 8px; height: 8px; border: 1.5px solid var(--ok); margin-top: 3px; }
+
+  /* Threat Log and activity */
+  .tl { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--rule); cursor: pointer; align-items: center; }
+  .tl:first-child { border-top: 0; }
+  .tl .id { font: 700 12px var(--mono); }
+  .tl .what { font-weight: 700; letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl .what small { font-weight: 400; letter-spacing: .06em; font-size: 10px; margin-left: 6px; }
+  .tl .meta { grid-column: 2 / 4; font-size: 11px; color: var(--muted); }
+  .tl.unacked .id { animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { color: transparent; } }
+  .tl .ackbtn { padding: 2px 7px; font-size: 10px; }
+  .act { display: grid; grid-template-columns: 50px 52px minmax(0, 1fr); gap: 6px; font-size: 11.5px; padding: 3px 0; border-top: 1px solid var(--rule); align-items: baseline; }
+  .act:first-child { border-top: 0; }
+  .act .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .act:first-child .txt { color: var(--text); }
+  .tag { font: 700 9px var(--mono); letter-spacing: .06em; padding: 1px 0; border-radius: 2px; text-align: center; border: 1px solid currentColor; }
+
+  /* ---------- camera views ---------- */
+  .view { position: relative; background: #0a121a; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; min-height: 0; }
   .view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .view .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 24px; }
   .view .empty[hidden], #arraybox[hidden] { display: none; }
-  .view .empty p { margin: 0; padding: 6px 10px; background: var(--sky); border-radius: 4px; }
-  .view .tag { position: absolute; left: 8px; bottom: 6px; font-size: 12px; text-shadow: 0 1px 2px #000; }
+  .view .empty p { margin: 0; padding: 8px 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; }
+  .view .tag2 { position: absolute; left: 8px; bottom: 6px; font: 11px var(--mono); text-shadow: 0 1px 2px #000; }
   #tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-height: 0; }
   #tiles .view { cursor: pointer; }
-  #tiles .view:hover { border-color: var(--select); }
+  #tiles .view:hover { border-color: var(--accent); }
   /* a backend with one view camera (Webots) sends no tiles: the main view takes their row */
-  body.onecam #left { grid-template-rows: minmax(0, 1fr) 108px; }
+  body.onecam #center { grid-template-rows: minmax(0, 1fr) 124px; }
   body.onecam #tiles { display: none; }
 
-  /* swarm strip */
-  #swarm { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
-  .drone { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 7px; cursor: pointer; text-align: left; min-width: 0; }
-  .drone[aria-pressed="true"] { border-color: var(--select); box-shadow: inset 0 0 0 1px var(--select); }
-  .drone .row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
-  .drone .id { font-weight: 700; font-size: 14px; }
-  .drone .mode { font-size: 11px; }
-  .drone .bat { height: 3px; background: var(--rule); border-radius: 2px; margin-top: 4px; }
-  .drone .bat i { display: block; height: 100%; background: var(--own); border-radius: 2px; }
-  .drone .task { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* ---------- fleet strip ---------- */
+  #swarm { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; min-height: 0; }
+  .drone { position: relative; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; cursor: pointer; text-align: left; min-width: 0; overflow: hidden; }
+  .drone:hover { border-color: var(--rule-2); }
+  .drone[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .drone .row { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+  .drone .id { font: 700 14px var(--mono); }
+  .drone .mode { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+  .led { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 5px; vertical-align: 1px; }
+  .led.bad { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .drone .bat { height: 3px; background: var(--rule); border-radius: 2px; margin-top: 5px; }
+  .drone .bat i { display: block; height: 100%; border-radius: 2px; }
+  .drone .meta { font: 10.5px var(--mono); color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drone .task { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .drone canvas.sig { display: block; width: 100%; height: 30px; margin-top: 3px; }
-  /* more than ten drones: two compact rows */
-  body.many #left { grid-template-rows: minmax(0, 1fr) 24% 128px; }
-  body.many.mapfirst #left { grid-template-rows: minmax(0, 1fr) 128px; }
-  body.many .drone { padding: 3px 6px; } body.many .drone canvas.sig { display: none; }
+  /* more than six drones: two compact rows */
+  body.many .drone { padding: 4px 8px; } body.many .drone canvas.sig, body.many .drone .task { display: none; }
+  body.many .drone .bat { margin-top: 3px; }
 
-  /* Threat Log: every verified danger, newest first */
-  #threatlog { margin: 0 0 12px; }
-  #threatlog[hidden] { display: none; }
-  #threatlog table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  #threatlog td { padding: 3px 4px; border-top: 1px solid var(--rule); white-space: nowrap; }
-  #threatlog td.what { white-space: normal; }
-  #threatlog tr { cursor: pointer; }
-
-  /* map */
+  /* ---------- map ---------- */
   #scope { display: grid; grid-template-rows: minmax(0, 1fr) auto; border-bottom: 1px solid var(--rule); min-height: 0; }
-  #scope .mapbox { position: relative; min-height: 0; }
+  #scope .mapbox { position: relative; min-height: 0; background: var(--bg); }
   #scope canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
-  #scope .legend { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: var(--muted); }
-  #suspicion { padding: 6px 10px; font-size: 13px; background: var(--panel); border-top: 1px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #suspicion b { font-family: var(--mono); }
+  #scope .attrib { position: absolute; right: 6px; bottom: 4px; max-width: 46%; font-size: 8.5px; line-height: 1.25; color: rgba(223, 231, 238, .45); text-align: right; pointer-events: none; }
+  #suspicion { padding: 7px 12px; font-size: 12px; background: var(--panel-2); border-top: 1px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #suspicion b { font-family: var(--mono); font-weight: 400; }
   body.evidence #suspicion { display: none; }
   /* no camera images for a while (twin2d, or Webots gone): the map takes the main view */
   body.mapfirst #mainview, body.mapfirst #tiles { display: none; }
-  body.mapfirst #left { grid-template-rows: minmax(0, 1fr) 108px; }
+  body.mapfirst #center { grid-template-rows: minmax(0, 1fr) 124px; }
   body.mapfirst #right { grid-template-rows: minmax(0, 1fr); }
   body.mapfirst #scope { border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
-  body.mapfirst #suspicion { font-size: 15px; padding: 8px 12px; }
+  body.mapfirst #suspicion { font-size: 13px; padding: 8px 12px; }
 
-  /* the ear: selected drone's senses */
-  #ear { padding: 10px 14px; overflow: auto; }
-  #ear h2, .col h2 { font-size: 15px; margin: 0 0 2px; font-weight: 700; }
-  #ear .sub, .col .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-  .earwrap { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: start; }
-  canvas.polar { width: 170px; height: 170px; }
+  /* ---------- selected drone ---------- */
+  #ear { overflow: auto; padding: 0 0 12px; min-height: 0; }
+  #ear .ph { padding-top: 10px; }
+  .dhead { display: flex; align-items: baseline; gap: 10px; padding: 0 12px; }
+  .dhead h2 { margin: 0; font: 700 18px var(--mono); }
+  .dhead .mode { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  #ear .sub, .col .sub { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+  #ear .sub { padding: 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 4px 12px 6px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .stats div { background: var(--panel-2); padding: 5px 7px; min-width: 0; }
+  .stats div.w2 { grid-column: span 2; }
+  .stats dt { font-size: 8.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .stats dd { margin: 1px 0 0; font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .earwrap { display: grid; grid-template-columns: 164px 1fr; gap: 12px; align-items: start; padding: 0 12px; }
+  canvas.polar { width: 164px; height: 164px; }
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; }
   .kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; }
   .bars { display: grid; grid-template-columns: 52px 1fr 34px; gap: 3px 6px; align-items: center; font-size: 11px; margin-top: 8px; }
-  .bars .b { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+  .bars .b { height: 5px; background: var(--rule); border-radius: 3px; overflow: hidden; }
   .bars .b i { display: block; height: 100%; }
-  canvas.trace { width: 100%; height: 64px; margin-top: 10px; }
-  #freqcol { grid-column: 1 / -1; }
-  #freqgrid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 130px; }
-  #freqgrid .fg { position: relative; background: var(--sky); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px 4px; display: grid; grid-template-rows: auto minmax(0, 1fr); cursor: pointer; }
-  #freqgrid .fg[aria-pressed="true"] { border-color: var(--select); }
-  #freqgrid .fg h3 { margin: 0; font-size: 11px; font-weight: 700; }
-  #freqgrid .fg canvas { position: static; width: 100%; height: 100%; }
-  .fused { font-size: 12px; margin-top: 8px; color: var(--muted); }
+  canvas.trace { display: block; width: calc(100% - 24px); height: 64px; margin: 10px 12px 0; }
+  .fused { font-size: 11.5px; margin: 8px 12px 0; color: var(--muted); }
 
-  /* evidence view */
-  #evidence { display: none; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 42%); gap: 8px; min-height: 0; grid-row: 1 / span 2; }
+  /* ---------- evidence view ---------- */
+  #evidence { display: none; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 42%); gap: 8px; min-height: 0; grid-row: 1 / -2; }
   body.evidence #evidence { display: grid; }
   body.evidence #mainview, body.evidence #tiles { display: none; }
   .col { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 10px 12px; overflow: auto; min-height: 0; }
+  .col h2 { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 2px; }
   table.stream { width: 100%; border-collapse: collapse; font-size: 12px; }
-  table.stream th { text-align: left; font-weight: 400; color: var(--muted); padding: 2px 4px; position: sticky; top: 0; background: var(--panel); }
+  table.stream th { text-align: left; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 3px 4px; position: sticky; top: 0; background: var(--panel); }
   table.stream td { padding: 3px 4px; border-top: 1px solid var(--rule); white-space: nowrap; }
   table.stream tr.fresh td { animation: fresh 1.2s ease-out; }
-  @keyframes fresh { from { background: rgba(60, 203, 234, .18); } to { background: transparent; } }
+  @keyframes fresh { from { background: rgba(82, 194, 245, .18); } to { background: transparent; } }
   .mini { display: inline-flex; gap: 1px; vertical-align: middle; }
   .mini i { width: 7px; display: inline-block; border-radius: 1px; }
   canvas.big-polar { width: 100%; max-width: 300px; aspect-ratio: 1; display: block; margin: 0 auto; }
-  canvas.spectro { width: 100%; height: 120px; display: block; margin-top: 8px; background: #0d1824; border-radius: 3px; }
+  canvas.spectro { width: 100%; height: 120px; display: block; margin-top: 8px; background: #0a121a; border-radius: 3px; }
   .support { display: grid; grid-template-columns: 96px 1fr 46px; gap: 4px 8px; align-items: center; font-size: 12px; }
   .support .track { position: relative; height: 10px; background: var(--rule); border-radius: 2px; }
   .support .track i { position: absolute; top: 0; height: 100%; border-radius: 2px; }
   .support .track .zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
   .pipeline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; font-size: 12px; }
-  .pipeline span { background: var(--panel-2); border-radius: 4px; padding: 4px 8px; }
+  .pipeline span { background: var(--panel-3); border-radius: 3px; padding: 4px 8px; }
   .pipeline b { font-family: var(--mono); font-weight: 400; margin-left: 4px; }
+  #freqcol { grid-column: 1 / -1; }
+  #freqgrid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 130px; }
+  #freqgrid .fg { position: relative; background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; display: grid; grid-template-rows: auto minmax(0, 1fr); cursor: pointer; }
+  #freqgrid .fg[aria-pressed="true"] { border-color: var(--accent); }
+  #freqgrid .fg h3 { margin: 0; font-size: 11px; font-weight: 700; }
+  #freqgrid .fg canvas { position: static; width: 100%; height: 100%; }
 
-  /* footer ticker and alerts */
-  footer { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0 16px; border-top: 1px solid var(--rule); background: var(--panel); overflow: hidden; white-space: nowrap; font-size: 14px; line-height: 1.4; }
-  footer .ev { overflow: hidden; text-overflow: ellipsis; }
-  footer .ev:not(:first-child) { color: var(--muted); }
-  footer .ev .k { color: var(--task); }
-  #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 14px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 5; }
-  #banner { position: fixed; top: 58px; left: 50%; transform: translate(-50%, -140%); background: var(--warn); color: #1a0c0c; font-weight: 700; padding: 10px 18px; border-radius: 6px; transition: transform .45s cubic-bezier(.2, .9, .3, 1.2), opacity .3s; z-index: 5; opacity: 0; pointer-events: none; }
-  #banner.show { transform: translate(-50%, 0); opacity: 1; }
-  #help { position: fixed; right: 16px; bottom: 80px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; font-size: 12px; display: none; z-index: 4; }
+  /* ---------- overlays ---------- */
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--panel-3); border: 1px solid var(--rule-2); border-radius: 4px; padding: 6px 14px; font: 12px var(--mono); opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 5; }
+  #banner { position: fixed; top: 60px; left: 50%; transform: translate(-50%, -150%); display: flex; align-items: center; gap: 14px; background: #2a0c0c; border: 1px solid var(--warn); border-left: 6px solid var(--warn); color: var(--text); padding: 10px 14px 10px 16px; border-radius: 4px; box-shadow: 0 8px 30px rgba(0, 0, 0, .6); transition: transform .45s cubic-bezier(.2, .9, .3, 1.2), opacity .3s; z-index: 6; opacity: 0; pointer-events: none; }
+  #banner.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+  #banner .k { font: 700 10px var(--mono); letter-spacing: .14em; color: var(--warn); }
+  #banner .t { font-weight: 700; letter-spacing: .04em; font-size: 14px; }
+  #help { position: fixed; right: 16px; top: 62px; background: var(--panel); border: 1px solid var(--rule-2); border-radius: 4px; padding: 10px 14px; font-size: 12px; display: none; z-index: 4; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
   #help.show { display: block; }
-  #help kbd { font-family: var(--mono); background: var(--panel-2); border-radius: 3px; padding: 0 5px; }
+  #help kbd { font-family: var(--mono); background: var(--panel-3); border: 1px solid var(--rule-2); border-radius: 3px; padding: 0 5px; }
   #help table td { padding: 2px 8px 2px 0; }
-  @media (prefers-reduced-motion: reduce) { #banner { transition: none; } table.stream tr.fresh td { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { #banner { transition: none; } table.stream tr.fresh td, #alert.unacked, .tl.unacked .id { animation: none; } }
+  @media (max-width: 1700px) { .cell.opt { display: none; } }
+  @media (max-width: 1380px) {
+    main { grid-template-columns: 268px minmax(0, 1fr) 352px; }
+    .earwrap { grid-template-columns: 140px 1fr; } canvas.polar { width: 140px; height: 140px; }
+  }
   @media (max-width: 1100px) {
+    #app { height: auto; } header { flex-wrap: wrap; }
     main { grid-template-columns: 1fr; }
+    #leftcol { grid-template-rows: auto auto auto auto; border-right: 0; }
     #right { border-left: 0; border-top: 1px solid var(--rule); grid-template-rows: 360px auto; }
     #swarm { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    #left { grid-template-rows: 56vw 22vw auto; }
-    body.mapfirst #left { grid-template-rows: 80vw auto; }
+    #center { grid-template-rows: 56vw 22vw auto; }
+    body.onecam #center, body.mapfirst #center { grid-template-rows: 70vw auto; }
     body.mapfirst #right { grid-template-rows: auto; }
     body.evidence #evidence { grid-template-columns: 1fr; }
   }
@@ -164,28 +266,63 @@
 <body class="onecam">
 <div id="app">
   <header>
-    <h1>Earshot</h1>
-    <span class="clock num" id="clock">0:00</span>
-    <span id="link" class="down">connecting</span>
-    <span class="spacer"></span>
-    <div class="switch" role="group" aria-label="Screen">
-      <button id="btn-live" aria-pressed="true">Live view</button>
-      <button id="btn-evidence" aria-pressed="false">Evidence</button>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>
+        <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4" opacity=".85"/>
+        <path d="M4.6 4.6a10.5 10.5 0 0 0 0 14.8M19.4 4.6a10.5 10.5 0 0 1 0 14.8" opacity=".45"/>
+      </svg>
+      EARSHOT <span class="badge">C2</span><span class="badge sim" title="The world, its Sources and their sounds are simulated">SIM</span>
     </div>
-    <button class="switch" id="btn-listen" aria-pressed="false" title="Hear the selected drone's microphone (earshot live --audio)" style="padding:5px 10px;background:none;cursor:pointer">Listen</button>
-    <button class="switch" id="btn-help" style="padding:5px 10px;background:none;cursor:pointer">Keys</button>
+    <div class="cell" id="site"><span class="v">–</span><span class="cap" id="mission">–</span></div>
+    <div id="alert" data-lvl="clear" aria-live="polite">
+      <i class="led"></i><span class="what" id="alert-what">CONNECTING</span><span class="sub" id="alert-sub"></span>
+      <button class="ackbtn" id="ack" hidden title="Acknowledge every alarm (a)">ACK</button>
+    </div>
+    <div class="cell opt"><span class="cap">Autonomy</span><span class="v" title="The swarm decides who listens and who verifies; the operator watches and can step in">Swarm · operator on the loop</span></div>
+    <div class="cell"><span class="cap">Data link</span><span class="v down" id="link">connecting</span></div>
+    <div class="cell"><span class="cap">Mission</span><span class="v num" id="clock">T+0:00</span></div>
+    <div class="cell"><span class="cap">UTC</span><span class="v num" id="utc">–</span></div>
+    <div class="tools">
+      <div class="switch" role="group" aria-label="Screen">
+        <button id="btn-live" aria-pressed="true">Ops</button>
+        <button id="btn-evidence" aria-pressed="false">Evidence</button>
+      </div>
+      <button class="tbtn" id="btn-listen" aria-pressed="false" title="Hear the selected drone's microphone (earshot live --audio)">Listen</button>
+      <button class="tbtn" id="btn-help">Keys</button>
+    </div>
   </header>
   <main>
-    <section id="left">
+    <aside id="leftcol">
+      <section class="panel" id="kpis">
+        <h2>Mission picture <span class="meta" id="kpimeta"></span></h2>
+        <div class="grid" id="kpigrid"></div>
+        <div class="posture" id="posture" title="One segment per drone, coloured by Mode"></div>
+        <div class="postxt" id="postxt"></div>
+      </section>
+      <section class="panel">
+        <h2>Suspicions <span class="meta" id="trkmeta"></span></h2>
+        <div class="body" id="tracklist"></div>
+      </section>
+      <section class="panel" id="threatlog">
+        <h2>Threat Log <span class="meta" id="tlmeta"></span></h2>
+        <div class="body" id="threatrows" style="max-height: 230px"></div>
+      </section>
+      <section class="panel" style="border-bottom: 0">
+        <h2>Activity <span class="meta">newest first</span></h2>
+        <div class="body" id="ticker"><div class="empty-note">Waiting for the swarm.</div></div>
+      </section>
+    </aside>
+    <section id="center">
       <div class="view" id="mainview">
         <img id="cam0" alt="">
         <canvas id="pfd"></canvas>
         <div class="empty" id="nocam" hidden><p>No camera images. Start with <span class="num">--backend webots</span> to see the drones' views.</p></div>
       </div>
       <div id="tiles">
-        <div class="view" data-k="1"><img id="cam1" alt=""><div class="tag" id="tag1"></div></div>
-        <div class="view" data-k="2"><img id="cam2" alt=""><div class="tag" id="tag2"></div></div>
-        <div class="view" data-k="3"><img id="cam3" alt=""><div class="tag" id="tag3"></div></div>
+        <div class="view" data-k="1"><img id="cam1" alt=""><div class="tag2" id="tag1"></div></div>
+        <div class="view" data-k="2"><img id="cam2" alt=""><div class="tag2" id="tag2"></div></div>
+        <div class="view" data-k="3"><img id="cam3" alt=""><div class="tag2" id="tag3"></div></div>
       </div>
       <div id="evidence">
         <div class="col">
@@ -219,17 +356,15 @@
     </section>
     <aside id="right">
       <div id="scope">
-        <div class="mapbox"><canvas id="map"></canvas><div class="legend" id="maplegend"></div></div>
+        <div class="mapbox"><canvas id="map"></canvas><div class="attrib" id="attrib"></div></div>
         <div id="suspicion" aria-live="polite"></div>
       </div>
       <div id="ear">
-        <div id="threatlog" hidden>
-          <h2>Threat Log</h2>
-          <div class="sub">Every danger a Verifier checked: what its camera saw, and where the swarm follows it.</div>
-          <table><tbody id="threatrows"></tbody></table>
-        </div>
-        <h2 id="ear-title">Drone 0</h2>
+        <div class="ph">Selected drone <span class="meta">click a drone, or 0-9 / Tab</span></div>
+        <div class="dhead"><h2 id="ear-title">D0</h2><span class="mode" id="ear-mode"></span></div>
         <div class="sub" id="ear-sub"></div>
+        <dl class="stats" id="dstats"></dl>
+        <div class="ph">Acoustic <span class="meta">last 30 s, north up</span></div>
         <div class="earwrap">
           <canvas class="polar" id="polar"></canvas>
           <div>
@@ -242,18 +377,19 @@
       </div>
     </aside>
   </main>
-  <footer id="ticker"><span class="muted">Waiting for the swarm.</span></footer>
 </div>
-<div id="banner" role="status" aria-live="polite"></div>
+<div id="banner" role="alert"><div><div class="k">ALARM · THREAT CONFIRMED</div><div class="t" id="banner-txt"></div></div><button class="ackbtn" id="banner-ack">ACK</button></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="help">
   <table>
     <tr><td><kbd>0</kbd>-<kbd>9</kbd></td><td>Show that drone in the main view</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Next drone</td></tr>
     <tr><td><kbd>c</kbd></td><td>Main view: pilot or chase camera</td></tr>
-    <tr><td><kbd>x</kbd></td><td>Live view or evidence</td></tr>
-    <tr><td><kbd>h</kbd></td><td>Probability map on the scope</td></tr>
+    <tr><td><kbd>x</kbd></td><td>Ops or Evidence screen</td></tr>
+    <tr><td><kbd>a</kbd></td><td>Acknowledge every alarm</td></tr>
+    <tr><td><kbd>h</kbd></td><td>Probability Map on the scope</td></tr>
     <tr><td><kbd>g</kbd></td><td>Ground truth on the scope</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Range rings around the selected drone</td></tr>
     <tr><td><kbd>z</kbd></td><td>Scope: follow the action or show the whole map</td></tr>
     <tr><td><kbd>l</kbd></td><td>Listen to the selected drone's microphone (needs <code>--audio</code>)</td></tr>
     <tr><td colspan="2" class="muted" style="padding-top:6px">With the mouse over the map:</td></tr>
@@ -268,20 +404,25 @@
 const $ = id => document.getElementById(id);
 const cssCache = new Map();  // the colours never change at runtime; getComputedStyle is slow at 60 fps
 const css = n => { let v = cssCache.get(n); if (v === undefined) { v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); cssCache.set(n, v); } return v; };
+const SANS = "B612, system-ui, -apple-system, Helvetica, sans-serif", MONO = "\"B612 Mono\", ui-monospace, \"SF Mono\", Menlo, monospace";
+const font = (px, weight = 400, mono = false) => `${weight} ${px}px ${mono ? MONO : SANS}`;
 const CLS = ["DRONE", "VEHICLE", "TRAIN", "NOTHING"];
 const CLS_NAME = { DRONE: "drone", VEHICLE: "vehicle", TRAIN: "train", NOTHING: "nothing" };
 const CLS_COL = { DRONE: "--warn", VEHICLE: "--caution", TRAIN: "--train", NOTHING: "--nothing" };
-const MODE_COL = { PATROL: "--own", LISTEN: "--select", VERIFY: "--task", FILL_GAP: "--own" };
+const MODE_COL = { PATROL: "--friend", LISTEN: "--friend", VERIFY: "--task", FILL_GAP: "--friend" };
 const MODE_NAME = { PATROL: "patrol", LISTEN: "listen", VERIFY: "verify", FILL_GAP: "fill gap" };
 const STATUS = { SUSPECTED: "suspected", EXPLAINED: "explained", VERIFYING: "verifying", CONFIRMED: "confirmed", DISMISSED: "dismissed" };
-const SENSOR = { SOUND: "sound", RF_2G4: "RF 2.4", RF_5G8: "RF 5.8", RF_915: "RF 915", RF_UHF: "RF UHF", CAMERA: "camera" };
+const SENSOR = { SOUND: "sound", RF_2G4: "RF 2.4", RF_5G8: "RF 5.8", RF_915: "RF 915", RF_UHF: "RF UHF", CAMERA: "camera", SHOT: "shot" };
 const threatCls = () => last?.state?.threat || "DRONE";  // what this swarm hunts (Scenario threat:)
 const threatName = () => CLS_NAME[threatCls()];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const D = id => `D${id}`;  // a drone's short name
+const trkId = tr => `TRK-${String(tr.id).padStart(4, "0")}`;  // a Track id is its 100 m cell
 
-let city = null, base = null, last = null;
-let selected = 0, mainMode = "chase", evidence = false, showHeat = true, showTruth = false;
-let views = null, mouse = null, lastConfirmed = 0;
+let city = null, base = null, last = null, scen = null;
+let selected = 0, mainMode = "chase", evidence = false, showHeat = true, showTruth = false, showRings = true;
+let views = null, mouse = null;
+let lastConfirmed = null;  // null until the first state: a screen opened mid-run does not alarm for old news
 const hist = {};      // drone -> readings (last 120 s)
 const stream = [];    // all readings, newest first (for the evidence table)
 const spectro = {};   // drone -> spectrum columns from a live array
@@ -289,6 +430,9 @@ const frames = {};    // view k -> {drone, mode}
 const spectroKey = {}; // drone -> last array block's spectrum, to add one column per block
 const heat = {};      // drone -> last heatmap (the server sends one only when it changed)
 const seen = new Map(); // reading key -> t, so readings replayed after a reconnect count once
+const acked = new Set();  // Threat Log ids acknowledged on this screen
+const trails = {};    // drone -> [[x, y, t], ...] while flying, the last 2 min
+const batt = {};      // drone -> [[t, battery], ...] once a second, for the endurance
 const rkey = r => `${r.t}|${r.drone}|${r.sensor}|${r.bearing}|${r.level}`;
 let wsOpen = false, pumpUp = true, lastData = 0, lastT = -Infinity;
 const CAM_STALE_MS = 3000;  // no camera frame this long: drop the last one, the map takes the main view
@@ -322,7 +466,8 @@ function startGlide(st) {
   Object.assign(glide, { from, to, at: now });
 }
 const glided = (key, o, now) => { const p = poseAt(key, now); return p ? { ...o, x: p.x, y: p.y } : o; };
-// ground speed, vertical speed and track over ground, from consecutive states (smoothed)
+// ground speed, vertical speed and track over ground, from consecutive states (smoothed);
+// once a second also the flight trail and the battery, for the endurance
 const kin = {};
 function trackKinematics(st) {
   for (const d of st.drones) {
@@ -332,8 +477,21 @@ function trackKinematics(st) {
       k.vx += a * (vx - k.vx); k.vy += a * (vy - k.vy); k.vs += a * (vz - k.vs);
       Object.assign(k, { t: st.t, x: d.x, y: d.y, z });
     } else kin[d.id] = { t: st.t, x: d.x, y: d.y, z, vx: 0, vy: 0, vs: 0 };
+    const b = (batt[d.id] ||= []);
+    if (!b.length || st.t - b[b.length - 1][0] >= 1) { b.push([st.t, d.battery]); if (b.length > 20) b.shift(); }
+    const tr = (trails[d.id] ||= []), p = tr[tr.length - 1];
+    if (!d.perched_on && (!p || (Math.hypot(p[0] - d.x, p[1] - d.y) > 4 && st.t - p[2] >= 1))) {
+      tr.push([d.x, d.y, st.t]); if (tr.length > 120) tr.shift();
+    }
   }
 }
+function endurance(id) {
+  // seconds until empty at the drain of the last 20 s (perched drones last hours, flying ones minutes)
+  const b = batt[id]; if (!b || b.length < 6) return null;
+  const [t0, b0] = b[0], [t1, b1] = b[b.length - 1], rate = (b0 - b1) / (t1 - t0);
+  return rate > 1e-7 ? b1 / rate : null;
+}
+const fmtDur = s => s == null ? "–" : s >= 5400 ? `${Math.round(s / 3600)} h` : `${Math.max(1, Math.round(s / 60))} min`;
 function shownDrones(now) {
   return last.state.drones.map(d => { const p = poseAt(d.id, now); return p ? { ...d, x: p.x, y: p.y, heading: p.heading } : d; });
 }
@@ -343,14 +501,15 @@ function linkStatus() {
   const fresh = Date.now() - lastData < 2500;
   const [txt, cls] = !wsOpen ? ["reconnecting", "down"] : !pumpUp ? ["no data, dashboard stopped listening", "down"]
     : fresh ? ["live", "live"] : ["no data", "down"];
-  if ($("link").textContent !== txt) { $("link").textContent = txt; $("link").className = cls; }
+  if ($("link").textContent !== txt) { $("link").textContent = txt; $("link").className = `v ${cls}`; }
+  $("utc").textContent = new Date().toISOString().slice(11, 19) + "Z";
 }
 setInterval(linkStatus, 1000);
 function newRun() {
   // the run restarted with the tab open: forget everything of the old run
-  for (const k of [hist, spectro, spectroKey, heat]) for (const d in k) delete k[d];
-  stream.length = 0; seen.clear(); $("stream").textContent = ""; heatSrc = null;
-  lastConfirmed = 0; views = null; scope = null; Object.assign(glide, { from: {}, to: {}, at: 0, period: 100 });
+  for (const k of [hist, spectro, spectroKey, heat, trails, batt]) for (const d in k) delete k[d];
+  stream.length = 0; seen.clear(); acked.clear(); $("stream").textContent = ""; heatSrc = null;
+  lastConfirmed = null; views = null; scope = null; Object.assign(glide, { from: {}, to: {}, at: 0, period: 100 });
   loadStatic(true);
 }
 function connect() {
@@ -370,6 +529,8 @@ function connect() {
       if ("heatmap" in tm) heat[d.id] = tm.heatmap; else tm.heatmap = heat[d.id];
     }
     last = msg;
+    const ids = msg.state.drones.map(d => d.id);  // a Reserve numbers its drones 1, 3, 5, ...: start on one that exists
+    if (ids.length && !ids.includes(selected)) { selected = ids[0]; views = null; }
     for (const r of msg.readings || []) {
       const k = rkey(r); if (seen.has(k)) continue;
       seen.set(k, r.t);
@@ -379,6 +540,7 @@ function connect() {
     stream.length = Math.min(stream.length, 80);
     for (const d in hist) hist[d] = hist[d].filter(r => t - r.t < 120 && r.t <= t + 1);
     for (const [k, rt] of seen) if (t - rt > 130 || rt > t + 1) seen.delete(k);
+    for (const d in trails) trails[d] = trails[d].filter(p => t - p[2] < 120 && p[2] <= t + 1);
     for (const d of msg.state.drones) {
       const a = d.telemetry?.array;
       const sp = a?.spectrum || d.spectrum?.map(v => v - 90);  // the sim's dB(A) bands, on the arrays' scale
@@ -398,7 +560,7 @@ function connectCams() {
     const f = JSON.parse(e.data);
     frames[f.k] = f;
     $(`cam${f.k}`).src = `data:image/jpeg;base64,${f.jpeg}`;
-    if (f.k > 0) { $(`tag${f.k}`).textContent = `Drone ${f.drone}, ${f.mode} view`; document.body.classList.remove("onecam"); }
+    if (f.k > 0) { $(`tag${f.k}`).textContent = `${D(f.drone)} · ${f.mode.toUpperCase()}`; document.body.classList.remove("onecam"); }
     $("nocam").hidden = true;
     lastCam = performance.now();
     if (camStale) checkCams();
@@ -417,10 +579,10 @@ function checkCams() {
 }
 setInterval(checkCams, 500);
 function layout() {
-  // map-first: no camera images, live view; the map (and its Suspicion line) moves into the main area
+  // map-first: no camera images, Ops screen; the map (and its Suspicion line) moves into the main area
   const mapFirst = camStale && !evidence;
   document.body.classList.toggle("mapfirst", mapFirst);
-  const home = mapFirst ? $("left") : $("right");
+  const home = mapFirst ? $("center") : $("right");
   if ($("scope").parentElement !== home) home.prepend($("scope"));
   schedule();
 }
@@ -481,10 +643,10 @@ function schedule() { dirty = true; if (!pending) { pending = true; requestAnima
 function render(ts) {
   pending = false;
   if (!last || !city) return;
-  const panels = dirty && ts - lastPanels >= 80;  // at most ~12 Hz, as before
-  if (panels) { dirty = false; lastPanels = ts; $("clock").textContent = fmtTime(last.state.t); }
+  const panels = dirty && ts - lastPanels >= 80;  // at most ~12 Hz
+  if (panels) { dirty = false; lastPanels = ts; $("clock").textContent = `T+${fmtTime(last.state.t)}`; }
   for (const f of [drawMap, ...(evidence || document.body.classList.contains("mapfirst") ? [] : [drawPFD]),
-    ...(panels ? [drawSwarm, drawEar, drawThreatLogPanel, drawTicker, drawSuspicion, checkAlerts, ...(evidence ? [drawEvidence] : [])] : [])]) {
+    ...(panels ? [checkAlerts, drawHeader, drawKPIs, drawTracks, drawSwarm, drawEar, drawThreatLogPanel, drawTicker, drawSuspicion, ...(evidence ? [drawEvidence] : [])] : [])]) {
     try { f(ts); } catch (err) { console.error(err); }  // one broken panel must not stop the others
   }
   if (!document.hidden) { pending = true; requestAnimationFrame(render); }
@@ -493,6 +655,136 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { ch
 function each(list, f) { for (const x of list || []) try { f(x); } catch (err) { console.error(err); } }
 function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const fmtRange = m => m >= 1000 ? `${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} km` : `${Math.round(m)} m`;
+const brg = (dx, dy) => (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+const fmtBrg = b => `${String(Math.round(b) % 360).padStart(3, "0")}°`;
+function latLon(x, y) {
+  // the City's metric frame (x east, y north, metres) around its origin
+  const o = city?.origin; if (o?.lat == null) return null;
+  return [o.lat + y / 111320, o.lon + x / (111320 * Math.cos(o.lat * Math.PI / 180))];
+}
+function fmtLatLon(x, y, digits = 5) {
+  const ll = latLon(x, y); if (!ll) return `${Math.round(x)} E ${Math.round(y)} N`;
+  return `${Math.abs(ll[0]).toFixed(digits)}°${ll[0] < 0 ? "S" : "N"} ${Math.abs(ll[1]).toFixed(digits)}°${ll[1] < 0 ? "W" : "E"}`;
+}
+
+/* ---------- top bar, mission picture, alarms ---------- */
+const SITES = { muc: "Munich Airport · EDDM", savanna: "Game Reserve", valley: "Valley", synthetic: "Test town" };
+const isLive = e => e.status === "confirmed" || e.status === "following";
+const unacked = () => (last?.state.threats || []).filter(e => isLive(e) && !acked.has(e.id));
+function ackAll() { for (const e of last?.state.threats || []) acked.add(e.id); $("banner").classList.remove("show"); schedule(); }
+function picture() {
+  // the one line an operator reads first: the worst thing going on right now
+  const st = last.state, ds = drones(), live = (st.threats || []).filter(isLive);
+  const v = ds.filter(d => d.mode === "VERIFY");
+  const { tr, claim } = topSuspicion(droneById(selected));
+  if (live.length) {
+    const e = live[live.length - 1], d = droneById(e.drone), dist = d ? Math.hypot(d.x - e.x, d.y - e.y) : null;
+    return ["threat", `${e.label.toUpperCase()} CONFIRMED`, `${e.id} · ${e.status === "following" ? "followed" : "held"} by ${D(e.drone)}`
+      + `${dist != null ? ` at ${fmtRange(dist)}` : ""} · ${fmtLatLon(e.x, e.y, 4)}${live.length > 1 ? ` · ${live.length} live` : ""}`];
+  }
+  if (v.length) return ["verify", "VERIFYING", `${v.map(d => D(d.id)).join(", ")} flying to ${v.length > 1 ? "Suspicions" : "a Suspicion"}`
+    + (tr ? ` · ${trkId(tr)} ±${tr.a} m` : "")];
+  if (tr?.status === "CONFIRMED") return ["threat", `${CLS_NAME[tr.cls].toUpperCase()} CONFIRMED`, `${trkId(tr)} · ±${tr.a} m · ${fmtLatLon(tr.x, tr.y, 4)} · ${actionText(tr, claim)}`];
+  if (tr) return ["suspicion", "SUSPICION", `${trkId(tr)} ${CLS_NAME[tr.cls]} · ${pct(tr.conf)} · ±${tr.a} m · ${claim ? `${D(claim.id)} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}` : "waiting for a better fix"}`];
+  return ["clear", threatCls() === "DRONE" ? "AIRSPACE CLEAR" : "RESERVE CLEAR", `No ${threatName()} Suspicion on ${D(selected)}'s map`];
+}
+function drawHeader() {
+  const [lvl, what, sub] = picture(), el = $("alert");
+  if (el.dataset.lvl !== lvl) el.dataset.lvl = lvl;
+  $("alert-what").textContent = what; $("alert-sub").textContent = sub;
+  const un = unacked().length;
+  el.classList.toggle("unacked", un > 0); $("ack").hidden = !un; $("ack").textContent = un > 1 ? `ACK ${un}` : "ACK";
+}
+function checkAlerts() {
+  const st = last.state, n = st.counts?.confirmed ?? 0;
+  if (lastConfirmed === null) {  // the first state: what is over already needs no acknowledging
+    for (const e of st.threats || []) if (!isLive(e)) acked.add(e.id);
+    lastConfirmed = n; return;
+  }
+  if (n > lastConfirmed) {
+    const e = (st.decisions || []).filter(x => x.kind === "confirmed").pop(), log = (st.threats || []).filter(isLive).pop();
+    const what = log ? log.label : `intruder ${threatName()}`;
+    $("banner-txt").textContent = `${what[0].toUpperCase()}${what.slice(1)}${log ? ` ${log.id}` : ""} confirmed by ${e ? `${D(e.drone)}'s camera` : "a Verifier"} · T+${fmtTime(st.t)}`;
+    $("banner").classList.add("show"); clearTimeout(checkAlerts.h);
+    checkAlerts.h = setTimeout(() => $("banner").classList.remove("show"), 8000);  // the top bar keeps flashing until ACK
+  }
+  lastConfirmed = n;
+}
+function drawKPIs() {
+  const st = last.state, c = st.counts || {}, ds = drones(), rd = last.radio;
+  const sus = (droneById(selected)?.telemetry?.tracks || []).filter(tr => tr.cls === threatCls() && tr.status !== "EXPLAINED").length;
+  const ver = ds.filter(d => d.mode === "VERIFY").length;
+  const ttc = (st.threats || []).filter(e => e.t_confirmed != null && e.t_dispatch != null).map(e => e.t_confirmed - e.t_dispatch);
+  const pdr = rd && rd.delivered + rd.collided + rd.jammed > 0 ? rd.delivered / (rd.delivered + rd.collided + rd.jammed) : null;
+  const tile = (k, v, col, title) => `<div class="kpi" title="${title}"><div class="v"${col ? ` style="color:${css(col)}"` : ""}>${v}</div><div class="k">${k}</div></div>`;
+  setHTML($("kpigrid"), [
+    tile("Suspicions", sus, sus ? "--caution" : null, `${threatName()} Suspicions on ${D(selected)}'s Probability Map`),
+    tile("In Verify", ver, ver ? "--task" : null, "Drones flying to a Suspicion with the camera on"),
+    tile("Confirmed", c.confirmed ?? 0, c.confirmed ? "--warn" : null, "Distinct intruders a Verifier's camera confirmed"),
+    tile("Dismissed", c.dismissed ?? 0, null, "Verify tasks that found nothing: Ghosts and things already gone"),
+    tile("To confirm", ttc.length ? `${Math.round(ttc.reduce((a, b) => a + b, 0) / ttc.length)}<small> s</small>` : "–", null, "Mean time from dispatching a Verifier to its camera's confirmation (Threat Log)"),
+    tile("Delivered", pdr != null ? `${Math.round(pdr * 100)}<small> %</small>` : "–", pdr != null && pdr < 0.8 ? "--caution" : null, "Radio frames delivered, of those within range: collisions and jamming count against it"),
+  ].join(""));
+  $("kpimeta").textContent = `${ds.length} drones`;
+  const faulty = ds.filter(d => isFaulty(d.id)).length, gaps = ds.filter(d => d.telemetry?.task?.settled).length;
+  setHTML($("posture"), ds.map(d => `<i title="${D(d.id)} ${MODE_NAME[d.mode] || d.mode}" style="background:${css(isFaulty(d.id) ? "--warn" : MODE_COL[d.mode] || "--friend")};opacity:${d.perched_on || d.mode === "VERIFY" ? 1 : 0.55}"></i>`).join(""));
+  const n = m => ds.filter(d => d.mode === m).length;
+  setHTML($("postxt"), `<b>${n("LISTEN")}</b> listen · <b>${n("PATROL") + n("FILL_GAP")}</b> patrol · <b>${n("VERIFY")}</b> verify · <b>${gaps}</b> gap${gaps === 1 ? "" : "s"}`
+    + ` · sensors <b style="color:${css(faulty ? "--warn" : "--ok")}">${ds.length - faulty}/${ds.length}</b>`
+    + (rd ? ` · channel <b>${(rd.channel_load * 100).toFixed(1)} %</b>` : ""));
+}
+
+/* ---------- Suspicions: the ranked Tracks of the selected drone's map ---------- */
+const CHAIN = ["Detect", "Locate", "Verify", "Confirm", "Follow"];
+function claimFor(tr) {
+  return drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
+}
+function chainStage(tr, claim) {
+  // where this Suspicion is on the way from first Evidence to a followed intruder
+  if (tr.status === "CONFIRMED") {
+    const f = (last.state.threats || []).find(e => e.status === "following" && Math.hypot(e.x - tr.x, e.y - tr.y) < 200);
+    return f ? 4 : 3;
+  }
+  if (tr.status === "VERIFYING" || claim?.telemetry.task.kind === "verify") return 2;
+  return claim ? 1 : 0;
+}
+function sourcesOf(tr) {
+  // which drones' Evidence, per sensor family, raised this Track (Dedrone's "sensors with sources")
+  const by = {};
+  for (const [o, fam, v] of tr.support || []) if (fam !== "prior" && v > 0.2) (by[fam] ||= new Set()).add(o);
+  const name = { sound: "ACU", rf: "RF", camera: "EO", shot: "SHOT" };
+  return Object.entries(by).map(([fam, s]) => `<span class="chip" title="${fam} evidence from ${s.size} drone${s.size > 1 ? "s" : ""}">${name[fam] || fam.toUpperCase()}×${s.size}</span>`).join("");
+}
+function nearestTo(x, y) {
+  return drones().reduce((b, d) => (!b || Math.hypot(d.x - x, d.y - y) < Math.hypot(b.x - x, b.y - y)) ? d : b, null);
+}
+function trackCard(tr) {
+  const claim = claimFor(tr), stage = chainStage(tr, claim), conf = tr.status === "CONFIRMED";
+  const col = css(conf ? "--warn" : "--caution"), near = nearestTo(tr.x, tr.y);
+  const rel = near ? `${fmtBrg(brg(tr.x - near.x, tr.y - near.y))} ${fmtRange(Math.hypot(tr.x - near.x, tr.y - near.y))} from ${D(near.id)}` : "";
+  const task = claim ? `<div class="task" style="color:${css("--task")}">▸ ${D(claim.id)} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}${claim.telemetry.task.settled ? "" : " (claiming)"}</div>`
+    : conf ? `<div class="task" style="color:${col}">▸ handed to the operators</div>` : "";
+  return `<div class="trk${conf ? " confirmed" : ""}" data-drone="${claim ? claim.id : ""}">
+    <div class="hd"><span class="id">${trkId(tr)}</span><span class="cls" style="color:${col}">${CLS_NAME[tr.cls].toUpperCase()}</span><span class="st" style="color:${col}">${STATUS[tr.status].toUpperCase()}</span></div>
+    <div class="meter"><i style="width:${Math.round(tr.conf * 100)}%;background:${col}"></i></div>
+    <div class="ln"><span>conf <b>${pct(tr.conf)}</b> · <b>${tr.strength.toFixed(1)}</b> log-odds</span><span>±<b>${tr.a}</b> m</span></div>
+    <div class="ln"><span>${rel}</span><span>${tr.origins} drone${tr.origins === 1 ? "" : "s"}</span></div>
+    <div class="chips">${sourcesOf(tr)}</div>
+    <div class="chain">${CHAIN.map((c, i) => `<span class="${i < stage ? "done" : i === stage ? "now" : ""}">${c.toUpperCase()}</span>`).join("")}</div>
+    ${task}</div>`;
+}
+function drawTracks() {
+  const all = droneById(selected)?.telemetry?.tracks || [];
+  const live = all.filter(tr => tr.status !== "EXPLAINED" && (tr.cls === threatCls() || tr.status === "CONFIRMED"))
+    .sort((a, b) => (b.status === "CONFIRMED") - (a.status === "CONFIRMED") || b.strength - a.strength);
+  const expl = all.filter(tr => tr.status === "EXPLAINED");
+  $("trkmeta").textContent = `${live.length} on ${D(selected)}'s map`;
+  setHTML($("tracklist"), (live.length ? live.slice(0, 6).map(trackCard).join("")
+    : `<div class="empty-note">No ${threatName()} Suspicion. A region of the Probability Map worth acting on shows up here, ranked by evidence.</div>`)
+    + expl.slice(0, 4).map(tr => `<div class="expl"><i></i><span>${trkId(tr)} ${CLS_NAME[tr.cls]}, explained${tr.cls === "TRAIN" ? " by the rail" : tr.cls === "VEHICLE" ? " by the road" : ""}</span><span class="num">±${tr.a} m</span></div>`).join(""));
+}
+$("tracklist").addEventListener("click", e => { const c = e.target.closest(".trk"); if (c?.dataset.drone) select(+c.dataset.drone); });
 
 /* ---------- map (scope) ---------- */
 const map = $("map");
@@ -514,7 +806,7 @@ function zoomTarget(w, h) {
   const fit = fitView(w, h); if (!zoomed) return fit;
   const st = last.state, ds = shownDrones(performance.now()), pts = [];
   const v = ds.filter(d => d.mode === "VERIFY").sort((a, b) => (b.id === selected) - (a.id === selected))[0];
-  const live = (st.threats || []).filter(e => e.status === "confirmed" || e.status === "following").pop();
+  const live = (st.threats || []).filter(isLive).pop();
   const sus = (droneById(selected)?.telemetry?.tracks || []).filter(tr => tr.cls === threatCls() && tr.status !== "EXPLAINED")
     .sort((a, b) => b.strength - a.strength)[0];
   if (v) { pts.push([v.x, v.y]); const task = v.telemetry?.task; if (task) pts.push([task.x, task.y]); }
@@ -536,8 +828,10 @@ function mapView(w, h) {
   const { cx, cy, s } = scope || fitView(w, h);
   return { s, P: (x, y) => [w / 2 + (x - cx) * s, h / 2 - (y - cy) * s], inv: (px, py) => [cx + (px - w / 2) / s, cy - (py - h / 2) / s] };
 }
+const nice = (target, steps) => steps.find(v => v >= target) ?? steps[steps.length - 1];
+const gridStep = s => nice(90 / s, [100, 250, 500, 1000, 2000, 5000]);  // a grid line at least every 90 px
 const heatCanvas = document.createElement("canvas");
-let mapStatic = null;  // basemap and buildings over a box around the view; drawn again only when
+let mapStatic = null;  // basemap, grid and buildings over a box around the view; drawn again only when
 //                       the view leaves that box, zooms well past its scale, or the size or city changes
 function drawMapBase(ctx, w, h, view) {
   const dpr = devicePixelRatio || 1, key = `${w}x${h}@${dpr}`, [cx, cy] = view.inv(w / 2, h / 2), s = view.s;
@@ -547,99 +841,233 @@ function drawMapBase(ctx, w, h, view) {
   if (!fresh) {
     const f = zoomed || scope?.s > fitView(w, h).s * 1.01 ? 2 : 1;  // zoomed: room to pan before the next redraw
     const cw = w * f, ch = h * f, box = [cx - cw / 2 / s, cy - ch / 2 / s, cx + cw / 2 / s, cy + ch / 2 / s];
-    mapStatic = { key, city, base, s, box, canvas: mapBaseCanvas(cw, ch, (x, y) => [(x - box[0]) * s, (box[3] - y) * s]) };
+    mapStatic = { key, city, base, s, box, grid: gridStep(s), canvas: mapBaseCanvas(cw, ch, (x, y) => [(x - box[0]) * s, (box[3] - y) * s], s, box) };
   }
   const [ax, ay] = view.P(mapStatic.box[0], mapStatic.box[3]), [bx, by] = view.P(mapStatic.box[2], mapStatic.box[1]);
   ctx.drawImage(mapStatic.canvas, ax, ay, bx - ax, by - ay);
 }
-function mapBaseCanvas(w, h, P) {
+function mapBaseCanvas(w, h, P, s, box) {
   const dpr = devicePixelRatio || 1;
   const c = document.createElement("canvas"); c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr);
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, w, h);
   const [x0, y0, x1, y1] = city.bounds, [ax, ay] = P(x0, y1), [bx, by] = P(x1, y0);
-  if (base) { ctx.globalAlpha = 0.9; ctx.drawImage(base, ax, ay, bx - ax, by - ay); ctx.globalAlpha = 1; }
-  else { ctx.fillStyle = css("--panel"); ctx.fillRect(ax, ay, bx - ax, by - ay); }
-  ctx.fillStyle = "rgba(232,238,244,.18)";
+  if (base) {
+    // a console map, not a photo: mostly grey and dark, so the symbols carry the colour
+    ctx.drawImage(base, ax, ay, bx - ax, by - ay);
+    ctx.globalCompositeOperation = "saturation"; ctx.fillStyle = "rgba(128,128,128,.72)"; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "rgba(5,10,16,.42)"; ctx.fillRect(ax, ay, bx - ax, by - ay);
+  } else { ctx.fillStyle = css("--panel"); ctx.fillRect(ax, ay, bx - ax, by - ay); }
+  // grid every `g` metres, on the UTM grid where the City has one (Munich: ETRS89 / UTM 32N)
+  const g = gridStep(s), o = city.origin?.utm_origin || [0, 0];
+  ctx.strokeStyle = "rgba(160,190,215,.11)"; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = Math.ceil((box[0] + o[0]) / g) * g - o[0]; x <= box[2]; x += g) { const [px] = P(x, 0); ctx.moveTo(Math.round(px) + .5, 0); ctx.lineTo(Math.round(px) + .5, h); }
+  for (let y = Math.ceil((box[1] + o[1]) / g) * g - o[1]; y <= box[3]; y += g) { const [, py] = P(0, y); ctx.moveTo(0, Math.round(py) + .5); ctx.lineTo(w, Math.round(py) + .5); }
+  ctx.stroke();
+  // runways (Munich): the strip, a dashed centre line, the threshold number at each end
+  for (const rw of city.runways || []) {
+    const pts = rw.line; if (!(pts?.length > 1)) continue;
+    line(ctx, P, pts); ctx.strokeStyle = "rgba(225,232,240,.16)"; ctx.lineWidth = Math.max(2, (rw.width || 45) * s); ctx.stroke();
+    line(ctx, P, pts); ctx.strokeStyle = "rgba(225,232,240,.45)"; ctx.lineWidth = 1; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
+    const p0 = pts[0], p1 = pts[pts.length - 1], len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), ux = (p1[0] - p0[0]) / len, uy = (p1[1] - p0[1]) / len;
+    const [ra, rb] = (rw.ref || "").split("/"), hd = brg(ux, uy);
+    const aFirst = Math.abs((((parseInt(ra) * 10 - hd) % 360) + 540) % 360 - 180) < 90;  // runway 08 is flown heading 080, from its west end
+    ctx.font = font(10, 700, true); ctx.fillStyle = "rgba(225,232,240,.75)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const [p, ref, sgn] of [[p0, aFirst ? ra : rb, -1], [p1, aFirst ? rb : ra, 1]]) if (ref) { const [px, py] = P(p[0] + sgn * ux * 140, p[1] + sgn * uy * 140); ctx.fillText(ref, px, py); }
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  }
+  ctx.fillStyle = "rgba(232,238,244,.17)";
   for (const b of city.buildings) { line(ctx, P, b.footprint); ctx.fill(); }
+  // Perch Sites: where a drone may land to listen
+  ctx.strokeStyle = "rgba(82,194,245,.3)"; ctx.lineWidth = 1;
+  if (s > 0.08) for (const p of city.perch_sites || []) { const [px, py] = P(p.x, p.y); ctx.strokeRect(px - 1.5, py - 1.5, 3, 3); }
+  // a Reserve's camps, lodges and outposts
+  ctx.font = font(10, 700); ctx.textAlign = "center";
+  for (const t of city.towns || []) {
+    const [px, py] = P(t.x, t.y), r = Math.max(5, t.r * s); ctx.strokeStyle = "rgba(232,238,244,.4)"; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(232,238,244,.7)"; ctx.fillText(t.name.toUpperCase(), px, py - r - 5);
+  }
+  ctx.textAlign = "left";
   return c;
 }
 function drawMap(now) {
   const [w, h, ctx] = fitCanvas(map);
   stepScope(w, h, now);
   const view = mapView(w, h), { s, P } = view, st = last.state, ds = shownDrones(now);
-  ctx.fillStyle = css("--sky"); ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, w, h);
   drawMapBase(ctx, w, h, view);
-  const me = droneById(selected);
+  mapLabels.length = 0; mapSymbols.length = 0;
+  const me = droneById(selected), meShown = ds.find(d => d.id === selected);
   if (showHeat && me?.telemetry?.heatmap) drawHeat(ctx, P, me.telemetry.heatmap);
-  for (const j of st.jamming || []) { if (!(j.r > 0)) continue; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,90,82,.14)"; ctx.fill(); ctx.strokeStyle = "rgba(255,90,82,.6)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
+  for (const j of st.jamming || []) { if (!(j.r > 0)) continue; const [a, b] = P(j.x, j.y); ctx.beginPath(); ctx.arc(a, b, j.r * s, 0, 7); ctx.fillStyle = "rgba(255,79,79,.12)"; ctx.fill(); ctx.strokeStyle = "rgba(255,79,79,.65)"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+    halo(ctx, "JAMMING", a, b - j.r * s - 6, "rgba(255,79,79,.9)", font(9, 700, true), "center"); }
+  if (showRings && meShown) drawRings(ctx, P, s, meShown);
   const byId = Object.fromEntries(ds.map(d => [d.id, d]));
-  ctx.strokeStyle = "rgba(60,203,234,.18)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(82,194,245,.20)"; ctx.lineWidth = 1;
   for (const [a, b] of last.radio?.links || []) if (byId[a] && byId[b]) { line(ctx, P, [[byId[a].x, byId[a].y], [byId[b].x, byId[b].y]]); ctx.stroke(); }
-  // recent sound bearings of every drone: thin rays, the selected drone's brighter
+  // recent sound bearings of every drone (acoustic lines of bearing): the selected drone's brighter
   const t = st.t;
   for (const id in hist) for (const r of hist[id]) {
     if (r.sensor !== "SOUND" || t - r.t > 4) continue;
     const d = byId[r.drone]; if (!d) continue;
     const th = r.bearing * Math.PI / 180, L = Math.max(700, 0.15 * (city.bounds[2] - city.bounds[0])), [px, py] = P(d.x, d.y), [qx, qy] = P(d.x + L * Math.sin(th), d.y + L * Math.cos(th));
-    ctx.strokeStyle = r.drone === selected ? "rgba(245,181,59,.85)" : "rgba(245,181,59,.35)";
+    ctx.strokeStyle = r.drone === selected ? "rgba(247,180,61,.85)" : "rgba(247,180,61,.32)";
     ctx.lineWidth = r.drone === selected ? 1.5 : 1; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
   }
   each(me?.telemetry?.tracks, tr => drawTrack(ctx, P, s, glided(`t:${me.id}:${tr.id}`, tr, now)));
-  // tasks: commanded lines in magenta
+  // flight trails: where each drone flew in the last 2 min
+  for (const d of ds) { const tr = trails[d.id]; if (!tr || tr.length < 2) continue;
+    ctx.fillStyle = css(MODE_COL[d.mode] || "--friend");
+    tr.forEach((p, i) => { const [a, b] = P(p[0], p[1]); ctx.globalAlpha = 0.12 + 0.5 * i / tr.length; ctx.fillRect(a - 1, b - 1, 2, 2); });
+    ctx.globalAlpha = 1; }
+  // tasks: commanded lines in magenta, to the point the drone was sent to
   for (const d of ds) { const task = d.telemetry?.task; if (!task) continue;
     const [a, b] = P(d.x, d.y), [c, e] = P(task.x, task.y);
     ctx.strokeStyle = css("--task"); ctx.lineWidth = 1.5; ctx.setLineDash(task.settled ? [] : [3, 3]);
-    ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(c, e, 4, 0, 7); ctx.stroke();
+    if (task.settled && Math.hypot(c - a, e - b) > 40) halo(ctx, fmtRange(Math.hypot(task.x - d.x, task.y - d.y)), (a + c) / 2 + 6, (b + e) / 2 - 4, css("--task"), font(10, 400, true)); }
   if (showTruth) for (const tr of (st.truth || []).map(tr => glided(`s:${tr.id}`, tr, now))) { const [a, b] = P(tr.x, tr.y); ctx.strokeStyle = css(CLS_COL[tr.cls]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a - 5, b - 5); ctx.lineTo(a + 5, b + 5); ctx.moveTo(a + 5, b - 5); ctx.lineTo(a - 5, b + 5); ctx.stroke();
-    if (tr.kind) { ctx.fillStyle = css(CLS_COL[tr.cls]); ctx.font = "10px B612, sans-serif"; ctx.fillText(tr.kind, a + 7, b + 3); } }
+    halo(ctx, `TRUTH ${tr.kind || CLS_NAME[tr.cls]}`, a + 7, b + 3, css(CLS_COL[tr.cls]), font(9, 400, true)); }
   drawThreatLog(ctx, P);
-  // drones: triangles pointing along the heading; camera wedges for the ones on screen
+  // drones: friend blue (magenta in Verify); a perched drone a station, a flying one a chevron
   const viewed = new Set((views || []).map(v => v[0]));
   each(ds, d => {
-    const [a, b] = P(d.x, d.y), th = d.heading * Math.PI / 180;
-    if (viewed.has(d.id)) { ctx.fillStyle = d.id === selected ? "rgba(60,203,234,.22)" : "rgba(232,238,244,.10)";
-      ctx.beginPath(); ctx.moveTo(a, b); ctx.arc(a, b, 26, th - Math.PI / 2 - 0.5, th - Math.PI / 2 + 0.5); ctx.closePath(); ctx.fill(); }
-    ctx.save(); ctx.translate(a, b); ctx.rotate(th);
-    ctx.fillStyle = css(MODE_COL[d.mode] || "--own"); ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    if ((d.telemetry?.belief?.faulty || []).includes(d.id) || isFaulty(d.id)) { ctx.strokeStyle = css("--warn"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 10, 0, 7); ctx.stroke(); }
-    if (d.id === selected) { ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, 12, 0, 7); ctx.stroke(); }
-    ctx.fillStyle = css("--text"); ctx.font = "11px B612, sans-serif"; ctx.fillText(d.id, a + 9, b - 7);
+    const [a, b] = P(d.x, d.y), th = d.heading * Math.PI / 180, col = css(MODE_COL[d.mode] || "--friend");
+    if (viewed.has(d.id) && !camStale) {  // the camera on screen looks this way
+      const g = ctx.createRadialGradient(a, b, 0, a, b, 44); g.addColorStop(0, d.id === selected ? "rgba(82,194,245,.38)" : "rgba(232,238,244,.18)"); g.addColorStop(1, "rgba(82,194,245,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(a, b); ctx.arc(a, b, 44, th - Math.PI / 2 - 0.55, th - Math.PI / 2 + 0.55); ctx.closePath(); ctx.fill(); }
+    ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(4,8,12,.9)"; ctx.fillStyle = col;
+    if (d.perched_on) {
+      ctx.beginPath(); ctx.arc(a, b, 5.5, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.55; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(a, b, 9, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    } else {
+      ctx.save(); ctx.translate(a, b); ctx.rotate(th);
+      ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6.5, 6); ctx.lineTo(0, 2.5); ctx.lineTo(-6.5, 6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    if (isFaulty(d.id)) { ctx.strokeStyle = css("--warn"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 12, 0, 7); ctx.stroke(); }
+    if (d.id === selected) { ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]); ctx.beginPath(); ctx.arc(a, b, 14, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    mapLabel(0, a, b, 10, [[D(d.id), font(11, 700, true)]], css("--text"));
   });
-  $("maplegend").textContent = `Map of drone ${selected}${showHeat ? ", red is probable threat" : ""}`
-    + (city?.attribution ? ` · ${city.attribution.join(" · ")}` : "");  // CC BY / ODbL credit
+  drawMapLabels(ctx, w, h);
+  drawMapChrome(ctx, w, h, view);
+}
+// Labels go on last, most important first (drones, the Threat Log, confirmed, then suspected
+// Tracks): each takes the first of eight spots around its symbol that overlaps no symbol and no
+// label placed before it; a Track's data block that finds none is left out (its symbol stays).
+const mapLabels = [], mapSymbols = [];
+function mapLabel(prio, x, y, r, lines, col) { mapLabels.push({ prio, x, y, r, lines, col }); mapSymbols.push([x - r, y - r, 2 * r, 2 * r]); }
+function drawMapLabels(ctx, w, h) {
+  const placed = mapSymbols.slice(), hit = (q, p) => q[0] < p[0] + p[2] && q[0] + q[2] > p[0] && q[1] < p[1] + p[3] && q[1] + q[3] > p[1];
+  for (const L of mapLabels.sort((a, b) => a.prio - b.prio)) {
+    const ws = L.lines.map(([t, f]) => { ctx.font = f; return ctx.measureText(t).width; }), bw = Math.max(...ws) + 4, bh = L.lines.length * 12;
+    const { x, y, r } = L, near = r + 3, far = r + 16;
+    const spots = [[x + near, y - bh - 1], [x + near, y + 1], [x - near - bw, y - bh - 1], [x - near - bw, y + 1],
+      [x + far, y + far - 6], [x + far, y - far - bh + 6], [x - far - bw, y + far - 6], [x - far - bw, y - far - bh + 6]];
+    let box = null, leader = false;
+    for (const [i, [bx, by]] of spots.entries()) {
+      const q = [bx, by, bw, bh];
+      if (bx < 2 || by < 36 || bx + bw > w - 2 || by + bh > h - 40) continue;
+      if (!placed.some(p => hit(q, p))) { box = q; leader = i >= 4; break; }
+    }
+    if (!box && L.prio > 1) continue;
+    box ||= [spots[0][0], spots[0][1], bw, bh];
+    placed.push(box);
+    if (leader) {  // a leader line from the symbol to the block
+      const cx = Math.max(box[0], Math.min(x, box[0] + box[2])), cy = Math.max(box[1], Math.min(y, box[1] + box[3]));
+      ctx.strokeStyle = L.col; ctx.globalAlpha = 0.7; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx, cy); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    L.lines.forEach(([t, f], i) => halo(ctx, t, box[0] + 2, box[1] + 10 + i * 12, L.col, f));
+  }
+}
+function halo(ctx, txt, x, y, col, f, align = "left") {
+  // text that reads over the photo: a dark outline under the fill
+  ctx.font = f; ctx.textAlign = align; ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(3,6,10,.85)"; ctx.lineWidth = 3; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.textAlign = "left";
+}
+function drawRings(ctx, P, s, d) {
+  // range rings around the selected drone, three of them, about 70 px apart
+  const step = nice(70 / s, [100, 200, 250, 500, 1000, 2000]), [a, b] = P(d.x, d.y);
+  ctx.strokeStyle = "rgba(82,194,245,.28)"; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+  for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(a, b, i * step * s, 0, 7); ctx.stroke(); }
+  ctx.setLineDash([]);
+  for (let i = 1; i <= 3; i++) { const r = i * step * s; halo(ctx, fmtRange(i * step), a + r * 0.707 + 3, b - r * 0.707 - 3, "rgba(150,210,240,.75)", font(9, 400, true)); }
+}
+function drawMapChrome(ctx, w, h, view) {
+  const { s, P, inv } = view;
+  // title top left, the grid's numbers along the top and right edges (UTM km where there is a UTM origin)
+  halo(ctx, `PROBABILITY MAP · ${D(selected)}${showHeat ? "" : " (HIDDEN, H)"}`, 10, 18, css("--text"), font(10, 700));
+  halo(ctx, zoomed ? "FOLLOWING THE ACTION · Z" : "WHOLE MAP · Z TO FOLLOW", 10, 31, css("--muted"), font(9));
+  const g = mapStatic?.grid || gridStep(s), o = city.origin?.utm_origin, off = o || [0, 0];
+  const [vx0, vy1] = inv(0, 0), [vx1, vy0] = inv(w, h), lab = (v, k) => o ? `${(v + off[k]) / 1000}` : `${(v / 1000).toFixed(g < 1000 ? 1 : 0)}`;
+  for (let x = Math.ceil((vx0 + off[0]) / g) * g - off[0]; x <= vx1; x += g) { const [px] = P(x, 0); if (px > 230 && px < w - 40) halo(ctx, lab(x, 0), px, 12, "rgba(170,195,215,.6)", font(9, 400, true), "center"); }
+  for (let y = Math.ceil((vy0 + off[1]) / g) * g - off[1]; y <= vy1; y += g) { const [, py] = P(0, y); if (py > 50 && py < h - 70) halo(ctx, lab(y, 1), w - 6, py - 3, "rgba(170,195,215,.6)", font(9, 400, true), "right"); }
+  // north arrow
+  const nx = w - 20, ny = 26;
+  ctx.fillStyle = css("--text"); ctx.beginPath(); ctx.moveTo(nx, ny - 12); ctx.lineTo(nx + 5, ny + 2); ctx.lineTo(nx, ny - 1); ctx.lineTo(nx - 5, ny + 2); ctx.closePath(); ctx.fill();
+  halo(ctx, "N", nx, ny + 13, css("--text"), font(9, 700), "center");
+  // scale bar bottom left
+  const L = nice(110 / s, [50, 100, 200, 250, 500, 1000, 2000, 5000]), px = L * s, x0 = 10, y0 = h - 12;
+  ctx.fillStyle = "rgba(3,6,10,.6)"; ctx.fillRect(x0 - 4, y0 - 12, px + 50, 18);
+  ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0); ctx.lineTo(x0 + px, y0); ctx.lineTo(x0 + px, y0 - 4); ctx.moveTo(x0 + px / 2, y0); ctx.lineTo(x0 + px / 2, y0 - 3); ctx.stroke();
+  halo(ctx, fmtRange(L), x0 + px + 6, y0 + 1, css("--text"), font(10, 400, true));
+  // cursor readout above it: where the mouse is, and bearing and range from the selected drone
+  if (mouse) {
+    const d = droneById(selected), [mx, my] = mouse;
+    const txt = `${fmtLatLon(mx, my)}${d ? `  ·  ${D(d.id)} ${fmtBrg(brg(mx - d.x, my - d.y))} ${fmtRange(Math.hypot(mx - d.x, my - d.y))}` : ""}`;
+    ctx.font = font(10, 400, true); const tw = ctx.measureText(txt).width;
+    ctx.fillStyle = "rgba(3,6,10,.75)"; ctx.fillRect(x0 - 4, y0 - 34, tw + 10, 17);
+    ctx.fillStyle = css("--text"); ctx.fillText(txt, x0 + 1, y0 - 22);
+  }
 }
 function drawThreatLog(ctx, P) {
-  // confirmed threats: the path the swarm followed, a ring and the camera's label at the head;
-  // dismissed checks: a grey cross with what was there instead
+  // confirmed threats: the path the swarm followed (history dots), a hostile diamond and the
+  // camera's label at the head; dismissed checks: a grey cross with what was there instead
   for (const e of last.state.threats || []) {
-    const [a, b] = P(e.x, e.y), live = e.status === "confirmed" || e.status === "following";
+    const [a, b] = P(e.x, e.y), live = isLive(e);
     if (e.status === "dismissed") {
       if (last.state.t - e.t > 120) continue;
       ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1.5; ctx.beginPath();
       ctx.moveTo(a - 4, b - 4); ctx.lineTo(a + 4, b + 4); ctx.moveTo(a + 4, b - 4); ctx.lineTo(a - 4, b + 4); ctx.stroke();
-      ctx.fillStyle = css("--muted"); ctx.font = "10px B612, sans-serif"; ctx.fillText(`${e.id} ${e.label}`, a + 7, b + 3);
+      halo(ctx, `${e.id} ${e.label}`, a + 7, b + 3, css("--muted"), font(9, 400, true));
       continue;
     }
-    const col = live ? css("--warn") : "rgba(255,90,82,.5)";
-    if (e.path?.length > 1) { line(ctx, P, e.path.map(q => [q[1], q[2]])); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke(); }
-    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 9, 0, 7); ctx.stroke();
-    ctx.fillStyle = col; ctx.font = "700 11px B612, sans-serif"; ctx.fillText(`${e.id} ${e.label}`, a + 12, b - 8);
+    const col = live ? css("--warn") : "rgba(255,79,79,.5)";
+    ctx.fillStyle = col;
+    for (const q of e.path || []) { const [qx, qy] = P(q[1], q[2]); ctx.fillRect(qx - 1.5, qy - 1.5, 3, 3); }
+    diamond(ctx, a, b, 9, col, live);
+    if (live) { ctx.strokeStyle = col; ctx.globalAlpha = 0.35 + 0.35 * Math.sin(performance.now() / 250); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, 16, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+    mapLabel(1, a, b, 10, [[`${e.id} ${e.label.toUpperCase()}`, font(11, 700, true)],
+      [live ? `${e.status === "following" ? "FOLLOWED" : "CONFIRMED"} · ${D(e.drone)}` : (THREAT_STATUS[e.status] || e.status).toUpperCase(), font(9, 400, true)]], col);
   }
+}
+function diamond(ctx, a, b, r, col, filled) {
+  ctx.beginPath(); ctx.moveTo(a, b - r); ctx.lineTo(a + r, b); ctx.lineTo(a, b + r); ctx.lineTo(a - r, b); ctx.closePath();
+  ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
+  if (filled) { ctx.globalAlpha = 0.45; ctx.fillStyle = col; ctx.fill(); ctx.globalAlpha = 1; }
 }
 const THREAT_STATUS = { confirmed: "confirmed", following: "followed", lost: "lost", handed_off: "handed off", dismissed: "no threat" };
 function drawThreatLogPanel() {
-  const es = (last.state.threats || []).slice().reverse();
-  $("threatlog").hidden = !es.length; if (!es.length) return;
-  setHTML($("threatrows"), es.slice(0, 6).map(e => {
-    const col = e.status === "dismissed" ? css("--muted") : css("--warn");
-    return `<tr data-drone="${e.drone}"><td class="num muted">${e.id}</td><td class="what" style="color:${col}">${e.label}</td>`
-      + `<td style="color:${col}">${THREAT_STATUS[e.status] || e.status}</td><td class="num muted">${fmtTime(e.t_confirmed ?? e.t)}</td><td class="muted">drone ${e.drone}</td></tr>`;
-  }).join(""));
-  $("threatrows").querySelectorAll("tr").forEach(r => r.onclick = () => select(+r.dataset.drone));
+  const es = (last.state.threats || []).slice().reverse(), live = es.filter(isLive).length;
+  $("tlmeta").textContent = es.length ? `${live} live · ${es.length} checked` : "nothing checked yet";
+  setHTML($("threatrows"), es.length ? es.slice(0, 8).map(e => {
+    const col = e.status === "dismissed" ? css("--muted") : isLive(e) ? css("--warn") : "rgba(255,79,79,.65)", un = isLive(e) && !acked.has(e.id);
+    const ttc = e.t_confirmed != null && e.t_dispatch != null ? ` · task → confirm ${Math.round(e.t_confirmed - e.t_dispatch)} s` : "";
+    return `<div class="tl${un ? " unacked" : ""}" data-drone="${e.drone}"><span class="id" style="color:${col}">${e.id}</span>`
+      + `<span class="what" style="color:${col}">${e.label.toUpperCase()}<small>${(THREAT_STATUS[e.status] || e.status).toUpperCase()}</small></span>`
+      + (un ? `<button class="ackbtn" data-ack="${e.id}">ACK</button>` : `<span class="num muted">T+${fmtTime(e.t_confirmed ?? e.t)}</span>`)
+      + `<span class="meta">${D(e.drone)}${e.status === "dismissed" ? " found nothing" : "'s camera"}${ttc} · ${fmtLatLon(e.x, e.y, 4)}</span></div>`;
+  }).join("") : `<div class="empty-note">Every danger a Verifier checks lands here: what its camera saw, and where the swarm follows it.</div>`);
 }
+$("threatrows").addEventListener("click", e => {
+  const a = e.target.closest("[data-ack]");
+  if (a) { acked.add(a.dataset.ack); if (!unacked().length) $("banner").classList.remove("show"); schedule(); return; }
+  const r = e.target.closest("[data-drone]"); if (r) select(+r.dataset.drone);
+});
 function isFaulty(id) { return drones().some(d => (d.telemetry?.belief?.faulty || []).includes(id)); }
 function line(ctx, P, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); }
 let heatSrc = null;  // the heatmap now decoded in heatCanvas
@@ -648,7 +1076,7 @@ function drawHeat(ctx, P, hm) {
     heatSrc = hm;
     const p = b64(hm.p), cls = b64(hm.cls); heatCanvas.width = hm.w; heatCanvas.height = hm.h;
     const hctx = heatCanvas.getContext("2d"), img = hctx.createImageData(hm.w, hm.h);
-    const rgb = [[255, 90, 82], [245, 181, 59], [201, 168, 106]];
+    const rgb = [[255, 79, 79], [247, 180, 61], [201, 168, 106]];
     for (let r = 0; r < hm.h; r++) for (let c = 0; c < hm.w; c++) {
       const s = r * hm.w + c, o = ((hm.h - 1 - r) * hm.w + c) * 4, [R, G, B] = rgb[cls[s]] || rgb[0];
       img.data[o] = R; img.data[o + 1] = G; img.data[o + 2] = B; img.data[o + 3] = p[s] * 0.75;
@@ -659,37 +1087,47 @@ function drawHeat(ctx, P, hm) {
   ctx.imageSmoothingEnabled = true; ctx.drawImage(heatCanvas, ax, ay, bx - ax, by - ay);
 }
 function drawTrack(ctx, P, s, tr) {
-  const [a, b] = P(tr.x, tr.y), col = tr.status === "CONFIRMED" ? css("--warn") : tr.status === "EXPLAINED" ? css("--muted") : css("--caution");
+  // a Track: its uncertainty ellipse, and a 2525 frame: a diamond for a suspect or hostile
+  // (filled once confirmed), a square for a neutral (Explained); a data block for the threats
+  const [a, b] = P(tr.x, tr.y), conf = tr.status === "CONFIRMED", expl = tr.status === "EXPLAINED", threat = tr.cls === threatCls();
+  const col = conf ? css("--warn") : expl ? css("--ok") : threat ? css("--caution") : css("--muted");
   ctx.save(); ctx.translate(a, b); ctx.rotate(-tr.ang * Math.PI / 180);
   ctx.beginPath(); ctx.ellipse(0, 0, Math.max(tr.a * s, 4), Math.max(tr.b * s, 3), 0, 0, 7);
-  ctx.setLineDash(tr.status === "EXPLAINED" ? [3, 3] : []); ctx.lineWidth = tr.status === "CONFIRMED" ? 2.5 : 1.5; ctx.strokeStyle = col; ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
-  if (tr.cls === threatCls() || tr.status === "CONFIRMED") { ctx.fillStyle = col; ctx.font = "11px B612, sans-serif"; ctx.fillText(`${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}`, a + 8, b + 14); }
+  ctx.setLineDash(expl ? [2, 3] : conf ? [] : [5, 3]); ctx.lineWidth = conf ? 1.5 : 1; ctx.strokeStyle = col; ctx.globalAlpha = expl ? 0.5 : 0.85; ctx.stroke();
+  ctx.restore(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  if (expl) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7; ctx.strokeRect(a - 4, b - 4, 8, 8); ctx.globalAlpha = 1; return; }
+  diamond(ctx, a, b, 7, col, conf);
+  if (!(threat || conf)) return;
+  // a confirmed Track the Threat Log already labels needs no second block
+  if (conf && (last.state.threats || []).some(e => isLive(e) && Math.hypot(e.x - tr.x, e.y - tr.y) < 150)) { mapSymbols.push([a - 8, b - 8, 16, 16]); return; }
+  mapLabel(conf ? 2 : 3, a, b, 8, [[trkId(tr), font(10, 700, true)], [`${CLS_NAME[tr.cls].toUpperCase()} ${pct(tr.conf)} ±${tr.a}m`, font(9, 400, true)]], col);
 }
 
 /* ---------- main view overlay (head-up display) ---------- */
 // Symbology in --text with a soft glow; colour only where it means something (threats, tasks).
+// The corners carry the platform, sensor and time lines of a MISB ST 0601-style video overlay.
 const pfd = $("pfd");
-function hudText(ctx, txt, x, y, align = "left", font = "12px B612 Mono, monospace") {
-  ctx.font = font; ctx.textAlign = align; ctx.fillText(txt, x, y);
+function hudText(ctx, txt, x, y, align = "left", f = font(12, 400, true)) {
+  ctx.font = f; ctx.textAlign = align; ctx.fillText(txt, x, y);
 }
 function tape(ctx, x, cy, hgt, value, step, labelEvery, side, fmt) {
   // a vertical ladder centred on `value`; side -1: ticks point right (left tape), +1: left
   const px = hgt / (step * 10);  // ten steps visible
   ctx.save(); ctx.beginPath(); ctx.rect(x - 60, cy - hgt / 2, 120, hgt); ctx.clip();
-  ctx.fillStyle = "rgba(8,14,22,.55)"; ctx.fillRect(side < 0 ? x - 52 : x, cy - hgt / 2, 52, hgt);
+  ctx.fillStyle = "rgba(6,11,17,.5)"; ctx.fillRect(side < 0 ? x - 52 : x, cy - hgt / 2, 52, hgt);
   ctx.fillStyle = css("--text");
   for (let v = Math.floor((value - step * 6) / step) * step; v <= value + step * 6; v += step) {
     const y = cy - (v - value) * px, major = Math.round(v / step) % labelEvery === 0;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - side * (major ? 12 : 6), y); ctx.stroke();
-    if (major) hudText(ctx, fmt(v), x - side * 16, y + 4, side < 0 ? "right" : "left", "11px B612 Mono, monospace");
+    if (major) hudText(ctx, fmt(v), x - side * 16, y + 4, side < 0 ? "right" : "left", font(11, 400, true));
   }
   ctx.restore();
   // current value box with a pointer
   const bw = 58, bh = 24, bx = side < 0 ? x - bw - 8 : x + 8;
-  ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.strokeStyle = css("--text");
+  ctx.fillStyle = "rgba(6,11,17,.88)"; ctx.strokeStyle = css("--text");
   ctx.beginPath(); ctx.rect(bx, cy - bh / 2, bw, bh); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(side < 0 ? x - 8 : x + 8, cy - 6); ctx.lineTo(x, cy); ctx.lineTo(side < 0 ? x - 8 : x + 8, cy + 6); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = css("--text"); hudText(ctx, fmt(value, true), bx + bw / 2, cy + 5, "center", "700 14px B612 Mono, monospace");
+  ctx.fillStyle = css("--text"); hudText(ctx, fmt(value, true), bx + bw / 2, cy + 5, "center", font(14, 700, true));
 }
 function drawPFD(now) {
   const [w, h, ctx] = fitCanvas(pfd); ctx.clearRect(0, 0, w, h);
@@ -700,9 +1138,9 @@ function drawPFD(now) {
   const gs = Math.hypot(k.vx, k.vy), agl = d.agl ?? d.z, cx = w / 2, cy = h / 2;
   const txt = css("--text");
   // dark bands top and bottom so the symbology reads over a bright apron
-  for (const [y0, y1] of [[0, 96], [h, h - 96]]) {
-    const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, "rgba(8,14,22,.72)"); g.addColorStop(1, "rgba(8,14,22,0)");
-    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y0, y1), w, 96);
+  for (const [y0, y1] of [[0, 104], [h, h - 104]]) {
+    const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, "rgba(5,9,14,.78)"); g.addColorStop(1, "rgba(5,9,14,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y0, y1), w, 104);
   }
   ctx.save();
   ctx.strokeStyle = txt; ctx.fillStyle = txt; ctx.lineWidth = 1.25;
@@ -710,7 +1148,7 @@ function drawPFD(now) {
 
   // camera geometry: the image covers the view, so one image pixel is `scale` screen pixels
   const fw = f?.w || 960, fh = f?.h || 540, scale = Math.max(w / fw, h / fh);
-  const focal = (fw / 2) / Math.tan((f?.fov || 1.15) / 2) * scale;
+  const fov = f?.fov || 1.15, focal = (fw / 2) / Math.tan(fov / 2) * scale;
   const pitch = f?.pitch ?? (mainMode === "pilot" ? 10 : 12);
   const yAt = deg => cy - focal * Math.tan((deg + pitch) * Math.PI / 180);  // elevation -> screen y
   const rel = b => ((b - heading + 540) % 360) - 180;
@@ -725,7 +1163,7 @@ function drawPFD(now) {
     ctx.setLineDash(e < 0 ? [6, 4] : []); ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(cx - half - 30, y); ctx.lineTo(cx - 30, y); ctx.moveTo(cx + 30, y); ctx.lineTo(cx + half + 30, y); ctx.stroke();
     ctx.setLineDash([]);
-    if (!(Math.abs(e) % 10)) { hudText(ctx, String(Math.abs(e)), cx - half - 36, y + 4, "right", "10px B612 Mono, monospace"); hudText(ctx, String(Math.abs(e)), cx + half + 36, y + 4, "left", "10px B612 Mono, monospace"); }
+    if (!(Math.abs(e) % 10)) { hudText(ctx, String(Math.abs(e)), cx - half - 36, y + 4, "right", font(10, 400, true)); hudText(ctx, String(Math.abs(e)), cx + half + 36, y + 4, "left", font(10, 400, true)); }
   }
   ctx.restore(); ctx.globalAlpha = 1;
 
@@ -736,21 +1174,29 @@ function drawPFD(now) {
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI);
     ctx.moveTo(x - 7, y); ctx.lineTo(x - 19, y); ctx.moveTo(x + 7, y); ctx.lineTo(x + 19, y); ctx.moveTo(x, y - 7); ctx.lineTo(x, y - 14); ctx.stroke();
   }
-  // boresight
+  // boresight reticle
   ctx.beginPath(); ctx.moveTo(cx - 26, cy); ctx.lineTo(cx - 9, cy); ctx.lineTo(cx - 5, cy + 5); ctx.moveTo(cx + 26, cy); ctx.lineTo(cx + 9, cy); ctx.lineTo(cx + 5, cy + 5); ctx.stroke();
   ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
 
-  // what the camera recognises in this very image (Webots frames it in red), sent along with it
+  // what the camera recognises in this very image (Webots frames it in red), sent along with it:
+  // corner brackets, the class, and the Track id of a Suspicion in that direction
+  const tracks = (d.telemetry?.tracks || []).filter(tr => tr.cls === threatCls());
   for (const b of f?.boxes || []) {
     const bw = Math.max(14, b.w * scale), bh = Math.max(14, b.h * scale);
     const x = cx + (b.x + b.w / 2 - fw / 2) * scale - bw / 2, y = cy + (b.y + b.h / 2 - fh / 2) * scale - bh / 2;
-    ctx.strokeStyle = ctx.fillStyle = css(b.cls === threatCls() ? "--warn" : "--muted");
-    ctx.lineWidth = 2; ctx.strokeRect(x, y, bw, bh); ctx.lineWidth = 1.25;
-    hudText(ctx, (CLS_NAME[b.cls] || b.cls).toUpperCase(), x, y - 5, "left", "700 11px B612, sans-serif");
+    const hot = b.cls === threatCls();
+    ctx.strokeStyle = ctx.fillStyle = css(hot ? "--warn" : "--muted");
+    ctx.lineWidth = 2; const c = Math.min(10, bw / 3, bh / 3);
+    for (const [sx, sy, ox, oy] of [[x, y, 1, 1], [x + bw, y, -1, 1], [x, y + bh, 1, -1], [x + bw, y + bh, -1, -1]]) {
+      ctx.beginPath(); ctx.moveTo(sx, sy + oy * c); ctx.lineTo(sx, sy); ctx.lineTo(sx + ox * c, sy); ctx.stroke(); }
+    ctx.lineWidth = 1.25;
+    const az = (f?.yaw ?? heading) + Math.atan((x + bw / 2 - cx) / focal) * 180 / Math.PI;
+    const tr = hot ? tracks.find(t => Math.abs(((brg(t.x - d.x, t.y - d.y) - az + 540) % 360) - 180) < 8) : null;
+    hudText(ctx, `${(CLS_NAME[b.cls] || b.cls).toUpperCase()}${tr ? ` · ${trkId(tr)}` : ""}`, x, y - 6, "left", font(11, 700, true));
   }
   ctx.strokeStyle = txt; ctx.fillStyle = txt;
 
-  // corner brackets
+  // corner brackets of the frame
   const m = 14, L = 26;
   ctx.globalAlpha = 0.8; ctx.lineWidth = 2;
   for (const [x, y, sx, sy] of [[m, m, 1, 1], [w - m, m, -1, 1], [m, h - m, 1, -1], [w - m, h - m, -1, -1]]) {
@@ -759,15 +1205,15 @@ function drawPFD(now) {
   ctx.globalAlpha = 1; ctx.lineWidth = 1.25;
 
   // heading tape across the top: ±60 deg
-  const tapeW = Math.min(w * 0.55, 600), span = 120, px = tapeW / span, ty = 18;
-  ctx.fillStyle = "rgba(8,14,22,.55)"; ctx.fillRect(cx - tapeW / 2, ty, tapeW, 30); ctx.fillStyle = txt;
+  const tapeW = Math.min(w * 0.5, 560), span = 120, px = tapeW / span, ty = 18;
+  ctx.fillStyle = "rgba(6,11,17,.5)"; ctx.fillRect(cx - tapeW / 2, ty, tapeW, 30); ctx.fillStyle = txt;
   for (let deg = Math.ceil((heading - span / 2) / 5) * 5; deg <= heading + span / 2; deg += 5) {
     const x = cx + rel(deg) * px, major = deg % 30 === 0, mid = deg % 10 === 0;
     ctx.beginPath(); ctx.moveTo(x, ty + 30); ctx.lineTo(x, ty + 30 - (major ? 12 : mid ? 8 : 4)); ctx.stroke();
-    if (major) { const lab = ((deg % 360) + 360) % 360; hudText(ctx, { 0: "N", 90: "E", 180: "S", 270: "W" }[lab] ?? String(lab / 10).padStart(2, "0"), x, ty + 14, "center", "11px B612 Mono, monospace"); }
+    if (major) { const lab = ((deg % 360) + 360) % 360; hudText(ctx, { 0: "N", 90: "E", 180: "S", 270: "W" }[lab] ?? String(lab / 10).padStart(2, "0"), x, ty + 14, "center", font(11, 400, true)); }
   }
-  ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.fillRect(cx - 24, ty + 32, 48, 20); ctx.strokeRect(cx - 24, ty + 32, 48, 20);
-  ctx.fillStyle = txt; hudText(ctx, String(Math.round(heading) % 360).padStart(3, "0") + "°", cx, ty + 47, "center", "700 13px B612 Mono, monospace");
+  ctx.fillStyle = "rgba(6,11,17,.88)"; ctx.fillRect(cx - 26, ty + 32, 52, 20); ctx.strokeRect(cx - 26, ty + 32, 52, 20);
+  ctx.fillStyle = txt; hudText(ctx, String(Math.round(heading) % 360).padStart(3, "0") + "°", cx, ty + 47, "center", font(13, 700, true));
   // what this drone heard in the last 4 s: coloured ticks on the tape; Suspicions: diamonds with range
   for (const r of hist[selected] || []) {
     if (r.sensor !== "SOUND" || st.t - r.t > 4) continue;
@@ -776,16 +1222,15 @@ function drawPFD(now) {
     ctx.fillRect(cx + dx * px - 2, ty, 4, 30); ctx.globalAlpha = 1;
   }
   let threat = null;
-  for (const tr of d.telemetry?.tracks || []) {
-    if (tr.cls !== threatCls()) continue;
-    const b = Math.atan2(tr.x - d.x, tr.y - d.y) * 180 / Math.PI, dx = rel(b), dist = Math.hypot(tr.x - d.x, tr.y - d.y);
-    if (!threat || dist < threat.dist) threat = { b, dist, status: tr.status };
+  for (const tr of tracks) {
+    const b = brg(tr.x - d.x, tr.y - d.y), dx = rel(b), dist = Math.hypot(tr.x - d.x, tr.y - d.y);
+    if (!threat || dist < threat.dist) threat = { b, dist, tr };
     const col = tr.status === "CONFIRMED" ? css("--warn") : css("--caution");
     ctx.fillStyle = col; ctx.strokeStyle = col;
     if (Math.abs(dx) <= span / 2) {
       const x = cx + dx * px;
       ctx.beginPath(); ctx.moveTo(x, ty + 56); ctx.lineTo(x + 6, ty + 62); ctx.lineTo(x, ty + 68); ctx.lineTo(x - 6, ty + 62); ctx.closePath(); ctx.fill();
-      hudText(ctx, `${Math.round(dist)} m`, x, ty + 82, "center", "11px B612 Mono, monospace");
+      hudText(ctx, fmtRange(dist), x, ty + 82, "center", font(11, 400, true));
     }
     // in the camera's field of view: a target bracket at its bearing, at intruder flight
     // height (the sim flies drone Sources 30 m above ground: SOURCE_Z in backend/webots.py;
@@ -801,88 +1246,91 @@ function drawPFD(now) {
   }
 
   // speed tape (left, m/s over ground) and height tape (right, m above ground)
-  const tapeH = Math.min(h * 0.5, 300);
+  const tapeH = Math.min(h * 0.46, 300);
   ctx.fillStyle = txt; ctx.strokeStyle = txt;
   tape(ctx, 96, cy, tapeH, gs, 1, 5, -1, (v, cur) => cur ? v.toFixed(1) : String(Math.round(v)));
-  hudText(ctx, "GS m/s", 96 - 37, cy - tapeH / 2 - 8, "center", "11px B612, sans-serif");
-  hudText(ctx, `${Math.round(gs * 3.6)} km/h`, 96 - 37, cy + tapeH / 2 + 16, "center");
-  tape(ctx, w - 96, cy, tapeH, agl, 2, 5, 1, (v, cur) => cur ? String(Math.round(v)) : String(Math.round(v)));
-  hudText(ctx, "AGL m", w - 96 + 37, cy - tapeH / 2 - 8, "center", "11px B612, sans-serif");
+  hudText(ctx, "GS m/s", 96 - 37, cy - tapeH / 2 - 8, "center", font(10, 700));
+  hudText(ctx, `${Math.round(gs * 3.6)} km/h`, 96 - 37, cy + tapeH / 2 + 16, "center", font(11, 400, true));
+  tape(ctx, w - 96, cy, tapeH, agl, 2, 5, 1, v => String(Math.round(v)));
+  hudText(ctx, "AGL m", w - 96 + 37, cy - tapeH / 2 - 8, "center", font(10, 700));
   // vertical speed: an arrow beside the height tape
   const vs = k.vs, vsy = Math.max(-1, Math.min(1, vs / 4)) * tapeH / 2;
   ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(w - 30, cy); ctx.lineTo(w - 30, cy - vsy); ctx.stroke(); ctx.lineWidth = 1.25;
-  hudText(ctx, `VS ${vs >= 0 ? "+" : ""}${vs.toFixed(1)}`, w - 96 + 37, cy + tapeH / 2 + 16, "center");
+  hudText(ctx, `VS ${vs >= 0 ? "+" : ""}${vs.toFixed(1)}`, w - 96 + 37, cy + tapeH / 2 + 16, "center", font(11, 400, true));
 
-  // identity and mode (top left), link and battery (top right)
-  ctx.fillStyle = txt; hudText(ctx, `DRONE ${d.id}`, 30, 40, "left", "700 15px B612, sans-serif");
-  ctx.fillStyle = css(MODE_COL[d.mode] || "--own");
-  hudText(ctx, `${(MODE_NAME[d.mode] || d.mode).toUpperCase()}${d.perched_on ? " · PERCHED" : ""}`, 30, 58, "left", "12px B612, sans-serif");
+  // top left, the platform: identity, Mode, task
+  ctx.fillStyle = txt; hudText(ctx, `${D(d.id)}  ${d.mode === "VERIFY" ? "VERIFIER" : "DRONE"}`, 30, 40, "left", font(15, 700, true));
+  ctx.fillStyle = css(MODE_COL[d.mode] || "--friend");
+  hudText(ctx, `${(MODE_NAME[d.mode] || d.mode).toUpperCase()}${d.perched_on ? " · PERCHED, MOTORS OFF" : ""}`, 30, 58, "left", font(11, 700));
   const task = d.telemetry?.task;
-  if (task) { ctx.fillStyle = css("--task"); hudText(ctx, `${task.kind === "verify" ? "VERIFYING" : "LISTENING FOR"} A SUSPICION${task.settled ? "" : " (CLAIMING)"}`, 30, 76, "left", "12px B612, sans-serif"); }
-  ctx.fillStyle = css("--muted"); hudText(ctx, `${f ? (f.mode === "pilot" ? "PILOT" : "CHASE") : (mainMode === "pilot" ? "PILOT" : "CHASE")} VIEW · C TO SWITCH`, 30, h - 30, "left", "11px B612, sans-serif");
-  // battery gauge
+  if (task) { ctx.fillStyle = css("--task"); hudText(ctx, `${task.kind === "verify" ? "VERIFYING" : "LISTENING FOR"} A SUSPICION${task.settled ? "" : " (CLAIMING)"} · ${fmtRange(Math.hypot(task.x - d.x, task.y - d.y)).toUpperCase()}`, 30, 76, "left", font(11, 700)); }
+  // top right: battery, endurance, radio
   const bat = d.battery, bx = w - 130, by = 30;
   ctx.strokeStyle = txt; ctx.strokeRect(bx, by, 64, 14); ctx.fillRect(bx + 64, by + 4, 3, 6);
-  ctx.fillStyle = bat < 0.25 ? css("--warn") : bat < 0.5 ? css("--caution") : css("--own"); ctx.fillRect(bx + 2, by + 2, 60 * bat, 10);
+  ctx.fillStyle = bat < 0.25 ? css("--warn") : bat < 0.5 ? css("--caution") : css("--ok"); ctx.fillRect(bx + 2, by + 2, 60 * bat, 10);
   ctx.fillStyle = txt; hudText(ctx, `${Math.round(bat * 100)}%`, bx - 8, by + 12, "right");
-  hudText(ctx, `LINK ${d.telemetry?.accepted ?? 0}`, w - 30, by + 34, "right", "11px B612 Mono, monospace");
+  const peers = new Set((last.radio?.links || []).filter(l => l.includes(d.id)).flat()); peers.delete(d.id);
+  hudText(ctx, `END ${fmtDur(endurance(d.id)).toUpperCase()} · MESH ${peers.size} · RX ${d.telemetry?.accepted ?? 0}`, w - 30, by + 34, "right", font(11, 400, true));
+  // bottom left, the sensor: camera and field of view; bottom centre, the platform's position
+  ctx.fillStyle = css("--muted");
+  hudText(ctx, `EO ${f ? (f.mode === "pilot" ? "PILOT" : "CHASE") : (mainMode === "pilot" ? "PILOT" : "CHASE")} · FOV ${Math.round(fov * 180 / Math.PI)}° · C TO SWITCH`, 30, h - 30, "left", font(11, 400, true));
+  hudText(ctx, `${fmtLatLon(d.x, d.y)} · HDG ${fmtBrg(heading)}`, cx, h - 30, "center", font(11, 400, true));
+  // bottom right: a blinking REC while the camera streams, mission time and UTC
+  const rec = `REC T+${fmtTime(st.t)} · ${new Date().toISOString().slice(11, 19)}Z`;
+  ctx.font = font(11, 400, true); const rw = ctx.measureText(rec).width;
+  if (f && Math.floor(now / 600) % 2) { ctx.fillStyle = css("--warn"); ctx.beginPath(); ctx.arc(w - 30 - rw - 10, h - 34, 4, 0, 2 * Math.PI); ctx.fill(); }
+  ctx.fillStyle = txt; hudText(ctx, rec, w - 30, h - 30, "right", font(11, 400, true));
 
-  // bottom: position and time, a blinking REC while the camera streams
-  const o = city?.origin;
-  if (o?.lat) {
-    const lat = o.lat + d.y / 111320, lon = o.lon + d.x / (111320 * Math.cos(o.lat * Math.PI / 180));
-    ctx.fillStyle = css("--muted"); hudText(ctx, `${lat.toFixed(5)}N ${lon.toFixed(5)}E`, cx, h - 30, "center", "11px B612 Mono, monospace");
-  }
-  if (f && Math.floor(now / 600) % 2) { ctx.fillStyle = css("--warn"); ctx.beginPath(); ctx.arc(w - 112, h - 34, 4, 0, 2 * Math.PI); ctx.fill(); }
-  ctx.fillStyle = txt; hudText(ctx, `REC ${fmtTime(st.t)}`, w - 30, h - 30, "right", "11px B612 Mono, monospace");
-
-  // nearest drone Suspicion: bearing and range, in its status colour
+  // nearest Suspicion: Track, bearing and range, in its status colour (the target line)
   if (threat) {
-    const col = threat.status === "CONFIRMED" ? css("--warn") : css("--caution");
-    const label = `${threat.status === "CONFIRMED" ? "INTRUDER" : `SUSPECTED ${threatName().toUpperCase()}`}  ${String(Math.round((threat.b + 360) % 360)).padStart(3, "0")}°  ${Math.round(threat.dist)} M`;
-    ctx.font = "700 13px B612, sans-serif"; const tw = ctx.measureText(label).width + 24;
-    ctx.fillStyle = "rgba(10,18,28,.85)"; ctx.fillRect(cx - tw / 2, h - 74, tw, 26);
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.strokeRect(cx - tw / 2, h - 74, tw, 26);
-    ctx.fillStyle = col; hudText(ctx, label, cx, h - 56, "center", "700 13px B612, sans-serif");
+    const col = threat.tr.status === "CONFIRMED" ? css("--warn") : css("--caution");
+    const label = `${threat.tr.status === "CONFIRMED" ? "INTRUDER" : `SUSPECTED ${threatName().toUpperCase()}`} ${trkId(threat.tr)}   BRG ${fmtBrg(threat.b)}   RNG ${fmtRange(threat.dist).toUpperCase()}   ±${threat.tr.a} M`;
+    ctx.font = font(12, 700, true); const tw = ctx.measureText(label).width + 26;
+    ctx.fillStyle = "rgba(6,11,17,.88)"; ctx.fillRect(cx - tw / 2, h - 76, tw, 26);
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.strokeRect(cx - tw / 2, h - 76, tw, 26);
+    ctx.fillStyle = col; hudText(ctx, label, cx, h - 58, "center", font(12, 700, true));
   }
   ctx.restore(); ctx.textAlign = "left";
 }
 const argmax = a => a.reduce((bi, v, i) => v > a[bi] ? i : bi, 0);
 
-/* ---------- swarm strip ---------- */
+/* ---------- fleet strip ---------- */
 function drawSwarm() {
   const el = $("swarm"), ds = drones();
-  document.body.classList.toggle("many", ds.length > 10);
+  const many = ds.length > 6;  // more than six drones: two compact rows
+  document.body.classList.toggle("many", many);
+  el.style.gridTemplateColumns = `repeat(${many ? Math.ceil(ds.length / 2) : Math.max(4, ds.length)}, minmax(0, 1fr))`;
   if (el.childElementCount !== ds.length) {
-    el.innerHTML = ds.map(d => `<button class="drone" data-id="${d.id}"><div class="row"><span class="id">${d.id}</span><span class="mode"></span></div><div class="bat"><i></i></div><div class="task"></div><canvas class="sig" title="Sound spectrum 50 Hz-8 kHz (needs --audio) | RF 915 MHz, 2.4 GHz, 5.8 GHz"></canvas></button>`).join("");
-    el.querySelectorAll(".drone").forEach(b => b.onclick = () => select(+b.dataset.id));
+    el.innerHTML = ds.map(d => `<button class="drone" data-id="${d.id}"><div class="row"><span class="id">${D(d.id)}</span><span class="mode"></span></div><div class="bat"><i></i></div><div class="meta"></div><div class="task"></div><canvas class="sig" title="Sound spectrum 50 Hz-8 kHz (needs --audio) | RF UHF, 915 MHz, 2.4 GHz, 5.8 GHz"></canvas></button>`).join("");
   }
   for (const d of ds) {
     const b = el.querySelector(`[data-id="${d.id}"]`); if (!b) continue;
     b.setAttribute("aria-pressed", d.id === selected);
-    const m = b.querySelector(".mode"); m.textContent = MODE_NAME[d.mode] || d.mode; m.style.color = css(MODE_COL[d.mode] || "--own");
-    const bat = b.querySelector(".bat i"); bat.style.width = `${Math.round(d.battery * 100)}%`; bat.style.background = d.battery < .25 ? css("--warn") : css("--own");
-    const task = d.telemetry?.task, fault = isFaulty(d.id), arr = !!d.telemetry?.array;
+    const fault = isFaulty(d.id), task = d.telemetry?.task, arr = !!d.telemetry?.array;
+    setHTML(b.querySelector(".mode"), `<i class="led${fault ? " bad" : ""}"></i><span style="color:${css(MODE_COL[d.mode] || "--friend")}">${MODE_NAME[d.mode] || d.mode}</span>`);
+    const bat = b.querySelector(".bat i"); bat.style.width = `${Math.round(d.battery * 100)}%`; bat.style.background = css(d.battery < .25 ? "--warn" : d.battery < .5 ? "--caution" : "--ok");
+    b.querySelector(".meta").textContent = `${Math.round(d.battery * 100)}% · ${fmtDur(endurance(d.id))} · ${Math.round(d.agl ?? d.z)} m`;
     setHTML(b.querySelector(".task"), fault ? `<span style="color:${css("--warn")}">sensor fault</span>` :
-      arr ? `<span style="color:${css("--select")}">real microphones</span>` : task ? (task.kind === "verify" ? "verifying" : "listening") : d.perched_on ? "on a roof" : "in its sector");
+      arr ? `<span style="color:${css("--accent")}">real microphones</span>` : task ? `<span style="color:${css("--task")}">${task.settled ? "" : "bidding to "}${task.kind === "verify" ? (task.settled ? "verifying" : "verify") : (task.settled ? "listening" : "listen")}</span>` : d.perched_on ? "perched, listening" : "in its sector");
     drawSignals(b.querySelector("canvas.sig"), d);
   }
 }
+$("swarm").addEventListener("click", e => { const b = e.target.closest(".drone"); if (b) select(+b.dataset.id); });
 
 /* Frequency graphs: sound level per band (log Hz, dB(A)) and RF power per band (dBm) */
 const FREQ_LO = 50, FREQ_HI = 8000, DB_LO = 10, DB_HI = 90, DBM_LO = -110, DBM_HI = -40;
 function drawFreq(canvas, d, compact) {
   const [w, h, ctx] = fitCanvas(canvas); ctx.clearRect(0, 0, w, h);
-  const t = last.state.t, font = `${compact ? 9 : 10}px ${css("--mono")}`, split = Math.round(w * 0.74);
+  const t = last.state.t, split = Math.round(w * 0.74);
   const L = 26, B = h - 14, T = 12, sx0 = L, sx1 = split - 8;
   const X = f => sx0 + Math.log(f / FREQ_LO) / Math.log(FREQ_HI / FREQ_LO) * (sx1 - sx0), Y = v => B - (Math.min(DB_HI, Math.max(DB_LO, v)) - DB_LO) / (DB_HI - DB_LO) * (B - T);
-  ctx.font = font; ctx.lineWidth = 1;
+  ctx.font = font(compact ? 9 : 10, 400, true); ctx.lineWidth = 1;
   // axes and grid
   ctx.strokeStyle = css("--rule"); ctx.fillStyle = css("--faint"); ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (const v of [30, 50, 70, 90]) { ctx.beginPath(); ctx.moveTo(sx0, Y(v)); ctx.lineTo(sx1, Y(v)); ctx.stroke(); ctx.fillText(v, sx0 - 3, Y(v)); }
   ctx.textAlign = "center"; ctx.textBaseline = "top";
-  for (const [f, lab] of [[100, "100"], [300, "300"], [1000, "1k"], [3000, "3k"], [8000, "8k Hz"]]) {
-    ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), B); ctx.stroke(); ctx.fillText(lab, Math.min(X(f), sx1 - 14), B + 2); }
+  for (const [fq, lab] of [[100, "100"], [300, "300"], [1000, "1k"], [3000, "3k"], [8000, "8k Hz"]]) {
+    ctx.beginPath(); ctx.moveTo(X(fq), T); ctx.lineTo(X(fq), B); ctx.stroke(); ctx.fillText(lab, Math.min(X(fq), sx1 - 14), B + 2); }
   ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--muted"); ctx.fillText("Sound dB", sx0 + 2, 0);
   const sp = d.spectrum;
   if (sp) {
@@ -890,7 +1338,7 @@ function drawFreq(canvas, d, compact) {
     ctx.beginPath(); ctx.moveTo(X(FREQ_LO), B);
     sp.forEach((v, i) => { ctx.lineTo(X(edges[i]), Y(v)); ctx.lineTo(X(edges[i + 1]), Y(v)); });
     ctx.lineTo(X(FREQ_HI), B); ctx.closePath();
-    ctx.fillStyle = "rgba(245,181,59,.28)"; ctx.fill(); ctx.strokeStyle = css("--caution"); ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(247,180,61,.28)"; ctx.fill(); ctx.strokeStyle = css("--caution"); ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
     const bg = last.state.environment?.background_db;
     if (bg != null) { ctx.setLineDash([3, 3]); ctx.strokeStyle = css("--faint"); ctx.beginPath(); ctx.moveTo(sx0, Y(bg)); ctx.lineTo(sx1, Y(bg)); ctx.stroke(); ctx.setLineDash([]); }
   } else { ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("start with --audio to see sound", (sx0 + sx1) / 2, (T + B) / 2); }
@@ -900,8 +1348,8 @@ function drawFreq(canvas, d, compact) {
   const rs = hist[d.id] || [];
   RF_BANDS.forEach(([sensor, label, floor], i) => {
     const x0 = rx0 + i * cw + 3, bw = cw - 6, r = rs.findLast(x => x.sensor === sensor && t - x.t < 10);
-    ctx.fillStyle = "#0d1824"; ctx.fillRect(x0, T, bw, B - T);
-    if (r) { ctx.globalAlpha = Math.max(0.25, 1 - (t - r.t) / 12); ctx.fillStyle = css("--select"); ctx.fillRect(x0, R(r.level), bw, B - R(r.level)); ctx.globalAlpha = 1;
+    ctx.fillStyle = "#0a121a"; ctx.fillRect(x0, T, bw, B - T);
+    if (r) { ctx.globalAlpha = Math.max(0.25, 1 - (t - r.t) / 12); ctx.fillStyle = css("--accent"); ctx.fillRect(x0, R(r.level), bw, B - R(r.level)); ctx.globalAlpha = 1;
       ctx.fillStyle = css("--text"); ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(Math.round(r.level), x0 + bw / 2, R(r.level) - 1); }
     ctx.strokeStyle = css("--faint"); ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(x0, R(floor)); ctx.lineTo(x0 + bw, R(floor)); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(label, x0 + bw / 2, B + 2);
@@ -916,7 +1364,7 @@ function drawFreqGrid() {
   for (const d of ds) {
     const b = el.querySelector(`[data-id="${d.id}"]`); if (!b) continue;
     b.setAttribute("aria-pressed", d.id === selected);
-    setHTML(b.querySelector("h3"), `Drone ${d.id} <span style="font-weight:400;color:${css(MODE_COL[d.mode] || "--own")}">${MODE_NAME[d.mode] || d.mode}${d.perched_on ? ", motors off" : ", motors on"}</span>`);
+    setHTML(b.querySelector("h3"), `${D(d.id)} <span style="font-weight:400;color:${css(MODE_COL[d.mode] || "--friend")}">${MODE_NAME[d.mode] || d.mode}${d.perched_on ? ", motors off" : ", motors on"}</span>`);
     drawFreq(b.querySelector("canvas"), d, true);
   }
 }
@@ -925,8 +1373,8 @@ function drawFreqGrid() {
 const RF_BANDS = [["RF_UHF", "UHF", -63.5], ["RF_915", "915", -105], ["RF_2G4", "2.4", -85], ["RF_5G8", "5.8", -85]];  // noise floor dBm (sensors/rf.py)
 function drawSignals(canvas, d) {
   const [w, h, ctx] = fitCanvas(canvas), t = last.state.t, split = Math.round(w * 0.68);
-  ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#0d1824"; ctx.fillRect(0, 0, split - 2, h); ctx.fillRect(split + 2, 0, w - split - 2, h);
-  ctx.font = "8px " + css("--mono"); ctx.textBaseline = "bottom";
+  ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#0a121a"; ctx.fillRect(0, 0, split - 2, h); ctx.fillRect(split + 2, 0, w - split - 2, h);
+  ctx.font = font(8, 400, true); ctx.textBaseline = "bottom";
   const sp = d.spectrum;
   if (sp) {  // dB(A) per band, 20 dB (empty) to 90 dB (full)
     const bw = (split - 2) / sp.length; ctx.fillStyle = css("--caution");
@@ -936,28 +1384,30 @@ function drawSignals(canvas, d) {
   RF_BANDS.forEach(([sensor, label, floor], i) => {
     const r = rs.findLast(x => x.sensor === sensor && t - x.t < 10), x0 = split + 2 + i * cw;
     if (r) { const k = Math.min(1, Math.max(0.05, (r.level - floor) / 50)); ctx.globalAlpha = 1 - (t - r.t) / 12;
-      ctx.fillStyle = css("--select"); ctx.fillRect(x0 + 1, h - k * (h - 9), cw - 2, k * (h - 9)); ctx.globalAlpha = 1; }
+      ctx.fillStyle = css("--accent"); ctx.fillRect(x0 + 1, h - k * (h - 9), cw - 2, k * (h - 9)); ctx.globalAlpha = 1; }
     ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.fillText(label, x0 + cw / 2, 9);
   });
 }
 
-/* ---------- the ear: polar of recent bearings ---------- */
+/* ---------- the selected drone: status and the ear (polar of recent bearings) ---------- */
 function polar(canvas, id, seconds, big) {
-  const [w, h, ctx] = fitCanvas(canvas), r0 = Math.max(1, Math.min(w, h) / 2 - (big ? 18 : 10)), cx = w / 2, cy = h / 2;
+  const [w, h, ctx] = fitCanvas(canvas), r0 = Math.max(1, Math.min(w, h) / 2 - (big ? 20 : 14)), cx = w / 2, cy = h / 2;
   ctx.clearRect(0, 0, w, h);
   ctx.strokeStyle = css("--rule"); ctx.lineWidth = 1;
   for (const f of [1, 0.66, 0.33]) { ctx.beginPath(); ctx.arc(cx, cy, r0 * f, 0, 7); ctx.stroke(); }
   for (let a = 0; a < 360; a += 30) { const t = a * Math.PI / 180; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + r0 * Math.sin(t), cy - r0 * Math.cos(t)); ctx.stroke(); }
-  ctx.fillStyle = css("--muted"); ctx.font = `${big ? 12 : 10}px B612, sans-serif`; ctx.textAlign = "center";
-  ctx.fillText("N", cx, cy - r0 - 4); ctx.fillText("S", cx, cy + r0 + (big ? 14 : 10)); ctx.fillText("E", cx + r0 + 7, cy + 4); ctx.fillText("W", cx - r0 - 7, cy + 4);
+  ctx.strokeStyle = css("--rule-2");  // bezel ticks every 10 degrees
+  for (let a = 0; a < 360; a += 10) { const t = a * Math.PI / 180, k = a % 30 ? 3 : 6; ctx.beginPath(); ctx.moveTo(cx + r0 * Math.sin(t), cy - r0 * Math.cos(t)); ctx.lineTo(cx + (r0 + k) * Math.sin(t), cy - (r0 + k) * Math.cos(t)); ctx.stroke(); }
+  ctx.fillStyle = css("--muted"); ctx.font = font(big ? 11 : 9, 700, true); ctx.textAlign = "center";
+  ctx.fillText("N", cx, cy - r0 - (big ? 9 : 7)); ctx.fillText("S", cx, cy + r0 + (big ? 17 : 14)); ctx.fillText("E", cx + r0 + (big ? 14 : 11), cy + 4); ctx.fillText("W", cx - r0 - (big ? 14 : 11), cy + 4);
   const d = droneById(id), t = last.state.t, rs = (hist[id] || []).filter(r => t - r.t <= seconds);
   // RF: no direction, only strength; drawn as rings, stronger = smaller ring (closer)
   for (const r of rs) { if (!r.sensor.startsWith("RF")) continue;
-    const k = Math.min(1, Math.max(0.12, (-r.level - 40) / 70)); ctx.strokeStyle = `rgba(60,203,234,${0.5 * (1 - (t - r.t) / seconds)})`;
+    const k = Math.min(1, Math.max(0.12, (-r.level - 40) / 70)); ctx.strokeStyle = `rgba(82,194,245,${0.5 * (1 - (t - r.t) / seconds)})`;
     ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.arc(cx, cy, r0 * k, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   // array direction-finding power, if this drone has real microphones
   const scan = d?.telemetry?.array?.scan;
-  if (big && scan?.length) { ctx.strokeStyle = css("--select"); ctx.lineWidth = 1.5; ctx.beginPath();
+  if (big && scan?.length) { ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.5; ctx.beginPath();
     scan.forEach((v, i) => { const th = (i * 5 + 2.5) * Math.PI / 180, rr = r0 * (0.15 + 0.85 * v); const x = cx + rr * Math.sin(th), y = cy - rr * Math.cos(th); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.closePath(); ctx.stroke(); }
   // sound: rays, length = loudness, colour = heard class, fading with age
@@ -968,7 +1418,7 @@ function polar(canvas, id, seconds, big) {
   ctx.globalAlpha = 1;
   const newest = [...rs].reverse().find(r => r.sensor === "SOUND");
   if (newest) { const th = newest.bearing * Math.PI / 180, sg = Math.max(newest.sigma, 2) * Math.PI / 180;
-    ctx.fillStyle = "rgba(245,181,59,.18)"; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r0, th - sg - Math.PI / 2, th + sg - Math.PI / 2); ctx.closePath(); ctx.fill(); }
+    ctx.fillStyle = "rgba(247,180,61,.18)"; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r0, th - sg - Math.PI / 2, th + sg - Math.PI / 2); ctx.closePath(); ctx.fill(); }
   if (d) { const th = d.heading * Math.PI / 180; ctx.fillStyle = css("--text");
     ctx.beginPath(); ctx.moveTo(cx + 9 * Math.sin(th), cy - 9 * Math.cos(th)); ctx.lineTo(cx + 4 * Math.sin(th + 2.4), cy - 4 * Math.cos(th + 2.4)); ctx.lineTo(cx + 4 * Math.sin(th - 2.4), cy - 4 * Math.cos(th - 2.4)); ctx.closePath(); ctx.fill(); }
   ctx.textAlign = "left";
@@ -976,33 +1426,51 @@ function polar(canvas, id, seconds, big) {
 }
 function drawEar() {
   const d = droneById(selected); if (!d) return;
-  $("ear-title").textContent = `Drone ${d.id}`;
-  $("ear-sub").textContent = d.telemetry?.array ? "Hearing through real microphones in the room." : `${MODE_NAME[d.mode] || d.mode}, last 30 s of readings, north up.`;
+  const tm = d.telemetry || {}, k = kin[d.id] || { vx: 0, vy: 0 }, fault = isFaulty(d.id);
+  $("ear-title").textContent = D(d.id);
+  const mode = $("ear-mode"); mode.textContent = `${MODE_NAME[d.mode] || d.mode}${d.perched_on ? " · perched" : " · airborne"}`; mode.style.color = css(MODE_COL[d.mode] || "--friend");
+  $("ear-sub").textContent = fault ? "The others flag this drone's microphone as faulty: its bearings no longer count." : tm.array ? "Hearing through real microphones in the room."
+    : tm.task ? `${tm.task.kind === "verify" ? "Flying to verify a Suspicion" : "Listening for a Suspicion"}, ${fmtRange(Math.hypot(tm.task.x - d.x, tm.task.y - d.y))} away.` : d.perched_on ? "On a Perch Site, motors off: it hears sound with a bearing." : "Flying its Sector: nearly deaf to sound, hears RF.";
+  const peers = new Set((last.radio?.links || []).filter(l => l.includes(d.id)).flat()); peers.delete(d.id);
+  const cell = (k, v, w2) => `<div${w2 ? ` class="w2"` : ""}><dt>${k}</dt><dd>${v}</dd></div>`;
+  setHTML($("dstats"), [
+    cell("Battery", `<span style="color:${css(d.battery < .25 ? "--warn" : d.battery < .5 ? "--caution" : "--text")}">${Math.round(d.battery * 100)} %</span>`),
+    cell("Endurance", fmtDur(endurance(d.id))),
+    cell("Height AGL", `${Math.round(d.agl ?? d.z)} m`),
+    cell("Ground speed", `${Math.hypot(k.vx, k.vy).toFixed(1)} m/s`),
+    cell("Position", fmtLatLon(d.x, d.y), true),
+    cell("Heading", fmtBrg(d.heading)),
+    cell("Mesh peers", peers.size),
+    cell("Accepted", tm.accepted ?? 0),
+    cell("Forwarded", tm.forwarded ?? 0),
+    cell("Evidence", tm.belief?.n_evidence ?? "–"),
+    cell("Sensors", `<span style="color:${css(fault ? "--warn" : "--ok")}">${fault ? "fault" : "ok"}</span>`),
+  ].join(""));
   const newest = polar($("polar"), selected, 30, false);
   const rs = hist[selected] || [], t = last.state.t;
   const rf = [...rs].reverse().find(r => r.sensor.startsWith("RF"));
   const nSound = rs.filter(r => r.sensor === "SOUND" && t - r.t <= 30).length, nRF = rs.filter(r => r.sensor.startsWith("RF") && t - r.t <= 30).length;
   setHTML($("kv"), [
-    ["Last bearing", newest ? `<span class="num">${String(Math.round(newest.bearing)).padStart(3, "0")}° ±${Math.round(newest.sigma)}°</span>` : "–"],
+    ["Last bearing", newest ? `<span class="num">${fmtBrg(newest.bearing)} ±${Math.round(newest.sigma)}°</span>` : "–"],
     ["Sound level", newest ? `<span class="num">${newest.level.toFixed(0)} dB</span>` : "–"],
     ["RF received", rf ? `<span class="num">${rf.level.toFixed(0)} dBm</span> ${SENSOR[rf.sensor]}` : "–"],
     ["Readings, 30 s", `<span class="num">${nSound}</span> sound, <span class="num">${nRF}</span> RF`],
-    ["Height", `<span class="num">${Math.round(d.agl ?? d.z)} m</span>`],
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""));
   const probs = newest?.probs || [0, 0, 0, 0];
   setHTML($("classbars"), CLS.map((c, i) => `<span>${CLS_NAME[c]}</span><span class="b"><i style="width:${Math.round(probs[i] * 100)}%;background:${css(CLS_COL[c])}"></i></span><span class="num">${Math.round(probs[i] * 100)}%</span>`).join(""));
   drawLevelTrace(rs, t);
-  const fused = d.telemetry?.belief?.fused || {}, parts = Object.entries(fused).sort((a, b) => +a[0] - +b[0]).map(([o, f]) => `drone ${o}: ${(f.sound || 0) + (f.rf || 0) + (f.camera || 0)}`);
-  $("fused").textContent = parts.length ? `This drone's map fused, last 30 s: ${parts.join(", ")}` : "No readings fused in the last 30 s.";
+  const fused = tm.belief?.fused || {}, parts = Object.entries(fused).sort((a, b) => +a[0] - +b[0]).map(([o, f]) => `${D(o)} ${(f.sound || 0) + (f.rf || 0) + (f.camera || 0) + (f.shot || 0)}`);
+  $("fused").textContent = parts.length ? `Fused into this map, last 30 s: ${parts.join(" · ")}` : "No readings fused in the last 30 s.";
 }
 function drawLevelTrace(rs, t) {
   const [w, h, ctx] = fitCanvas($("leveltrace")); ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#0a121a"; ctx.fillRect(0, 0, w, h);
   const bg = last.state.environment?.background_db ?? 40, lo = 10, hi = 90, Y = v => h - 4 - (v - lo) / (hi - lo) * (h - 8), X = tt => w - (t - tt) / 60 * w;
-  ctx.strokeStyle = css("--rule"); ctx.beginPath(); ctx.moveTo(0, Y(bg)); ctx.lineTo(w, Y(bg)); ctx.stroke();
-  ctx.fillStyle = css("--faint"); ctx.font = "10px B612, sans-serif"; ctx.fillText(`background ${bg} dB`, 4, Y(bg) - 3);
+  ctx.strokeStyle = css("--rule-2"); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(0, Y(bg)); ctx.lineTo(w, Y(bg)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = css("--faint"); ctx.font = font(9, 400, true); ctx.fillText(`background ${bg} dB`, 4, Y(bg) - 3);
   for (const r of rs) { if (r.sensor !== "SOUND" || t - r.t > 60) continue;
     ctx.fillStyle = css(CLS_COL[CLS[argmax(r.probs)]]); ctx.beginPath(); ctx.arc(X(r.t), Y(r.level), 2.2, 0, 7); ctx.fill(); }
-  ctx.fillStyle = css("--muted"); ctx.fillText("sound level, last 60 s", w - 118, 11);
+  ctx.fillStyle = css("--muted"); ctx.textAlign = "right"; ctx.fillText("SOUND LEVEL · 60 s", w - 4, 11); ctx.textAlign = "left";
 }
 
 /* ---------- evidence view ---------- */
@@ -1013,14 +1481,14 @@ function drawEvidence() {
   for (const r of fresh.reverse()) {
     const cls = r.sensor === "SOUND" || r.sensor === "CAMERA" ? CLS[argmax(r.probs)] : null;
     const bars = `<span class="mini">${r.probs.map((p, i) => `<i style="height:${3 + p * 9}px;background:${css(CLS_COL[CLS[i]])};opacity:${0.35 + p * 0.65}"></i>`).join("")}</span>`;
-    const bearing = r.bearing === null || Number.isNaN(r.bearing) ? "ring" : `${String(Math.round(r.bearing)).padStart(3, "0")}° ±${Math.round(r.sigma)}°`;
+    const bearing = r.bearing === null || Number.isNaN(r.bearing) ? "ring" : `${fmtBrg(r.bearing)} ±${Math.round(r.sigma)}°`;
     const level = r.sensor.startsWith("RF") ? `${r.level.toFixed(0)} dBm` : r.sensor === "CAMERA" ? "" : `${r.level.toFixed(0)} dB`;
     r.fresh = false;
-    tb.insertAdjacentHTML("afterbegin", `<tr class="fresh"><td class="num">${fmtTime(r.t)}</td><td>${r.drone}</td><td>${SENSOR[r.sensor] || r.sensor}</td><td class="num">${bearing}</td><td class="num">${level}</td><td>${bars} ${cls ? CLS_NAME[cls] : ""}</td></tr>`);
+    tb.insertAdjacentHTML("afterbegin", `<tr class="fresh"><td class="num">${fmtTime(r.t)}</td><td class="num">${D(r.drone)}</td><td>${SENSOR[r.sensor] || r.sensor}</td><td class="num">${bearing}</td><td class="num">${level}</td><td>${bars} ${cls ? CLS_NAME[cls] : ""}</td></tr>`);
   }
   while (tb.rows.length > 60) tb.deleteRow(-1);
   const d = droneById(selected);
-  $("ev-ear-title").textContent = `What drone ${selected} hears`;
+  $("ev-ear-title").textContent = `What ${D(selected)} hears`;
   polar($("bigpolar"), selected, 30, true);
   const hasArray = !!d?.telemetry?.array || !!d?.spectrum; $("arraybox").hidden = !hasArray;
   $("arraybox-title").textContent = d?.telemetry?.array ? "Live microphone array" : "Sound spectrum";
@@ -1032,7 +1500,7 @@ function drawSpectro() {
   if (!cols.length) return;
   const n = cols[0].length, cw = w / 120, ch = h / n;
   cols.forEach((col, i) => col.forEach((v, j) => {
-    const k = Math.min(1, Math.max(0, (v + 80) / 70)); ctx.fillStyle = `rgba(60,203,234,${k})`;
+    const k = Math.min(1, Math.max(0, (v + 80) / 70)); ctx.fillStyle = `rgba(82,194,245,${k})`;
     ctx.fillRect(w - (cols.length - i) * cw, h - (j + 1) * ch, cw + 0.5, ch + 0.5);
   }));
 }
@@ -1042,18 +1510,17 @@ function topSuspicion(d) {
   // the strongest drone Suspicion (or Confirmed) on this drone's map, and the drone that has it as a task
   const tracks = (d?.telemetry?.tracks || []).filter(tr => (tr.cls === threatCls() && tr.status !== "EXPLAINED") || tr.status === "CONFIRMED");
   const tr = tracks.sort((a, b) => b.strength - a.strength)[0];
-  const claim = tr && drones().find(x => x.telemetry?.task && Math.hypot(x.telemetry.task.x - tr.x, x.telemetry.task.y - tr.y) < 200);
-  return { tr, claim };
+  return { tr, claim: tr && claimFor(tr) };
 }
-const actionText = (tr, claim) => claim ? `drone ${claim.id} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}`
+const actionText = (tr, claim) => claim ? `${D(claim.id)} ${claim.telemetry.task.kind === "verify" ? "verifies" : "listens"}`
   : tr.status === "CONFIRMED" ? "handed to operators" : "waiting for a better fix";
 function drawSuspicion() {
   if (evidence) return;
   const { tr, claim } = topSuspicion(droneById(selected));
-  if (!tr) { setHTML($("suspicion"), `<span class="muted">No ${threatName()} Suspicion on drone ${selected}'s map.</span>`); return; }
+  if (!tr) { setHTML($("suspicion"), `<span class="muted">No ${threatName()} Suspicion on ${D(selected)}'s map.</span>`); return; }
   const col = css(tr.status === "CONFIRMED" ? "--warn" : "--caution");
-  setHTML($("suspicion"), `<span style="color:${col}">${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</span>`
-    + ` · ±<b>${tr.a}</b> m · evidence <b>${tr.strength.toFixed(1)}</b> log-odds (${pct(tr.conf)})`
+  setHTML($("suspicion"), `<span style="color:${col}"><b>${trkId(tr)}</b> ${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</span>`
+    + ` · ±<b>${tr.a}</b> m · <b>${tr.strength.toFixed(1)}</b> log-odds (${pct(tr.conf)})`
     + ` · <span style="color:${css(claim ? "--task" : "--muted")}">${actionText(tr, claim)}</span>`);
 }
 function drawTrace(d) {
@@ -1062,15 +1529,15 @@ function drawTrace(d) {
   const readings30 = Object.values(hist).flat().filter(r => st.t - r.t <= 30).length;
   setHTML($("pipeline"), [["Readings, 30 s", readings30], ["Suspicions", (d?.telemetry?.tracks || []).filter(x => x.status !== "EXPLAINED").length],
     ["Verifications", c.verified ?? 0], ["Confirmed", c.confirmed ?? 0]].map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join(""));
-  if (!tr) { setHTML($("trace"), `<p class="muted">No ${threatName()} suspicion on drone ${selected}'s map right now. Explained sounds (trains, trucks, vehicles on their tracks) stay off this list.</p>`); return; }
+  if (!tr) { setHTML($("trace"), `<p class="muted">No ${threatName()} suspicion on ${D(selected)}'s map right now. Explained sounds (trains, trucks, vehicles on their tracks) stay off this list.</p>`); return; }
   const sup = tr.support || [], maxAbs = Math.max(1, ...sup.map(s => Math.abs(s[2])));
-  const name = ([o, fam]) => fam === "prior" ? "map prior" : fam === "camera" ? "camera" : `drone ${o} ${fam === "rf" ? "RF" : "sound"}`;
+  const name = ([o, fam]) => fam === "prior" ? "map prior" : fam === "camera" ? "camera" : `${D(o)} ${fam === "rf" ? "RF" : fam}`;
   const rows = sup.map(s => { const v = s[2], wpc = Math.abs(v) / maxAbs * 50, left = v >= 0 ? 50 : 50 - wpc;
-    const col = s[1] === "prior" ? css("--muted") : v >= 0 ? css("--own") : css("--warn");
+    const col = s[1] === "prior" ? css("--muted") : v >= 0 ? css("--ok") : css("--warn");
     return `<span>${name(s)}</span><span class="track"><span class="zero" style="left:50%"></span><i style="left:${left}%;width:${wpc}%;background:${col}"></i></span><span class="num">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`; }).join("");
   setHTML($("trace"), `
     <dl class="kv" style="margin-bottom:10px">
-      <dt>Suspicion</dt><dd>${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</dd>
+      <dt>Suspicion</dt><dd><span class="num">${trkId(tr)}</span> ${CLS_NAME[tr.cls]}, ${STATUS[tr.status]}</dd>
       <dt>Evidence</dt><dd class="num" style="font-size:15px"><b>${tr.strength.toFixed(1)} log-odds</b> · ${pct(tr.conf)}</dd>
       <dt>Located within</dt><dd class="num">±${tr.a} m</dd>
       <dt>Action</dt><dd>${actionText(tr, claim)}</dd>
@@ -1079,26 +1546,27 @@ function drawTrace(d) {
     <div class="support">${rows}</div>`);
 }
 
-/* ---------- ticker and alerts ---------- */
+/* ---------- activity log ---------- */
 function drawTicker() {
-  const st = last.state, items = [...(st.decisions || []).map(e => ({ t: e.t, txt: decisionText(e) })), ...(st.events || []).map(e => ({ t: e.t, txt: e.note }))]
-    .sort((a, b) => b.t - a.t).slice(0, 3);  // newest on top
-  setHTML($("ticker"), items.length ? items.map(i => `<span class="ev"><span class="num muted">${fmtTime(i.t)}</span> ${i.txt}</span>`).join("") : `<span class="muted">Waiting for the swarm.</span>`);
+  const st = last.state, items = [...(st.decisions || []).map(e => ({ t: e.t, ...decision(e) })), ...(st.events || []).map(e => ({ t: e.t, tag: ["EVENT", "--muted"], txt: e.note }))]
+    .sort((a, b) => b.t - a.t).slice(0, 16);  // newest on top
+  setHTML($("ticker"), items.length ? items.map(i => `<div class="act"><span class="num muted">T+${fmtTime(i.t)}</span><span class="tag" style="color:${css(i.tag[1])}">${i.tag[0]}</span><span class="txt">${i.txt}</span></div>`).join("")
+    : `<div class="empty-note">Waiting for the swarm.</div>`);
 }
-function decisionText(e) {
-  const what = e.task === "verify" ? "verify" : "listen";
-  return { claim: `drone ${e.drone} bids to ${what}`, dispatch: `drone ${e.drone} <span class="k">sets off to ${what}</span>`, confirmed: `drone ${e.drone} <b style="color:${css("--warn")}">confirms a ${threatName()}</b>`,
-    lost: `drone ${e.drone} loses the ${threatName()} it followed`, handed_off: `drone ${e.drone} hands the ${threatName()} to the rangers`,
-    dismissed: `drone ${e.drone} finds nothing`, timeout: `drone ${e.drone} gives up: nothing to see`, obsolete: `drone ${e.drone} drops a ${what} task`, outbid: `drone ${e.drone} yields to a nearer drone`,
-    fault_flagged: `drone ${e.drone} flags drone ${e.suspect}'s microphone` }[e.kind] || `drone ${e.drone}: ${e.kind}`;
-}
-function checkAlerts() {
-  const n = last.state.counts?.confirmed ?? 0;
-  if (n > lastConfirmed) { const b = $("banner"); const e = (last.state.decisions || []).filter(x => x.kind === "confirmed").pop();
-    const log = (last.state.threats || []).filter(x => x.status !== "dismissed").pop();
-    const what = log ? log.label : `intruder ${threatName()}`;
-    b.textContent = e ? `${what[0].toUpperCase()}${what.slice(1)} confirmed by drone ${e.drone}'s camera` : `${what} confirmed`; b.classList.add("show"); setTimeout(() => b.classList.remove("show"), 5000); }
-  lastConfirmed = n;
+function decision(e) {
+  const what = e.task === "verify" ? "verify" : "listen", d = D(e.drone);
+  return {
+    claim: { tag: ["BID", "--muted"], txt: `${d} bids to ${what}` },
+    dispatch: { tag: ["TASK", "--task"], txt: `${d} sets off to ${what}` },
+    confirmed: { tag: ["ALARM", "--warn"], txt: `${d}'s camera confirms a ${threatName()}` },
+    lost: { tag: ["LOST", "--caution"], txt: `${d} loses the ${threatName()} it followed` },
+    handed_off: { tag: ["HANDOFF", "--ok"], txt: `${d} hands the ${threatName()} to the ${threatCls() === "DRONE" ? "operators" : "rangers"}` },
+    dismissed: { tag: ["NIL", "--ok"], txt: `${d} finds nothing` },
+    timeout: { tag: ["NIL", "--muted"], txt: `${d} gives up: nothing to see` },
+    obsolete: { tag: ["DROP", "--muted"], txt: `${d} drops a ${what} task` },
+    outbid: { tag: ["YIELD", "--muted"], txt: `${d} yields to a nearer drone` },
+    fault_flagged: { tag: ["FAULT", "--caution"], txt: `${d} flags ${D(e.suspect)}'s microphone` },
+  }[e.kind] || { tag: [String(e.kind).toUpperCase().slice(0, 7), "--muted"], txt: `${d}: ${e.kind}` };
 }
 
 /* ---------- input ---------- */
@@ -1114,24 +1582,26 @@ function setEvidence(on) { evidence = on; document.body.classList.toggle("eviden
 $("btn-live").onclick = () => setEvidence(false); $("btn-evidence").onclick = () => setEvidence(true);
 $("btn-help").onclick = () => $("help").classList.toggle("show");
 $("btn-listen").onclick = () => setListen(!listen);
+$("ack").onclick = ackAll; $("banner-ack").onclick = ackAll;
 addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || !city) return;
   if (/^[0-9]$/.test(e.key)) { select(+e.key); return; }
   if (e.key === "Tab") { e.preventDefault(); const ids = drones().map(d => d.id); select(ids[(ids.indexOf(selected) + 1) % ids.length]); return; }
   if (e.key === "c") { mainMode = mainMode === "pilot" ? "chase" : "pilot"; views = null; chooseViews(); return; }
   if (e.key === "x") { setEvidence(!evidence); return; }
+  if (e.key === "a") { ackAll(); return; }
   if (e.key === "h") { showHeat = !showHeat; schedule(); return; }
   if (e.key === "g") { showTruth = !showTruth; schedule(); return; }
+  if (e.key === "r") { showRings = !showRings; schedule(); return; }
   if (e.key === "z") { zoomed = !zoomed; toast(zoomed ? "scope follows the action" : "scope shows the whole map"); schedule(); return; }
   if (e.key === "l") { setListen(!listen); return; }
   if (e.key === "?") { $("help").classList.toggle("show"); return; }
   const env = last?.state.environment || {};
   if ("dvnjf".includes(e.key) && !mouse) { toast("move the mouse over the map first"); return; }
   const [x, y] = mouse || [0, 0];
-  const near = () => drones().reduce((b, d) => (!b || Math.hypot(d.x - x, d.y - y) < Math.hypot(b.x - x, b.y - y)) ? d : b, null);
   const ops = { d: () => ({ op: "add_source", cls: "drone", x, y }), v: () => ({ op: "add_source", cls: "vehicle", x, y, to: [x + 400, y], duration: 60 }),
     t: () => city.rails?.length ? { op: "add_source", cls: "train", path: city.rails[0], duration: 120 } : null, n: () => ({ op: "add_source", cls: "nuisance", x, y, duration: 300 }),
-    j: () => ({ op: "jam", x, y }), J: () => ({ op: "clear_jam" }), f: () => { const d = near(); return d && { op: "fault", drone: d.id, kind: "stuck_bearing" }; }, F: () => ({ op: "clear_faults" }),
+    j: () => ({ op: "jam", x, y }), J: () => ({ op: "clear_jam" }), f: () => { const d = nearestTo(x, y); return d && { op: "fault", drone: d.id, kind: "stuck_bearing" }; }, F: () => ({ op: "clear_faults" }),
     b: () => ({ op: "set_env", background_db: env.background_db <= 45 ? 55 : 40 }), e: () => ({ op: "set_env", ego_filter: !env.ego_filter }) };
   if (e.repeat && e.key in ops) { e.preventDefault(); return; }  // holding a key adds one source, not thirty a second
   const op = ops[e.key]?.();
@@ -1144,7 +1614,7 @@ function toast(msg) {
 }
 function opText(op) {
   return { add_source: `add a ${op.cls === "nuisance" ? "fan" : op.cls === "vehicle" ? "truck" : op.cls}`, jam: "jam here", clear_jam: "clear jamming",
-    fault: `stick drone ${op.drone}'s microphone`, clear_faults: "clear sensor faults",
+    fault: `stick ${D(op.drone)}'s microphone`, clear_faults: "clear sensor faults",
     set_env: "background_db" in op ? (op.background_db <= 45 ? "night" : "day") : `ego-noise filter ${op.ego_filter ? "on" : "off"}` }[op.op] || op.op;
 }
 function sendOp(op) {
@@ -1156,7 +1626,15 @@ function sendOp(op) {
 function loadStatic(again) {
   const q = again ? `?run=${Date.now()}` : "";  // a new run may bring a new city
   const img = new Image(); img.onload = () => { base = img; schedule(); }; img.onerror = () => { base = null; }; img.src = `/basemap.png${q}`;
-  return fetch(`/city${q}`).then(r => r.json()).then(c => { city = c; schedule(); });
+  fetch(`/scenario${q}`).then(r => r.json()).then(s => { scen = s; showSite(); }).catch(() => {});
+  return fetch(`/city${q}`).then(r => r.json()).then(c => { city = c; showSite(); schedule(); });
+}
+function showSite() {
+  if (!city) return;
+  $("site").querySelector(".v").textContent = (SITES[city.name] || city.name).toUpperCase();
+  $("attrib").textContent = (city.attribution || []).join(" · ");  // CC BY / ODbL credit
+  const job = (scen?.threat || "DRONE") === "DRONE" ? "Counter-UAS" : "Anti-poaching";
+  $("mission").textContent = `${job} · ${scen?.name || "–"}`;
 }
 loadStatic(false).then(() => { connect(); connectCams(); });
 </script>

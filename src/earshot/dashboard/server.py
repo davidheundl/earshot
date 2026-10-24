@@ -314,6 +314,7 @@ def create_app(scenario_path: str) -> FastAPI:
         return {"queued": op["op"]}
 
     scenario_json = {
+        "name": scenario.name, "threat": scenario.threat.name,  # the HUD's top bar
         "drones": [{"id": d.id, "home": d.home or (d.x, d.y), "default": d.default.name}
                    for d in scenario.drones],
         "bounds": city_json["bounds"],
