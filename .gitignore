@@ -31,3 +31,7 @@ data/sounds/*/
 gazebo/.venv/
 gazebo/worlds/*.sdf
 gazebo/worlds/*_assets/
+
+# the office scan as Polycam exported it (tools/make_office.py reads it; the processed twin is kept)
+data/cities/office_scan/
+webots/worlds/office.wbt

@@ -20,6 +20,9 @@ and power lines in 3D only on the airfield (`airfield`: the runways' hull and AI
 around it), and none of the villages around it: the aerial photo shows them flat, and the
 world loads and renders a fraction of the triangles.
 
+A City with a `scan` (tools/make_office.py: a phone LiDAR scan of the office, x100) is drawn as
+that scan, textured and lit by its own colours, on a dark plate: no buildings, trees or grass.
+
 A City with `biome: savanna` (tools/make_savanna.py) is drawn as bushveld instead: golden
 grass and thornveld, flat-crowned acacias, shrubs and riverine trees, boulders on the kopjes,
 red dirt tracks as draped strips (`road_surfaces`), steel lookout towers, a clear sky. Its
@@ -1661,6 +1664,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     side = [t["image"] for t in raw.get("ground_tiles", [])]  # files the City JSON points to
     side += [f for m in raw.get("building_meshes", []) for f in m.values()]
     side += [raw["features"]] if raw.get("features") else []
+    side += [f for part in raw.get("scan", []) for f in part.values()]
     if raw.get("surround"):
         side += [t["image"] for t in raw["surround"]["tiles"]] + [raw["surround"]["buildings"]]
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
@@ -1703,7 +1707,13 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     mapped = osm_trees(raw, city_file.parent)
     for x, y in itertools.compress(mapped, on(area, mapped)):
         (osm_near if x0 - 1500 < x < x1 + 1500 and y0 - 1500 < y < y1 + 1500 else osm_far).append((x, y))
-    if biome == "savanna":
+    scan = raw.get("scan")  # a phone scan of a room (tools/make_office.py): the scan is the look
+    for part in scan or []:
+        for f in part.values():
+            (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
+    if scan:
+        tree_tiles = []
+    elif biome == "savanna":
         tree_tiles = savanna_trees(lu, city, assets)
     else:
         tree_tiles = trees(lu, city, assets, forest_only=bool(photo), extra=osm_near + ring_trees,
@@ -1765,6 +1775,9 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
             parts.append(f"Pose {{ translation {(fx0 + fx1) / 2} {(fy0 + fy1) / 2} -0.05 children [ Shape {{ "
                          f"appearance {look} geometry Box {{ size {fx1 - fx0} "
                          f"{fy1 - fy0} 0.1 }} castShadows FALSE }} ] }}")
+    elif scan:  # its own floor; a dark plate under it where the scan has holes
+        parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -1 children [ Shape {{ appearance "
+                     f"{pbr((0.16, 0.16, 0.18), 1)} geometry Box {{ size {3 * span} {3 * span} 0.1 }} }} ] }}")
     else:  # flat city: a textured ground plane, wider grass around it
         parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -0.05 children [ Shape {{ appearance "
                      f"{pbr((1, 1, 1), 1, texture=f'{rel}/ground.png')} geometry Box {{ size {x1 - x0} {y1 - y0} 0.1 }} }} ] }}")
@@ -1815,6 +1828,13 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
                     defined_look.add(kind)
                 parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(m[kind]).name}" }} '
                              f"castShadows FALSE }}")
+    elif scan:  # its colours already carry the room's light: emissive, so the sun does not shade it twice
+        for part in scan:
+            look = (pbr((0.6, 0.6, 0.6), 1) if "texture" not in part else
+                    f'PBRAppearance {{ baseColor 0 0 0 roughness 1 metalness 0 emissiveColor 1 1 1 '
+                    f'emissiveColorMap ImageTexture {{ url "{rel}/{Path(part["texture"]).name}" }} }}')
+            parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(part["mesh"]).name}" }} '
+                         f"castShadows FALSE }}")
     else:
         for k, b in enumerate(raw["buildings"]):
             parts.append(tower(b, k) if b.get("kind") == "tower" else building(b, k))

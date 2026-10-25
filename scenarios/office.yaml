@@ -1,0 +1,39 @@
+# Office scenario: the office as its own City, from a Polycam LiDAR scan
+# (tools/make_office.py -> data/cities/office.json; 1 m in the office = 100 m in the city, as in
+# room.yaml). Drones 0 and 1 are the two microphone arrays, fixed on their desk. Start with
+#   uv run earshot live --backend webots --scenario scenarios/office.yaml --array 0=<device>@<rot> --array 1=...
+# `rot` = the compass bearing the array's forward points to (+y of the scan is north, check
+# data/cities/office_top.jpg). Without arrays it runs as six simulated drones.
+#
+# The office is an L: the desk rows in the east wing (x 0..700), the open floor of the west
+# wing (x -750..0, y -380..-150). An intruder drone loiters over the west floor, a second one
+# comes down the east wing later, and a fan unit on the east cabinets sounds like a drone.
+# Sound power levels: earshot/sensors/acoustics.py SOUND_POWER.
+name: office
+seed: 42
+city: data/cities/office.json
+duration: 300
+dt: 0.1
+
+drones:            # home = centre of its Sector; a perched drone takes the best Perch Site near it
+  - {id: 0, x: 288, y: -306, home: [288, -306], default: listen, fixed: true}  # array A, desk f21
+  - {id: 1, x: 475, y: -320, home: [475, -320], default: listen, fixed: true}  # array B, desk f22
+  - {id: 2, x:  271, y:  169, home: [271, 169],   default: listen}            # desk row f18
+  - {id: 3, x:  587, y:  470, home: [587, 470],   default: listen}            # east cabinets
+  - {id: 4, x: -541, y: -430, home: [-541, -430], default: listen}            # west wing, south wall
+  - {id: 5, x:   68, y:  643, home: [68, 643],    default: patrol}            # north end
+
+environment:
+  background_db: 40     # as room.yaml; 50 (an office by day) confirms 6/10 instead of 9/10
+  ego_filter: true
+  ego_filter_db: 8
+
+sources:           # rf: list of bands from earshot/sensors/rf.py BANDS (2g4, 5g8, 915)
+  - {id: drone1, cls: drone,    start: 30,  end: 280, level_db: 89, rf: [2g4], path: [[-600, -250], [-450, -180], [-300, -260], [-450, -330], [-600, -250]]}
+  - {id: drone2, cls: drone,    start: 140, end: 260, level_db: 85, rf: [5g8], path: [[380, 850], [380, 400], [400, 0], [420, -150]]}
+  - {id: fan1,   cls: nuisance, start: 0,   end: 300, level_db: 75, path: [[627, 330]]}
+
+radio:             # see earshot/radio/medium.py RadioConfig
+  sf: 7
+  bw_khz: 500
+  nominal_range_m: 700
