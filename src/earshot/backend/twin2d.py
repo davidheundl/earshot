@@ -41,12 +41,14 @@ class Kinematics:
     def for_scenario(cls, scenario) -> Kinematics:
         """A Scenario's `camera: {standoff: m}` brings the Verifier closer: a real detector
         sees a drone at 30-60 m, not at the stand-in's 100 m. Its `kinematics:` block
-        (`speed: {verify: m/s, ...}`, `climb_rate`, `max_speed`) flies a demo faster; what it
-        leaves out keeps the defaults."""
+        (`speed: {verify: m/s, ...}`, `climb_rate`, `max_speed`) flies a demo faster, and its
+        `cruise_alt` lifts the swarm over the office's desks; what it leaves out keeps the
+        defaults."""
         k = getattr(scenario, "kinematics", None) or {}
         speed = {Mode[m.upper()]: float(v) for m, v in (k.get("speed") or {}).items()}
         return cls(standoff=float(scenario.camera.get("standoff", cls.standoff)),
                    speed=speed or None,
+                   cruise_alt=float(k.get("cruise_alt", cls.cruise_alt)),
                    climb_rate=float(k.get("climb_rate", cls.climb_rate)),
                    max_speed=float(k.get("max_speed", cls.max_speed)))
 

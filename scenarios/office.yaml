@@ -33,6 +33,9 @@ sources:           # rf: list of bands from earshot/sensors/rf.py BANDS (2g4, 5g
   - {id: drone2, cls: drone,    start: 140, end: 260, level_db: 85, rf: [5g8], path: [[380, 850], [380, 400], [400, 0], [420, -150]]}
   - {id: fan1,   cls: nuisance, start: 0,   end: 300, level_db: 75, path: [[627, 330]]}
 
+kinematics:        # cruise 1 m above the office floor: over the desks (0.75 m); 150 confirms 5/10, not 9/10
+  cruise_alt: 100
+
 radio:             # see earshot/radio/medium.py RadioConfig
   sf: 7
   bw_khz: 500
