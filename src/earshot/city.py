@@ -21,8 +21,9 @@ Loaded from a City JSON file. That file is the hand-off between the data pipelin
       # v3, all optional (tools/make_muc.py): "ground_tiles": [{"image", "bounds"}] aerial
       # photo as the Webots ground, "basemap": the dashboard's photo, "building_meshes":
       # [{"walls", "roofs"}] real geometry (.obj) instead of extruded footprints
-      # v4, optional (tools/make_office.py): "scan": [{"mesh", "texture"}] a phone scan of a
-      # room, x100, drawn by Webots instead of the buildings (which stay the physics)
+      # v4, optional (tools/make_office.py): "interior": [{"mesh", "rgb", "rough", "texture"?,
+      # "emissive"?, "photo"?}] a room from a phone scan, x100, drawn by Webots instead of the
+      # buildings (which stay the physics)
     }
 
 The same file feeds both backends (Webots world generator and the 2D twin) and the agents.

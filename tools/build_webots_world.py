@@ -20,8 +20,9 @@ and power lines in 3D only on the airfield (`airfield`: the runways' hull and AI
 around it), and none of the villages around it: the aerial photo shows them flat, and the
 world loads and renders a fraction of the triangles.
 
-A City with a `scan` (tools/make_office.py: a phone LiDAR scan of the office, x100) is drawn as
-that scan, textured and lit by its own colours, on a dark plate: no buildings, trees or grass.
+A City with an `interior` (tools/make_office.py: the office from a phone LiDAR scan, x100) is
+drawn as those meshes, each with its own material (or as the raw scan, lit by its own colours),
+under a shadow-casting sun: no buildings, trees or grass.
 
 A City with `biome: savanna` (tools/make_savanna.py) is drawn as bushveld instead: golden
 grass and thornveld, flat-crowned acacias, shrubs and riverine trees, boulders on the kopjes,
@@ -1532,6 +1533,8 @@ QUAD_LOOKS = {  # body colour, scale (1 = 0.9 m motor to motor across the diagon
     "SWARM": ((1.0, 0.32, 0.02), 1.0),  # signal orange: red stays the intruder's colour
     "INTRUDER": ((0.13, 0.13, 0.14), 1.3),  # a larger, dark drone
 }
+QUAD_SCALE = {"city": 1.0, "room": 25.0}  # a room (x100) shows its drones at 22 cm, not 9 mm
+_quad_scale = QUAD_SCALE["city"]
 
 
 def _metal(rgb, rough=0.35) -> str:
@@ -1543,6 +1546,7 @@ def quad_model(kind: str) -> str:
     props, nav lights (red left, green right, white tail), a gimbal camera under the nose.
     Nothing hangs below the body forward of its centre: the Verifier camera sits there."""
     rgb, k = QUAD_LOOKS[kind]
+    k *= _quad_scale
     shell = pbr(rgb, 0.35, rgb if kind == "SWARM" else None, 0.25)
     carbon, white = pbr((0.05, 0.05, 0.06), 0.45), pbr((0.93, 0.93, 0.93), 0.3)
 
@@ -1657,6 +1661,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     _animal_looks.clear()
     city_file = Path(sc.city) if Path(sc.city).is_absolute() else ROOT / sc.city
     raw = json.loads(city_file.read_text())
+    global _quad_scale
+    _quad_scale = QUAD_SCALE["room" if raw.get("interior") else "city"]
     city = City(raw)
     out = Path(out_path)
     assets = out.with_name(out.stem + "_assets")
@@ -1664,7 +1670,7 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     side = [t["image"] for t in raw.get("ground_tiles", [])]  # files the City JSON points to
     side += [f for m in raw.get("building_meshes", []) for f in m.values()]
     side += [raw["features"]] if raw.get("features") else []
-    side += [f for part in raw.get("scan", []) for f in part.values()]
+    side += [part[k] for part in raw.get("interior", []) for k in ("mesh", "texture", "photo") if k in part]
     if raw.get("surround"):
         side += [t["image"] for t in raw["surround"]["tiles"]] + [raw["surround"]["buildings"]]
     key = hashlib.sha256(city_file.read_bytes() + Path(scenario_path).read_bytes()
@@ -1707,11 +1713,12 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     mapped = osm_trees(raw, city_file.parent)
     for x, y in itertools.compress(mapped, on(area, mapped)):
         (osm_near if x0 - 1500 < x < x1 + 1500 and y0 - 1500 < y < y1 + 1500 else osm_far).append((x, y))
-    scan = raw.get("scan")  # a phone scan of a room (tools/make_office.py): the scan is the look
-    for part in scan or []:
-        for f in part.values():
-            (assets / Path(f).name).write_bytes((city_file.parent / f).read_bytes())
-    if scan:
+    interior = raw.get("interior")  # a room from a phone scan (tools/make_office.py): it is the look
+    for part in interior or []:
+        for k in ("mesh", "texture", "photo"):
+            if k in part:
+                (assets / Path(part[k]).name).write_bytes((city_file.parent / part[k]).read_bytes())
+    if interior:
         tree_tiles = []
     elif biome == "savanna":
         tree_tiles = savanna_trees(lu, city, assets)
@@ -1729,6 +1736,8 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
     span = max(x1 - x0, y1 - y0)
     cx = (x0 + x1) / 2
     sky = "mountains" if biome == "savanna" else "noon_cloudy_countryside"  # HDR skies only
+    if interior:
+        sky = "noon_building_overcast"  # a street outside the windows
     haze = (0.80, 0.77, 0.70) if biome == "savanna" else (0.78, 0.82, 0.87)
     parts += [
         # 50 ms: two basic steps per 0.1 s tick, fewer pose writes and step round trips; the
@@ -1737,11 +1746,15 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
         (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(0, 14)} position {cx:.0f} "
         f"{y0 - 0.45 * span:.0f} {float(city.ground(cx, y0)) + 0.22 * span:.0f} "
         f"far {14000 if raw.get('surround') else 25000}"  # with surroundings: only as far as the haze
-        f"{' near 1' if photo else ''} }}"),
+        f"{' near 1' if photo else ''} }}") if not interior else
+        # a room: into it from the south, steeply, through the ceiling (it only faces down)
+        (f"DEF VIEW Viewpoint {{ orientation {axis_angle_view(15, 48)} position "
+         f"{cx - 0.22 * span:.0f} {(y0 + y1) / 2 - 0.8 * span:.0f} {0.94 * span:.0f} near 1 far 6000 }}"),
         f'TexturedBackground {{ texture "{sky}" }}',
-        f'TexturedBackgroundLight {{ texture "{sky}" castShadows FALSE }}',
-        f"Fog {{ color {fmt(haze)} visibilityRange {1.5 * span:.0f} }}",
+        f'TexturedBackgroundLight {{ texture "{sky}" luminosity {1.6 if interior else 1} castShadows FALSE }}',
     ]
+    if not interior:  # a room is too small for haze
+        parts.append(f"Fog {{ color {fmt(haze)} visibilityRange {1.5 * span:.0f} }}")
     if "terrain" in raw:
         t = raw["terrain"]
         n = int(t["n"])
@@ -1775,9 +1788,11 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
             parts.append(f"Pose {{ translation {(fx0 + fx1) / 2} {(fy0 + fy1) / 2} -0.05 children [ Shape {{ "
                          f"appearance {look} geometry Box {{ size {fx1 - fx0} "
                          f"{fy1 - fy0} 0.1 }} castShadows FALSE }} ] }}")
-    elif scan:  # its own floor; a dark plate under it where the scan has holes
+    elif interior:  # its own floor; a plate under it, outside the room
         parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -1 children [ Shape {{ appearance "
-                     f"{pbr((0.16, 0.16, 0.18), 1)} geometry Box {{ size {3 * span} {3 * span} 0.1 }} }} ] }}")
+                     f"{pbr((0.55, 0.56, 0.58), 1)} geometry Box {{ size {3 * span} {3 * span} 0.1 }} }} ] }}")
+        # the sun through the open top: shadows under desks and chairs are most of the look
+        parts.append("DirectionalLight { direction 0.35 0.55 -1 intensity 2.2 castShadows TRUE }")
     else:  # flat city: a textured ground plane, wider grass around it
         parts.append(f"Pose {{ translation {cx} {(y0 + y1) / 2} -0.05 children [ Shape {{ appearance "
                      f"{pbr((1, 1, 1), 1, texture=f'{rel}/ground.png')} geometry Box {{ size {x1 - x0} {y1 - y0} 0.1 }} }} ] }}")
@@ -1828,13 +1843,18 @@ def build(scenario_path: str, out_path: str, markers: bool = True, force: bool =
                     defined_look.add(kind)
                 parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(m[kind]).name}" }} '
                              f"castShadows FALSE }}")
-    elif scan:  # its colours already carry the room's light: emissive, so the sun does not shade it twice
-        for part in scan:
-            look = (pbr((0.6, 0.6, 0.6), 1) if "texture" not in part else
-                    f'PBRAppearance {{ baseColor 0 0 0 roughness 1 metalness 0 emissiveColor 1 1 1 '
-                    f'emissiveColorMap ImageTexture {{ url "{rel}/{Path(part["texture"]).name}" }} }}')
+    elif interior:
+        for part in interior:
+            if "photo" in part:  # a scan's colours already carry the room's light: emissive, unshaded
+                look = (f'PBRAppearance {{ baseColor 0 0 0 roughness 1 metalness 0 emissiveColor 1 1 1 '
+                        f'emissiveColorMap ImageTexture {{ url "{rel}/{Path(part["photo"]).name}" }} }}')
+            else:
+                tex = f'{rel}/{Path(part["texture"]).name}' if "texture" in part else None
+                look = pbr(part["rgb"], part["rough"], part.get("emissive"),
+                           transparency=part.get("transparency", 0.0), texture=tex)
+            shadows = part.get("shadows", True) and "photo" not in part
             parts.append(f'Shape {{ appearance {look} geometry Mesh {{ url "{rel}/{Path(part["mesh"]).name}" }} '
-                         f"castShadows FALSE }}")
+                         f'castShadows {"TRUE" if shadows else "FALSE"} }}')
     else:
         for k, b in enumerate(raw["buildings"]):
             parts.append(tower(b, k) if b.get("kind") == "tower" else building(b, k))

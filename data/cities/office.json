@@ -2362,22 +2362,293 @@
  "rails": [],
  "roads": [],
  "basemap": "office_top.jpg",
- "scan": [
+ "interior": [
   {
-   "mesh": "office_twin/scan_0.obj",
-   "texture": "office_twin/scan_0.jpg"
+   "mesh": "office_twin/model_oak_floor.obj",
+   "rgb": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rough": 0.6,
+   "texture": "office_twin/oak_planks.jpg"
   },
   {
-   "mesh": "office_twin/scan_1.obj",
-   "texture": "office_twin/scan_1.jpg"
+   "mesh": "office_twin/model_carpet.obj",
+   "rgb": [
+    0.4,
+    0.41,
+    0.43
+   ],
+   "rough": 1.0
   },
   {
-   "mesh": "office_twin/scan_2.obj",
-   "texture": "office_twin/scan_2.jpg"
+   "mesh": "office_twin/model_wall.obj",
+   "rgb": [
+    0.93,
+    0.93,
+    0.92
+   ],
+   "rough": 0.9
   },
   {
-   "mesh": "office_twin/scan_3.obj",
-   "texture": "office_twin/scan_3.jpg"
+   "mesh": "office_twin/model_kitchen_wall.obj",
+   "rgb": [
+    0.55,
+    0.6,
+    0.63
+   ],
+   "rough": 0.9
+  },
+  {
+   "mesh": "office_twin/model_skirting.obj",
+   "rgb": [
+    0.22,
+    0.22,
+    0.23
+   ],
+   "rough": 0.7
+  },
+  {
+   "mesh": "office_twin/model_concrete.obj",
+   "rgb": [
+    0.62,
+    0.62,
+    0.6
+   ],
+   "rough": 0.95
+  },
+  {
+   "mesh": "office_twin/model_walnut.obj",
+   "rgb": [
+    0.28,
+    0.15,
+    0.07
+   ],
+   "rough": 0.8
+  },
+  {
+   "mesh": "office_twin/model_steel.obj",
+   "rgb": [
+    0.05,
+    0.05,
+    0.06
+   ],
+   "rough": 0.4
+  },
+  {
+   "mesh": "office_twin/model_sage.obj",
+   "rgb": [
+    0.55,
+    0.65,
+    0.61
+   ],
+   "rough": 0.35
+  },
+  {
+   "mesh": "office_twin/model_white.obj",
+   "rgb": [
+    0.95,
+    0.95,
+    0.94
+   ],
+   "rough": 0.35
+  },
+  {
+   "mesh": "office_twin/model_gap.obj",
+   "rgb": [
+    0.55,
+    0.55,
+    0.55
+   ],
+   "rough": 0.6
+  },
+  {
+   "mesh": "office_twin/model_worktop.obj",
+   "rgb": [
+    0.97,
+    0.97,
+    0.96
+   ],
+   "rough": 0.2
+  },
+  {
+   "mesh": "office_twin/model_stainless.obj",
+   "rgb": [
+    0.7,
+    0.71,
+    0.72
+   ],
+   "rough": 0.25
+  },
+  {
+   "mesh": "office_twin/model_glass.obj",
+   "rgb": [
+    0.8,
+    0.88,
+    0.9
+   ],
+   "rough": 0.05,
+   "transparency": 0.82,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_tv.obj",
+   "rgb": [
+    0.03,
+    0.03,
+    0.035
+   ],
+   "rough": 0.2,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_display.obj",
+   "rgb": [
+    0.02,
+    0.03,
+    0.05
+   ],
+   "rough": 0.6,
+   "emissive": [
+    0.1,
+    0.16,
+    0.24
+   ],
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_exit.obj",
+   "rgb": [
+    0.1,
+    0.6,
+    0.2
+   ],
+   "rough": 0.5,
+   "emissive": [
+    0.1,
+    0.9,
+    0.3
+   ],
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_upholstery.obj",
+   "rgb": [
+    0.44,
+    0.45,
+    0.49
+   ],
+   "rough": 1.0
+  },
+  {
+   "mesh": "office_twin/model_mesh_chair.obj",
+   "rgb": [
+    0.08,
+    0.08,
+    0.09
+   ],
+   "rough": 0.8
+  },
+  {
+   "mesh": "office_twin/model_oak.obj",
+   "rgb": [
+    0.78,
+    0.62,
+    0.44
+   ],
+   "rough": 0.55
+  },
+  {
+   "mesh": "office_twin/model_planter.obj",
+   "rgb": [
+    0.07,
+    0.07,
+    0.08
+   ],
+   "rough": 0.6
+  },
+  {
+   "mesh": "office_twin/model_leaves.obj",
+   "rgb": [
+    0.17,
+    0.36,
+    0.16
+   ],
+   "rough": 0.8
+  },
+  {
+   "mesh": "office_twin/model_leaves_light.obj",
+   "rgb": [
+    0.36,
+    0.52,
+    0.22
+   ],
+   "rough": 0.8
+  },
+  {
+   "mesh": "office_twin/model_ceramic.obj",
+   "rgb": [
+    0.96,
+    0.96,
+    0.95
+   ],
+   "rough": 0.3
+  },
+  {
+   "mesh": "office_twin/model_slats.obj",
+   "rgb": [
+    0.8,
+    0.62,
+    0.42
+   ],
+   "rough": 0.6,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_ceiling_walnut.obj",
+   "rgb": [
+    0.52,
+    0.31,
+    0.16
+   ],
+   "rough": 0.5,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_ceiling_black.obj",
+   "rgb": [
+    0.04,
+    0.04,
+    0.04
+   ],
+   "rough": 1.0,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_ceiling_white.obj",
+   "rgb": [
+    0.93,
+    0.93,
+    0.92
+   ],
+   "rough": 0.9,
+   "shadows": false
+  },
+  {
+   "mesh": "office_twin/model_downlight.obj",
+   "rgb": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rough": 1.0,
+   "emissive": [
+    1.0,
+    0.95,
+    0.85
+   ],
+   "shadows": false
   }
  ]
 }

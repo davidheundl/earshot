@@ -1,7 +1,8 @@
 """A Polycam (or any phone LiDAR) scan of the office -> the office City, 1 m room = 100 m city.
 
-The scan is what the Webots camera sees; the City's buildings (desks, cabinets, shelves as
-boxes) are what sound, RF and the agents know. Same 1:100 fiction as scenarios/room.yaml, so
+What the Webots camera sees is the office modelled clean from the scan (tools/office_model.py;
+--look scan: the raw scan); the City's buildings (desks, cabinets, shelves from the scan's
+height map) are what sound, RF and the agents know. Same 1:100 fiction as scenarios/room.yaml, so
 acoustics, radio and drone kinematics keep their city-scale constants.
 
     uv run python tools/make_office.py data/cities/office_scan/<scan>.glb --rotate 0
@@ -12,8 +13,8 @@ acoustics, radio and drone kinematics keep their city-scale constants.
 3. cut everything above --ceiling (the overview camera looks in from above), centre, x100
 4. a height map (5 cm) of what stands on the floor -> one box building per piece of furniture,
    a Perch Site on every flat top (the arrays stand on one: put drones 0 and 1 there)
-Writes data/cities/office.json, data/cities/office_twin/ (scan_<k>.obj + texture per material,
-the City's `scan` key, tools/build_webots_world.py) and office_top.jpg (top view: the
+Writes data/cities/office.json, data/cities/office_twin/ (one .obj per material, the City's
+`interior` key, tools/build_webots_world.py) and office_top.jpg (the scan from above: the
 dashboard `basemap`, and the check that north is up).
 """
 
@@ -25,8 +26,10 @@ import math
 from pathlib import Path
 
 import numpy as np
+import office_model
 import shapely
 import trimesh
+import yaml
 from PIL import Image, ImageDraw
 from scipy import ndimage
 from shapely import Polygon
@@ -103,11 +106,13 @@ def floor_z(parts: list[dict]) -> float:
     return float(edges[strong[0]] + (edges[1] - edges[0]) / 2)
 
 
-def height_map(parts: list[dict], bounds) -> np.ndarray:
-    """Highest surface per CELL square (room metres above the floor), row 0 = south."""
+def height_map(parts: list[dict], bounds) -> tuple[np.ndarray, np.ndarray]:
+    """Highest surface per CELL square (room metres above the floor), row 0 = south, and
+    where the scan saw floor."""
     x0, y0, x1, y1 = bounds
     nx, ny = math.ceil((x1 - x0) / CELL), math.ceil((y1 - y0) / CELL)
     hmap = np.zeros((ny, nx))
+    seen = np.zeros((ny, nx), bool)
     for p in parts:
         mesh = trimesh.Trimesh(p["v"], p["f"], process=False)
         n = int(min(4_000_000, max(10_000, mesh.area / (CELL / 3) ** 2)))
@@ -115,7 +120,9 @@ def height_map(parts: list[dict], bounds) -> np.ndarray:
         ix = np.clip(((pts[:, 0] - x0) / CELL).astype(int), 0, nx - 1)
         iy = np.clip(((pts[:, 1] - y0) / CELL).astype(int), 0, ny - 1)
         np.maximum.at(hmap, (iy, ix), pts[:, 2])
-    return hmap
+        low = pts[:, 2] < 0.08
+        seen[iy[low], ix[low]] = True
+    return hmap, seen
 
 
 def outline(cells: np.ndarray, bounds) -> Polygon:
@@ -139,7 +146,7 @@ def furniture(hmap: np.ndarray, bounds) -> list[dict]:
     inside = ((cx > x0 + WALL_MARGIN) & (cx < x1 - WALL_MARGIN)
               & (cy > y0 + WALL_MARGIN) & (cy < y1 - WALL_MARGIN))
     out = []
-    for lo, hi in BANDS:
+    for band_k, (lo, hi) in enumerate(BANDS):
         band = (hmap >= lo) & (hmap < hi) & inside
         labels, n = ndimage.label(ndimage.binary_opening(band, iterations=1))
         for k in range(1, n + 1):
@@ -151,7 +158,7 @@ def furniture(hmap: np.ndarray, bounds) -> list[dict]:
             top = float(edges[np.argmax(hist)] + (edges[1] - edges[0]) / 2)  # the surface, not its clutter
             level = np.abs(h - top) < FLAT_TOP
             flat = level.sum() * CELL**2 >= 0.1
-            out.append({"footprint": list(outline(cells, bounds).exterior.coords)[:-1], "height": top,
+            out.append({"footprint": list(outline(cells, bounds).exterior.coords)[:-1], "height": top, "band": band_k,
                         "flat": flat, "top": (float(cx[cells][level].mean()), float(cy[cells][level].mean()))})
     return out
 
@@ -199,6 +206,10 @@ def main() -> None:
                     help="degrees counter-clockwise after squaring, so that +y is north")
     ap.add_argument("--no-square", action="store_true", help="keep the scan's heading as it is")
     ap.add_argument("--ceiling", type=float, default=2.1, help="cut above this, room metres")
+    ap.add_argument("--look", choices=("model", "scan"), default="model",
+                    help="what Webots draws: the office modelled clean (tools/office_model.py) or the raw scan")
+    ap.add_argument("--layout", type=Path, default=None,
+                    help="walls, windows, rooms the scan misses (default: <out>_layout.yaml next to --out)")
     ap.add_argument("--out", type=Path, default=ROOT / "data/cities/office.json")
     a = ap.parse_args()
 
@@ -221,7 +232,8 @@ def main() -> None:
         p["v"][:, :2] -= mid
     room = (float(lo[0] - mid[0]), float(lo[1] - mid[1]), float(hi[0] - mid[0]), float(hi[1] - mid[1]))
 
-    pieces = furniture(height_map(parts, room), room)
+    hmap, seen = height_map(parts, room)
+    pieces = furniture(hmap, room)
     name = a.out.stem
     city_dir = a.out.parent
     twin = city_dir / f"{name}_twin"
@@ -229,15 +241,24 @@ def main() -> None:
     top = top_view(parts, room)
     top.save(city_dir / f"{name}_top.jpg", quality=88)
 
-    scan = []
-    for k, p in enumerate(parts):
+    for old in twin.glob("scan_*"):
+        old.unlink()
+    interior = []
+    if a.look == "model":
+        layout_file = a.layout or a.out.with_name(f"{name}_layout.yaml")
+        layout = yaml.safe_load(layout_file.read_text()) if layout_file.exists() else None
+        if layout:
+            print(f"layout: {layout_file}")
+        interior = office_model.model(seen, CELL, room, pieces, twin, SCALE, layout)
+    for k, p in enumerate(parts if a.look == "scan" else []):
         tex = None
         if p["uv"] is not None and p["image"] is not None:
             tex = f"scan_{k}.jpg"
             p["image"].convert("RGB").save(twin / tex, quality=90)
         p["v"] = p["v"] * SCALE
         write_obj(p, twin / f"scan_{k}.obj", tex)
-        scan.append({"mesh": f"{twin.name}/scan_{k}.obj"} | ({"texture": f"{twin.name}/{tex}"} if tex else {}))
+        interior.append({"mesh": f"{twin.name}/scan_{k}.obj", "rgb": [0.6, 0.6, 0.6], "rough": 1.0}
+                        | ({"photo": f"{twin.name}/{tex}"} if tex else {}))
 
     buildings, perch = [], []
     for k, b in enumerate(sorted(pieces, key=lambda b: (-b["top"][1], b["top"][0]))):
@@ -256,12 +277,12 @@ def main() -> None:
         "rails": [],
         "roads": [],
         "basemap": f"{name}_top.jpg",
-        "scan": scan,
+        "interior": interior,
     }
     a.out.write_text(json.dumps(city, indent=1))
     w, d = room[2] - room[0], room[3] - room[1]
     print(f"{a.out}: room {w:.2f} x {d:.2f} m (city {w * SCALE:.0f} x {d * SCALE:.0f} m), turned {yaw:.1f} deg, "
-          f"{len(buildings)} pieces of furniture, {len(scan)} scan meshes in {twin.name}/")
+          f"{len(buildings)} pieces of furniture, {len(interior)} {a.look} meshes in {twin.name}/")
     for b, p in ((b, next((p for p in perch if p["building"] == b["id"]), None)) for b in buildings):
         where = f"perch {p['id']} at x {p['x']:.0f}, y {p['y']:.0f}" if p else "not flat"
         print(f"  {b['id']}: {b['height'] / SCALE:.2f} m high, {where}")

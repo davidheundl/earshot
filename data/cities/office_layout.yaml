@@ -1,0 +1,54 @@
+# What the scan of the office could not see, from the photos (Oct 24): the straight walls,
+# windows, glass meeting rooms, doors, the TV and the kitchen. Read by tools/make_office.py
+# (tools/office_model.py draws it); room metres in the scan's frame after squaring
+# (data/cities/office_top.jpg: +x east, +y north, origin the room's centre). Visual only: the
+# City's buildings still come from the scan.
+wall_height: 2.7
+
+# the floor, as rectangles [x0, y0, x1, y1]; the outer walls follow their union's outline
+plan:
+  - [-7.9, -5.05, -1.95, -1.0]   # west corridor: lounge chairs, plants, tall cabinets (IMG_9049)
+  - [-1.95, -9.04, 1.0, -1.0]    # junction and the corridor south past the glass rooms (IMG_9047)
+  - [1.0, -9.04, 1.85, -7.55]
+  - [1.0, -7.55, 6.35, 1.0]      # event space: long walnut tables, TV wall (IMG_9046)
+  - [-0.6, 1.0, 6.35, 9.0]       # kitchen, high table at the windows, sofa, column (IMG_9050/51)
+  - [-7.9, -9.04, -1.95, -5.05]  # the glass meeting rooms
+
+carpet:                          # carpet tiles instead of oak
+  - [-7.9, -9.04, -1.95, -5.05]
+
+walnut_ceiling:                  # walnut planks instead of oak slats (IMG_9050/51)
+  - [-0.6, 1.0, 6.35, 9.0]
+
+# inner walls [x0, y0, x1, y1]: black-framed glass, or drywall
+glass:
+  - [-7.9, -5.05, -1.95, -5.05]  # meeting rooms onto the west corridor
+  - [-1.95, -9.04, -1.95, -5.05] # and onto the south corridor
+partitions:
+  - [-4.9, -9.04, -4.9, -5.05]   # between the two meeting rooms
+
+# windows on outer walls [x0, y0, x1, y1]: sill to head, black mullions
+windows:
+  - [6.35, -7.2, 6.35, -5.4]     # two windows behind the long tables (IMG_9046)
+  - [6.35, -4.6, 6.35, -2.6]
+  - [-0.3, 9.0, 5.9, 9.0]        # the window wall along the high table (IMG_9051)
+  - [-7.6, -9.04, -5.2, -9.04]   # meeting room windows
+  - [-4.6, -9.04, -2.3, -9.04]
+
+doors:                           # white double doors: centre on a wall, facing into the room (deg)
+  - {at: [-6.1, -1.0], facing: -90, exit: true}
+  - {at: [-4.2, -1.0], facing: -90}
+
+tvs:                             # on a wall, facing into the room (deg)
+  - {at: [4.04, -7.55], facing: 90}          # over the white sideboard
+  - {at: [-7.9, -7.05], facing: 0}           # meeting room A
+  - {at: [-4.9, -7.05], facing: 0}           # meeting room B
+
+kitchen:                         # base cabinets, open walnut shelves, fridges at the `from` end
+  from: [6.35, -1.0]
+  to: [6.35, 6.9]
+  facing: 180
+
+meeting_rooms:                   # a table with office chairs in each
+  - [-7.9, -9.04, -4.9, -5.05]
+  - [-4.9, -9.04, -1.95, -5.05]
